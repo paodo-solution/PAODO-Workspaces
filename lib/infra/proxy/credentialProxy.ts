@@ -1,21 +1,5 @@
-// Transparent credential proxy for workspace secrets.
-// Containers connect to this proxy via HTTP_PROXY/HTTPS_PROXY. Their shell env vars hold opaque
-// proxy tokens (e.g. __pxy_wsId_OPENAI_API_KEY__) instead of real secret values.
-// For HTTPS to configured domains: MITM the TLS, substitute tokens with real values in every place
-// a secret can travel in an HTTP request — the request target (path + query string), all header
-// values (including base64-wrapped `Authorization: Basic`), and the request body — then forward to
-// upstream. For all other HTTPS: plain TCP tunnel (no interception).
-// Injection is HTTPS-only: plain HTTP is cleartext on the wire, so we never substitute a real value
-// there (it would leak the secret to any on-path observer). HTTP requests are forwarded untouched,
-// carrying only the opaque token, which upstream rejects — failing closed instead of leaking.
-// The one thing substitution fundamentally cannot cover is auth where the secret is consumed by a
-// computation before transmission (AWS SigV4 / HMAC request signing, SCRAM DB auth): there is no
-// literal token on the wire to replace. Those secrets must be present in the container.
-// Domain allowlist prevents relay attacks: real values are only injected for the user-configured domain.
-// Responses on the MITM path are REDACTED in reverse (real value → token) so an upstream that
-// echoes the credential back (API error messages are the common case) never exposes plaintext to
-// the container. Covered: the literal value, plus the `Basic` base64 envelope we ourselves emit.
-// An upstream that transforms the secret some other way is not caught — echo protection, not a guarantee.
+// Swaps opaque tokens for real secrets on HTTPS to each secret's exact host (MITM), redacts echoes back,
+// and tunnels everything else untouched. Design: doc/adr/accepted/adr-workspace-secrets-credential-proxy.md
 import * as net from "net";
 import * as tls from "tls";
 import * as http from "http";
@@ -46,9 +30,7 @@ function parseProxyAuth(authHeader: string | undefined): { wsId: string; secret:
   return { wsId: decoded.slice(0, colon), secret: decoded.slice(colon + 1) };
 }
 
-// A request to `hostname` is covered by a rule only when they are the exact same host. Subdomains
-// are intentionally NOT matched: a key scoped to "api.openai.com" must never be injected into some
-// other "*.openai.com" host an attacker might influence.
+// Exact host only: a key for "api.openai.com" must never reach another "*.openai.com" host.
 export function hostMatches(hostname: string, domain: string): boolean {
   return hostname.toLowerCase() === domain.toLowerCase();
 }
@@ -75,10 +57,8 @@ function substituteTokens(value: string, tokenMap: TokenMap, usedTokens?: Set<st
   return value;
 }
 
-// Substitute in a single header value. Covers the plain case (token appears verbatim) and
-// `Authorization: Basic base64(user:token)`, which we decode, substitute, and re-encode.
-// `wireForms` collects each re-encoded envelope keyed to the client's original, so the response
-// direction can redact the exact bytes we emitted — the real value is not literally present in them.
+// Substitutes verbatim tokens and inside `Basic base64(user:token)`. `wireForms` records each re-encoded
+// envelope so the response side can redact bytes that don't contain the literal value.
 export function substituteHeaderValue(
   value: string,
   tokenMap: Map<string, string>,
@@ -113,13 +93,8 @@ export function reverseTokenMap(tokenMap: TokenMap): TokenMap {
   return rev;
 }
 
-// Redact real secret values back into their opaque tokens in a byte stream WITHOUT buffering it —
-// buffering whole responses would stall streaming APIs (SSE), which is exactly the traffic this
-// proxy fronts. A carry of (longest value - 1) bytes is held back between chunks so a value split
-// across a chunk boundary is still caught; the carry is flushed on stream end. Substitution runs
-// over carry+chunk each time — re-substituting already-redacted text is a no-op because tokens
-// never contain secret values. Latin1 keeps the transform byte-safe (same convention as the
-// request-body substitution below).
+// Streams redaction without buffering (SSE must not stall), holding back longest-value − 1 bytes so a
+// value split across chunks is still caught. Latin1 keeps it byte-safe.
 export function createRedactTransform(redactMap: TokenMap): Transform {
   const maxLen = Math.max(1, ...[...redactMap.keys()].map((v) => v.length));
   const holdback = maxLen - 1;
@@ -141,9 +116,8 @@ export function createRedactTransform(redactMap: TokenMap): Transform {
   });
 }
 
-// Substitute every request-line/header place a secret can ride: the request target (path + query
-// string) and all header values. Mutates `headers` in place; returns the substituted path.
-// The request body is handled separately by forwardRequestBody (it must be buffered to rewrite).
+// Substitutes in the request target and every header (mutating `headers`); returns the new path.
+// The body is handled by forwardRequestBody.
 function substituteRequestMeta(
   requestPath: string,
   headers: Record<string, string>,
@@ -209,12 +183,8 @@ export function buildResponseHead(res: http.IncomingMessage, redactMap?: TokenMa
   let head = `HTTP/1.1 ${res.statusCode} ${res.statusMessage}\r\n`;
   for (const [k, v] of Object.entries(res.headers)) {
     const key = k.toLowerCase();
-    // Node's HTTP client already decoded chunked transfer-encoding into a plain
-    // stream, so `res` yields de-chunked bytes. Forwarding the original
-    // `transfer-encoding: chunked` header would make the client try to de-chunk an
-    // already-decoded body (e.g. gzip magic \x1f\x8b) → InvalidChunkLength / hang.
-    // We instead delimit the body by closing the connection (see below), so drop
-    // both this and the upstream `connection` header.
+    // Node already de-chunked `res`, so forwarding `transfer-encoding: chunked` would break the client's
+    // read; the body is delimited by connection close instead.
     if (key === "transfer-encoding" || key === "connection") continue;
     // When redacting (MITM path), body redaction can change its length, and the body is
     // connection-close/EOF-delimited anyway — a stale content-length would truncate the client read.
@@ -225,9 +195,7 @@ export function buildResponseHead(res: http.IncomingMessage, redactMap?: TokenMa
       head += `${k}: ${redact(v)}\r\n`;
     }
   }
-  // Body length is now unknown to us (chunked was stripped, no content-length added),
-  // so the client must read until EOF. The pipe() calls end() the socket on upstream
-  // end, delivering that EOF.
+  // Body length is unknown, so the client reads to EOF, which pipe() delivers on upstream end.
   head += "connection: close\r\n";
   return head + "\r\n";
 }
@@ -290,15 +258,8 @@ export class CredentialProxy {
     const { statusLine, headers, remaining } = await readHttpHeaders(socket);
     const auth = parseProxyAuth(headers["proxy-authorization"]);
 
-    // Every connection must present a workspace identity we can cryptographically verify — an
-    // absent, malformed, or spoofed Proxy-Authorization no longer gets a silent pass-through tunnel.
-    // Without this, the internet-access-off check below is trivial to dodge: a caller that simply
-    // omits the header (auth === null) or claims a wsId it can't prove (isInternetAccessEnabled
-    // defaults to true for any id never toggled off) skipped the check entirely and still got
-    // tunneled through. Every legitimate caller already presents its real credentials — they're
-    // baked into HTTP_PROXY by containerCredentials.ts and every mainstream HTTP client sends them
-    // automatically — so this only refuses connections that were never going to identify themselves
-    // honestly in the first place.
+    // Every connection must prove its workspace, or the internet-off check below could be dodged by
+    // omitting or spoofing the identity. Real callers get credentials in HTTP_PROXY (containerCredentials.ts).
     if (!auth || !verifyProxySecret(auth.wsId, auth.secret)) {
       audit.warn(
         { wsId: auth?.wsId, event: "proxy_auth_required" },
@@ -309,17 +270,10 @@ export class CredentialProxy {
       return;
     }
 
-    // Resolve which injection rules this connection may use — empty unless this workspace has one
-    // configured for the requested host. Identity is already verified above, so this can't fail
-    // closed on a bad secret; it's just "does this workspace happen to have a rule for this host".
     const rules = this.ruleStore.resolve(auth);
 
-    // Internet-access off is a hard stop, ahead of (not instead of) domain-scoped injection rules —
-    // a workspace with a configured secret for some domain still gets refused here while off. This
-    // is defense-in-depth: the workspace's Docker network (containerManager.ts) is the primary
-    // boundary (--internal, no route out; the sidecar isn't even attached), so a legitimately-off
-    // workspace should never reach this far. This check only matters if those layers are ever
-    // misconfigured (a stale attachment, a race during redeploy).
+    // Defense in depth: the --internal network is the real boundary, so an off workspace only gets here
+    // through a stale attachment or a redeploy race. Refused even if it has secret rules.
     if (!isInternetAccessEnabled(auth.wsId)) {
       audit.warn(
         { wsId: auth.wsId, event: "proxy_internet_access_blocked" },
@@ -343,10 +297,8 @@ export class CredentialProxy {
         socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         await this.handleMitm(socket, hostname, port, tokenMap, remaining, auth?.wsId);
       } else {
-        // SSRF guard: refuse tunnels to internal addresses. IP literals are checked here (net.connect
-        // skips DNS for them, so the lookup would never see them); hostnames are validated by the
-        // lookup, which rejects a resolved address in a blocked range. The 200 is withheld until the
-        // upstream is actually established, so a blocked target only ever gets a 403.
+        // SSRF guard: IP literals are checked here because net.connect skips the guarded lookup for them.
+        // The 200 waits for the upstream, so a blocked target only ever sees a 403.
         if (net.isIP(hostname) && this.blockDestination(hostname)) {
           auditBlockedDestination({ workspaceId: auth?.wsId, hostname, port, transport: "tunnel" });
           socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
@@ -418,9 +370,8 @@ export class CredentialProxy {
     const method = parts[0] ?? "GET";
 
     delete headers["proxy-authorization"];
-    // Force an identity-encoded response so the redaction below can scan it. Secret-domain API
-    // traffic is small JSON — losing compression there is fine. (A non-compliant server that
-    // compresses anyway passes through unredacted: accidental-echo coverage, not a guarantee.)
+    // Uncompressed responses keep redaction able to scan them; a server that compresses anyway goes
+    // unredacted (echo protection, not a guarantee).
     delete headers["accept-encoding"];
     headers["connection"] = "close";
     const usedTokens = new Set<string>();
@@ -428,9 +379,7 @@ export class CredentialProxy {
     const requestPath = substituteRequestMeta(parts[1] ?? "/", headers, tokenMap, usedTokens, wireForms);
     const requestContext: ProxyRequestContext = { workspaceId, hostname, port, transport: "https" };
 
-    // Response direction: redact real values back into tokens so an upstream echoing the credential
-    // never exposes plaintext. wireForms adds the base64 envelopes we built, which hide the value
-    // from a scan for the literal bytes — `Basic` auth (git/gh) is exactly that case.
+    // Redact echoed real values, plus the `Basic` envelopes we built (git/gh), which hide the literal bytes.
     const redactMap = reverseTokenMap(tokenMap);
     for (const [emitted, clientForm] of wireForms) redactMap.set(emitted, clientForm);
 
@@ -474,10 +423,8 @@ export class CredentialProxy {
     startUpstream: () => http.ClientRequest,
     context: ProxyRequestContext,
   ): Promise<void> {
-    // Honor `Expect: 100-continue`: the client withholds the body until it sees an interim 100
-    // response (Python requests does this on larger POSTs — exactly the token-exchange calls this
-    // proxy serves). We buffer and re-send the body ourselves, so tell the client to proceed and
-    // drop the header before forwarding upstream (we don't relay the expectation onward).
+    // Clients that send `Expect: 100-continue` (Python requests on larger POSTs) wait for a 100. We
+    // re-send the body ourselves, so answer here and don't forward the expectation.
     if (/(^|,)\s*100-continue\s*($|,)/i.test(headers["expect"] ?? "")) {
       src.write("HTTP/1.1 100 Continue\r\n\r\n");
       delete headers["expect"];
@@ -543,10 +490,8 @@ export class CredentialProxy {
       return;
     }
 
-    // Secrets are injected over HTTPS only. Plain HTTP is cleartext on the wire, so substituting
-    // a real value here would leak it to any on-path observer. We forward HTTP untouched (empty
-    // token map = no substitution); the opaque token travels instead, which upstream rejects
-    // rather than the credential leaking. `rules` is intentionally unused on this path.
+    // HTTPS-only injection: on cleartext HTTP the opaque token travels instead, so upstream rejects it
+    // rather than the secret leaking to on-path observers.
     const tokenMap: TokenMap = new Map();
 
     delete headers["proxy-authorization"];
