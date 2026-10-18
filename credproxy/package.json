@@ -2,6 +2,13 @@
   "name": "paodo-credential-proxy-runtime",
   "version": "1.0.0",
   "private": true,
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "^11.0.0",
+      "onFail": "error"
+    }
+  },
   "dependencies": {
     "node-forge": "1.4.0",
     "pino": "10.3.1"
