@@ -103,7 +103,9 @@ describe("opening and closing a channel", () => {
 
 describe("channel input validation", () => {
   it("names the field it rejected, so one message serves both channels", () => {
-    expect(() => validateChannelEnabled("workspaceMcpAccess", "yes")).toThrow("workspaceMcpAccess must be true or false");
+    expect(() => validateChannelEnabled("workspaceMcpAccess", "yes")).toThrow(
+      "workspaceMcpAccess must be true or false",
+    );
     expect(() => validateChannelEnabled("workspaceApiAccess", undefined)).toThrow(
       "workspaceApiAccess must be true or false",
     );

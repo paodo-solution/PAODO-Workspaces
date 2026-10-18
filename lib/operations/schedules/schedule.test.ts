@@ -77,15 +77,17 @@ const stored: ScheduleEntry = {
 
 describe("schedule validation", () => {
   it("canonicalizes the values it accepts", () => {
-    expect(validateSchedule({ ...VALID, prompt: "  padded  ", endAt: "2026-08-01T00:00", enabled: true }, NOW)).toEqual({
-      prompt: "padded",
-      intervalValue: 1,
-      intervalUnit: "day",
-      startAt: "2026-07-13T09:00",
-      endAt: "2026-08-01T00:00",
-      timezone: "UTC",
-      enabled: true,
-    });
+    expect(validateSchedule({ ...VALID, prompt: "  padded  ", endAt: "2026-08-01T00:00", enabled: true }, NOW)).toEqual(
+      {
+        prompt: "padded",
+        intervalValue: 1,
+        intervalUnit: "day",
+        startAt: "2026-07-13T09:00",
+        endAt: "2026-08-01T00:00",
+        timezone: "UTC",
+        enabled: true,
+      },
+    );
   });
 
   // A schedule must never start firing from an omitted field, so an absent `enabled` means disabled.

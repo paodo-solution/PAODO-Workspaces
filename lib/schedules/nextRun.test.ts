@@ -130,10 +130,14 @@ describe("endBound", () => {
 });
 
 describe("isValidTimezone", () => {
-  it.each(["Europe/Brussels", "UTC", "Asia/Kolkata", "Europe/Kyiv", "America/Argentina/Buenos_Aires", "America/Port-au-Prince"])(
-    "accepts the standard name %s",
-    (tz) => expect(isValidTimezone(tz)).toBe(true),
-  );
+  it.each([
+    "Europe/Brussels",
+    "UTC",
+    "Asia/Kolkata",
+    "Europe/Kyiv",
+    "America/Argentina/Buenos_Aires",
+    "America/Port-au-Prince",
+  ])("accepts the standard name %s", (tz) => expect(isValidTimezone(tz)).toBe(true));
 
   it.each(["Mars/Phobos", "+02:00", "GMT+2", "CET", "europe/paris", "Europe/paris", "utc", ""])(
     "refuses %s, which is not a standard name",
