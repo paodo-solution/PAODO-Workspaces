@@ -1,5 +1,5 @@
 // Runs outlive HTTP requests: one detached run per (workspace, conversation), its events buffered and fanned
-// out, so a late subscriber replays then follows live. Only stop() ends a run; history saves at run end.
+// out, so a late subscriber replays then follows live. Only stop() ends a run; history is saved at run end.
 import type { BaseMessage } from "@langchain/core/messages";
 import { runAgent, type AgentEvent } from "./runner";
 import type { RunAgentOptions } from "./runner";
@@ -234,8 +234,8 @@ export function startRun(params: StartRunParams): {
       publish({ type: "error", code: "CANCELLED", message: USER_STOPPED_CONVERSATION_MESSAGE });
       publish({ type: "done" });
     };
-    // For throws before runAgent's loop (config load, model build): without an error event and `done`, the
-    // stream would hang open on an apparently ignored prompt.
+    // Covers throws before runAgent's loop (config load, model build), which would otherwise leave the stream
+    // open with no error and no `done`, on an apparently ignored prompt.
     const publishFailure = (message: string, status: AgentRunStatus = "failed") => {
       if (sentDone) return;
       publish({ type: "error", message });

@@ -1,8 +1,8 @@
 // Reconnect backoff shared by useWorkspaceSocket and useConsoleSocket. Bounded so a handshake the browser
 // can't satisfy doesn't loop forever (against the server, or as repeated Basic-Auth prompts).
 
-// Most drops are blips (wifi switch, laptop wake), so retries continue forever, but never faster than
-// the 30s cap.
+// Most drops are blips (wifi switch, laptop wake), so retry forever, but back off to every 30s rather than
+// retrying fast forever.
 export const WS_RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_000];
 
 // ±20%, so several hooks (and several tabs) that dropped at the same moment do not come back in

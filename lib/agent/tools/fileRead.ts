@@ -7,8 +7,8 @@ import { toolError } from "../toolUtils";
 import type { ExecRunner } from "../interfaces";
 import { MAX_FILE_READ_BYTES } from "../../infra/limits";
 
-// Ceiling enforced in the container with `head -c`, so oversized files never arrive. skipResultCap is set,
-// so this is the only bound; page past it with offset/limit.
+// The ceiling (limits.ts, shared with drive_read) is applied in the container with `head -c`, so oversized files
+// never arrive. skipResultCap is set, so it is the only bound; page past it with offset/limit.
 
 const schema = z.object({
   file_path: z.string().describe("File path relative to workspace root"),

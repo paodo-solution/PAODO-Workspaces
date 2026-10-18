@@ -1,5 +1,5 @@
-// The agent's detached background processes (dev servers), which outlive runs in their own session, out of
-// reach of the exec kill path. Bookkeeping and in-container scripts only; the caller ensures the container.
+// Tracks the agent's background processes (dev servers). Each runs in its own session, so it outlives runs and
+// the exec kill path never reaches it. Bookkeeping and scripts only; the caller ensures the container.
 import { randomUUID } from "crypto";
 import { createLogger } from "../logger";
 import { broadcastToWorkspace } from "../realtime/wsHub";

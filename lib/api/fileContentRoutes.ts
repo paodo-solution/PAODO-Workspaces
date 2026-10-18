@@ -64,7 +64,7 @@ export async function getFileContent(request: Request, be: FileBackend): Promise
   let relPath: string | undefined;
   try {
     relPath = requireEntryPath(searchParams.get("path"));
-    // ?offset=/&limit= in lines, validated before reading; absent for the file panel's requests.
+    // ?offset= and ?limit= count lines, validated before reading; the file panel sends neither.
     const range = requireLineRange(searchParams.get("offset"), searchParams.get("limit"));
     const file = await readFileEntry(be.dir, relPath);
     if (range && file.type !== "text") {

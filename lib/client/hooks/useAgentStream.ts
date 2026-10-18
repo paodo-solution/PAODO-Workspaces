@@ -26,7 +26,7 @@ interface Options {
   onTurnComplete?: () => void;
 }
 
-// How a stream pass ended: aborted = viewer left on purpose; dropped = connection died but the run likely
+// ok = closed after `done`; aborted = viewer left on purpose; dropped = connection died but the run likely
 // continues (reconnect, don't report failure); failed = the request never landed.
 type StreamOutcome = "ok" | "aborted" | "dropped" | "failed";
 

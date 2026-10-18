@@ -1,5 +1,5 @@
-// Caps command output held in memory (unbounded, a RangeError in a stream handler would crash the whole
-// instance). Past the cap, output streams to a file in the container that the agent can grep or tail.
+// Caps command output held in memory: unbounded, `+=` would throw RangeError in a stream handler and crash the
+// instance. Past the cap, output streams to a file in the container that the agent can grep or tail.
 
 import type { OutputSink } from "../../infra/interfaces";
 import { MAX_INLINE_BYTES, PREVIEW_BYTES, STDERR_SAMPLE_BYTES, formatOutputBytes } from "../../infra/limits";

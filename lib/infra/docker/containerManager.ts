@@ -410,8 +410,8 @@ export class ContainerManager implements IContainerManager {
     }
   }
 
-  // Create path only (`docker start` keeps installed packages). Never throws: a degraded workspace beats a
-  // dead one. Stops waiting after APT_REPLAY_TIMEOUT_MS, since a hung apt holds the dpkg lock.
+  // Create path only (`docker start` keeps installed packages). Never throws, and gives up after
+  // APT_REPLAY_TIMEOUT_MS: every command waits on this, and a hung apt holds the dpkg lock for good.
   private async replayAptRecipe(workspaceId: string, internetAccess: boolean): Promise<void> {
     const packages = readAptRecipe(workspaceId);
     if (packages.length === 0) return;

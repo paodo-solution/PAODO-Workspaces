@@ -35,7 +35,8 @@ function normalizeUrl(rawUrl: string): string {
   return upgraded;
 }
 
-// argv only — no shell — so the URL can never be interpolated into a command string.
+// argv only (no shell), so the URL is never interpolated. Never add --noproxy: the proxy is the SSRF guard.
+// Only loopback skips it (no_proxy in containerCredentials.ts), matched by host string, never by resolved IP.
 export function buildCurlArgs(url: string): string[] {
   return [
     "curl",

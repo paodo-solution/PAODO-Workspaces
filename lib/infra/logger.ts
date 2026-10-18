@@ -21,8 +21,8 @@ const destination = pino.destination({
 
 type LogContext = Record<string, unknown>;
 
-// Credentials inside strings (echoed keys, authenticated URLs). Patterns need an auth label or known token
-// prefix, so hashes and ids survive.
+// Scrubs credentials inside strings (echoed keys, authenticated URLs). Patterns need an auth label or a known
+// token prefix, so hashes and ids survive.
 const credentialPatterns: Array<[RegExp, string]> = [
   [
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,

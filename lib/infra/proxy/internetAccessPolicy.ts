@@ -1,5 +1,5 @@
-// Per-workspace internet policy the proxy checks before any tunnel (defense in depth behind the --internal
-// network). On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
+// Per-workspace internet policy the proxy checks before any tunnel (defense in depth behind detaching the
+// sidecar). On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
 import path from "path";
 import { readFileSync } from "fs";
 import { WORKSPACES_ROOT } from "../paths";

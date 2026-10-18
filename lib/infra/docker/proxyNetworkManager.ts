@@ -79,7 +79,7 @@ export class ProxyNetworkManager {
   }
 
   // On boot, reattach the sidecar to running workspaces a redeploy cut off. `shouldAttach` excludes internet-off
-  // workspaces, which the sidecar would otherwise hand a route out.
+  // workspaces: attaching one would give it a route out through the sidecar.
   async reattachAll(shouldAttach: (workspaceId: string) => boolean = () => true): Promise<void> {
     const r = await this.docker.cmd("ps", "--filter", `name=^${CONTAINER_PREFIX}`, "--format", "{{.Names}}");
     if (r.code !== 0) {

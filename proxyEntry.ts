@@ -1,5 +1,5 @@
-// Entry point for the credproxy sidecar: the app attaches this container (never itself) to workspace
-// networks, so port 9998 is all a workspace reaches. Read-only mounts only; reloads when the vault changes.
+// Credproxy sidecar entry point. Hosting the proxy in the app would put the control plane on every workspace
+// network; instead only this container (port 9998) is reachable. Read-only mounts; reloads on vault change.
 import * as fs from "fs";
 import * as path from "path";
 import { createLogger, exitAfterLogs } from "./lib/infra/logger";

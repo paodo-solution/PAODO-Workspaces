@@ -250,7 +250,7 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
     return this.serialize(workspaceId, () => rm(this.gitDirFor(workspaceId), { recursive: true, force: true }));
   }
 
-  // A missing git binary only shows up as code 1 with ENOENT (gitClient.ts), silently disabling snapshots.
+  // Probes for the git binary: a missing one only shows up as code 1 with ENOENT, silently disabling snapshots.
   async isGitAvailable(): Promise<boolean> {
     const r = await this.git.run(["--version"]);
     return r.code === 0;

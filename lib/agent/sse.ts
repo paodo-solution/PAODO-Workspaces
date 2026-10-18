@@ -1,5 +1,5 @@
-// SSE plumbing for the chat and public agent routes: one `data:` frame per event, plus a keepalive comment,
-// since proxies drop silent streams (~100s) while a tool call may run 30 min.
+// SSE plumbing for the chat and public agent routes. A keepalive comment frame (ignored by every client) stops
+// proxies dropping silent streams (~100s on Cloudflare) while a tool call runs for up to 30 min.
 
 export const SSE_HEADERS = {
   "Content-Type": "text/event-stream",

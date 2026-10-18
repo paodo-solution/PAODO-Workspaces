@@ -1,5 +1,5 @@
-// Card for a workspace access channel (API access, MCP). The switch and the key controls are independent,
-// so a key can be issued before the channel opens or revoked after it closes. Always "key", never "secret".
+// Card for a workspace access channel (API access, MCP). Switch and key controls are independent, so a key can
+// be issued before opening or revoked after closing. Says "key": "secret" means env-var secrets on this page.
 "use client";
 
 import type { ReactNode } from "react";

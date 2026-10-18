@@ -272,8 +272,8 @@ export class CredentialProxy {
 
     const rules = this.ruleStore.resolve(auth);
 
-    // Defense in depth: the --internal network is the real boundary, so an off workspace only gets here
-    // through a stale attachment or a redeploy race. Refused even if it has secret rules.
+    // Defense in depth: an off workspace has no sidecar attached, so it only gets here through a stale
+    // attachment or a redeploy race. Refused even if it has secret rules.
     if (!isInternetAccessEnabled(auth.wsId)) {
       audit.warn(
         { wsId: auth.wsId, event: "proxy_internet_access_blocked" },

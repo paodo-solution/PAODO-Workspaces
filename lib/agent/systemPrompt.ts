@@ -118,7 +118,7 @@ Today's date: ${date}`;
         type: "text",
         text: dynamicContext,
         // cache_control on the LAST block caches the whole system message (static block alone is under 1024 tokens).
-        // ANTHROPIC_CACHE_TTL_1H=true extends the TTL to 1h.
+        // ANTHROPIC_CACHE_TTL_1H=true extends the TTL to 1h (needs the prompt-caching-scope-2026-01-05 beta).
         ...(promptConfig.supportsPromptCaching
           ? {
               cache_control: {
