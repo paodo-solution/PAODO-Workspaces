@@ -1,27 +1,5 @@
-// Shared upload handler for the workspace and drive upload routes. One request writes one file,
-// whose destination comes from the `?path=` query param.
-//
-// The body is streamed to disk and never buffered. The container has less RAM than MAX_UPLOAD_BYTES,
-// so reading an upload into a Buffer would OOM the process long before the limit was reached. This is
-// also why the browser uploads a folder as N of these one-file requests (see
-// lib/client/hooks/useFileUpload.ts) rather than one archive: it keeps memory flat on both ends, lets
-// each file fail and retry on its own, and removes the zip-slip surface that caller-named archive
-// entries otherwise create.
-//
-// One path does extract a caller-authored archive server-side — the CLI's tar transfer
-// (lib/operations/files/transfer.ts) — and it is worth being exact about which of the three reasons
-// above it answers. Memory: it streams entry by entry to a staging directory, so it is as flat as this
-// handler. Zip-slip: entry names are normalised and every one must resolve inside a single virtual
-// `payload` root, and only regular files and directories are accepted. Per-file retry: it has none, and
-// that is the trade — one request is what makes the transfer atomic, which a scripted client wants more
-// than resumability, and a browser on a flaky connection wants far less.
-//
-// Containment: the target directory is realpath'd once, then the write target is resolved against it
-// via the shared resolveContained() helper (lib/files/containment.ts — also used by the
-// agent's own file tools) and must stay under it. Bytes land in a sibling temp file that is renamed
-// into place only once the whole body has arrived, so an interrupted or over-limit upload cannot
-// leave a truncated file at the real path. The two callers differ only in the optional `afterWrite`
-// git snapshot (workspaces take one; drives are passive host storage and do not).
+// One-file upload handler for workspace and drive routes. Streams to a temp file inside the realpath'd root
+// (resolveContained), renamed into place only when complete; folders are N requests to keep memory flat.
 import { type NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import { createWriteStream } from "fs";
@@ -57,9 +35,8 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
   const log = createLogger("api");
   const limitLabel = formatBytes(MAX_UPLOAD_BYTES);
 
-  // One helper builds both the log record and the response body so they can never disagree about
-  // why the upload was refused. `rejectedAt` distinguishes the cheap up-front Content-Length
-  // rejection from the authoritative mid-stream one.
+  // One helper builds the log record and the response, so they can't disagree. `rejectedAt` separates the
+  // up-front Content-Length refusal from the mid-stream one.
   const tooLarge = (filePath: string, actualBytes: number, rejectedAt: "content_length" | "stream") => {
     log.warn(
       {
@@ -82,9 +59,7 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
     );
   };
 
-  // Distinct from tooLarge: this file may be well within the per-file limit, but the host itself
-  // is out of room. Telling the two apart matters because one is the user's problem and the other
-  // is ours.
+  // Distinct from tooLarge: the file may be within limits but the host is out of room (our problem, not the user's).
   const insufficientStorage = (filePath: string, neededBytes: number, freeBytes: number) => {
     log.error(
       {
@@ -102,9 +77,7 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
     });
   };
 
-  // `?path=` is workspace-relative, and requireEntryPath is what makes that the only thing it can be:
-  // resolveContained alone would still accept an absolute path that happened to land inside the root,
-  // which is the dual path space the rest of the file API no longer has (lib/files/relpath.ts).
+  // requireEntryPath keeps `?path=` relative: resolveContained alone would accept an absolute path inside the root.
   const { searchParams } = new URL(req.url);
   let filePath: string;
   try {
@@ -123,9 +96,7 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
     });
   }
 
-  // Refuse on the declared size before reading a byte. Browsers always set Content-Length for a
-  // File body, so this is the path a real oversized upload takes — and it avoids spooling the
-  // whole doomed body to disk first.
+  // Refuse on the declared size before reading a byte, so a doomed body is never spooled to disk.
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
     return tooLarge(filePath, declared, "content_length");
@@ -172,9 +143,7 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
       },
       "failed to write uploaded file",
     );
-    // Logged either way — a write that got this far failing is worth a line even when the cause is the
-    // client's — but a recognised errno still answers with its own code, so a full disk mid-stream is
-    // not indistinguishable from a bug.
+    // Logged either way, but a recognised errno keeps its own code, so a full disk isn't reported as a bug.
     const known = fileSystemAppError(err, filePath);
     return known
       ? errorResponse(known.code, known.message, { request: req, details: known.details })

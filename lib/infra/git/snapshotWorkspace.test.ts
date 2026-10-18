@@ -1,8 +1,5 @@
-// The coalescer collapses a burst of file changes into the single snapshot the user wants. Two
-// invariants matter to anything that transfers a directory tree: a burst commits once, and a caller
-// that knows the burst is finished can force that commit rather than waiting out the quiet period —
-// otherwise a transfer slower than the quiet window commits once per gap, and a client that exits on
-// its last response leaves the snapshot to a timer nobody is waiting on.
+// The coalescer commits a burst once, and a caller that knows it is done can force the commit; otherwise a slow
+// transfer commits per gap, and a client exiting on its last response leaves it to an unwatched timer.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { IWorkspaceSnapshotWriter } from "../interfaces";

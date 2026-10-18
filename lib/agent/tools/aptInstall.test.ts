@@ -1,10 +1,5 @@
-// apt's download cache must not outlive the install that created it.
-//
-// Workspace containers are now kept for the life of the workspace (see
-// containerManager.persistence.test.ts), so nothing ever wipes their writable layer. The .deb
-// archives apt fetches and the repository index `apt-get update` writes are pure download cache —
-// re-fetched on demand, and re-fetched by this tool on every call regardless — so left alone they
-// would accumulate in every workspace forever.
+// apt's download cache must not outlive its install: containers live as long as the workspace, so .debs
+// and `apt-get update` indexes (re-fetched every call anyway) would otherwise pile up forever.
 import { describe, it, expect } from "vitest";
 import { AptInstallTool } from "./aptInstall";
 import type { ExecResult, PrivilegedRunner } from "../interfaces";

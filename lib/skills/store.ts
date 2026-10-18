@@ -1,7 +1,4 @@
-// Reads skill definitions from a workspace's .skills/ directory.
-// The skill list is never a stored artifact — it is read from disk at call time
-// by list_agents and executeSkill, so agent-written files (via file_write into the
-// bind-mounted /workspace/.skills/) are picked up with no extra plumbing.
+// Reads skill definitions from .skills/ at call time, so skills the agent writes are picked up immediately.
 import fsAsync from "fs/promises";
 import path from "path";
 import { createLogger } from "../infra/logger";
@@ -12,19 +9,15 @@ const log = createLogger("skillStore");
 /** Hidden workspace metadata directory holding the workspace's public A2A/MCP contracts. */
 export const SKILLS_DIR = ".skills";
 
-// A skill `id` doubles as the tool name when the workspace is exposed over MCP, where tool names
-// must match `^[a-zA-Z0-9_-]+$`. We enforce that charset (and a sane length cap) uniformly here so
-// an id that is illegal as an MCP tool name is illegal as a skill id everywhere. It is deliberately
-// the skill's only name, so authors should make it concise and human-readable too.
+// The id doubles as the MCP tool name, so it must match MCP's charset everywhere. It is the skill's only
+// name, so keep it short and readable.
 export const SKILL_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-// Minimal structural check — full schema correctness is ajv's job at call time.
-// Skills missing required top-level fields are skipped with a warning rather than
-// failing the whole listing, so one malformed file can't break a workspace.
+// Structural check only (ajv validates at call time); a malformed skill is skipped with a warning.
 function parseSkill(raw: unknown, file: string): SkillDefinition | null {
   if (!isRecord(raw)) return null;
   const { id, description, input, output } = raw;

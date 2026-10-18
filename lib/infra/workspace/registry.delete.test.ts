@@ -1,6 +1,5 @@
-// The registry primitive used by the delete operation. A failed registry write
-// must leave the in-memory map matching the file on disk rather than dropping the workspace only in
-// memory — which would hide it from the UI until a restart brought it back.
+// A failed registry write must leave memory matching disk, not drop the workspace only in memory and hide it
+// until a restart brings it back.
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceStore } from "./registry";
 

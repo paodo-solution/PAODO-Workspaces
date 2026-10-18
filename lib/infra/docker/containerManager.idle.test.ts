@@ -1,9 +1,5 @@
-/**
- * Task-aware idle reaping. A container is kept warm while a run is active OR at least one background
- * task is verified-alive, and stopped only once both clear. Each task carries its own 24h cap so no
- * single process keeps a container up forever. The idle timer is anchored to run start/end (not to
- * per-exec activity), so it can never fire mid-run.
- */
+// Kept warm while a run is active or a background task is verified alive, each task capped at 24h. The idle
+// timer is anchored to run start/end, not per exec, so it can never fire mid-run.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ContainerManager } from "./containerManager";
 import type { IDockerClient, DockerResult } from "./dockerClient";

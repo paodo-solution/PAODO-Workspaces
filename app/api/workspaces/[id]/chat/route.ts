@@ -1,9 +1,5 @@
-// Internal chat endpoint used by the browser UI.
-// Two modes over one SSE response:
-//   - send:   body has a non-empty `message` → start a run for the conversation, then stream it
-//   - attach: body has an empty/absent `message` → re-attach to a conversation's in-flight run
-// In both modes the run is owned by the run broker (not this request), so closing the tab only
-// detaches this viewer — the agent keeps going until it finishes or is explicitly stopped.
+// Browser chat endpoint, one SSE response: a non-empty `message` starts a run, an empty one re-attaches.
+// The run broker owns the run, so closing the tab only detaches.
 import type { NextRequest } from "next/server";
 import type { AgentEvent } from "@/lib/agent/runner";
 import * as broker from "@/lib/agent/runBroker";
@@ -36,9 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const stream = new ReadableStream({
     start(controller) {
       let closed = false;
-      // A run emits nothing between tool_start and tool_result, which can be many minutes. Without
-      // this the proxy drops the idle connection and the viewer sees a failure for a run that is
-      // still going fine. See lib/agent/sse.ts.
+      // Keepalive through long silent tool calls, or the proxy drops the connection (lib/agent/sse.ts).
       const stopKeepalive = startKeepalive(controller, encoder);
       const send = (event: AgentEvent) => {
         if (closed) return;

@@ -1,35 +1,7 @@
-// Every app-side ceiling on memory this process will hold, in one file.
-//
-// They live together because the question they answer is a whole-system one — "does every path that
-// accumulates have a bound?" — and that question was answered wrong twice. gitClient kept the
-// unbounded append for a commit after dockerClient was fixed, because each spawner owned its own copy
-// of the number and fixing one said nothing about the other. Then the drive tools turned out to read
-// host-side, so every ceiling added around the container transport missed them entirely. Both times
-// the miss was invisible: there was nowhere to look and see the set.
-//
-// The split with the call sites is deliberate. What lives HERE is the number and why it is that
-// number. What stays at the CALL SITE is the mechanism — how the cut is made, what happens to the
-// remainder, what the agent is told. Reading an entry here should answer "why 8MB and not 80"; reading
-// the call site should answer "what happens at byte 8,388,609".
-//
-// None of these is an env knob, deliberately (see doc/security_notes.md). Unlike CONTAINER_MEMORY,
-// none depends on the host: every PAODO instance runs the same kinds of workloads, so each has one
-// right answer, and an operator asked to pick would have nothing to base the choice on.
-//
-// Worth knowing while reading any number below: the app container declares no memory limit of its own
-// (docker-compose.yml sets none), so nothing catches an overrun underneath these. The ceilings in this
-// file ARE the limit, and passing one takes the whole instance — every workspace, socket and in-flight
-// run — not a single workspace.
+// Every app-side memory ceiling, in one place so it's visible whether every accumulating path is bounded.
+// Not env knobs (doc/security_notes.md); the app container has no memory limit, so these ARE the limit.
 
-/**
- * Byte size for the message a ceiling produces — "29.4KB", "1.2MB". Mirrors Claude Code's KiB/MiB
- * rendering.
- *
- * It lives with the numbers because every ceiling here owes the caller the same sentence: what was
- * cut or refused, and how big it was. A ceiling that cannot say that produces the failure mode these
- * were introduced to avoid — an agent acting confidently on a partial picture — so the formatter is
- * part of the mechanism, not a presentation detail.
- */
+/** Byte size for a ceiling's message ("29.4KB", "1.2MB"), so every cut or refusal says how big it was. */
 export function formatOutputBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
@@ -41,25 +13,13 @@ export function formatOutputBytes(bytes: number): string {
   return unit === 0 ? `${value}B` : `${(Math.round(value * 10) / 10).toFixed(1)}${units[unit]}`;
 }
 
-// ---------------------------------------------------------------------------
-// Subprocess capture — lib/infra/spawnCapture.ts (docker + git)
-// ---------------------------------------------------------------------------
+// ---- Subprocess capture — lib/infra/spawnCapture.ts (docker + git) ----
 
-/**
- * What a single spawned child process may materialize in this process, per stream.
- *
- * A safety floor rather than a product limit: it exists so that an unbounded `stdout +=` cannot
- * reach V8's ~536M character limit and throw RangeError out of a stream handler, where no caller's
- * `.catch()` can see it. Tools that need a meaningful bound (file_read, execute_command) set a much
- * lower one of their own and this never comes into play for them; it only catches the paths nobody
- * thought to bound. Generous for that reason — 8MB is far more than any git or docker CLI invocation
- * legitimately prints, while still being a rounding error against the heap.
- */
+// Per-stream safety floor for any spawned child, far above legitimate git/docker output, so an unbounded
+// `stdout +=` can never throw RangeError from a stream handler. Tools set lower bounds of their own.
 export const MAX_CAPTURE_BYTES = 8 * 1024 * 1024;
 
-// ---------------------------------------------------------------------------
-// Command output — lib/agent/tools/execOutput.ts, execCommand.ts
-// ---------------------------------------------------------------------------
+// ---- Command output — lib/agent/tools/execOutput.ts, execCommand.ts ----
 
 /** Output at or under this stays inline in the tool result, whole. Matches Claude Code's threshold. */
 export const MAX_INLINE_BYTES = 30_000;
@@ -67,152 +27,55 @@ export const MAX_INLINE_BYTES = 30_000;
 /** How much of an over-cap output is shown inline, as a head preview. Claude Code shows 2KB. */
 export const PREVIEW_BYTES = 2_048;
 
-/**
- * How much stderr survives the spill, at each end.
- *
- * The spill drops the separated streams, which also dropped the only input diagnoseStderr has — so a
- * command that failed because the container cannot resolve its runtime user, and happened to print
- * more than the cap, got the "output too large" notice instead of the explanation of WHY it failed.
- * Head and tail because a failure announces itself at one end or the other: setup faults come first,
- * and a build that dies after 40KB of progress says why on its last line.
- */
+// Stderr kept from each end of a spilled output, so diagnoseStderr still sees setup faults (head) and
+// a build's final error (tail).
 export const STDERR_SAMPLE_BYTES = 2_048;
 
-// ---------------------------------------------------------------------------
-// Spill files — lib/infra/docker/containerManager.ts
-// ---------------------------------------------------------------------------
+// ---- Spill files — lib/infra/docker/containerManager.ts ----
 
-/**
- * Ceiling on one spill file. Without it the "keep everything" promise would let a single command fill
- * the container's writable layer — which the mid-run disk check cannot see, since that watches the
- * workspace mount, not the container layer.
- */
+// Ceiling on one spill file, so one command can't fill the container's writable layer (which the mid-run
+// disk check, watching the workspace mount, can't see).
 export const EXEC_OUTPUT_MAX_BYTES = 20 * 1024 * 1024;
 
-/**
- * How many spill files survive in a container. These containers are never auto-recreated, so this
- * directory would otherwise grow for the workspace's entire lifetime with nothing to clear it.
- *
- * KEEP × MAX_BYTES is the real number to judge these two by: it is what this feature can occupy in a
- * container's writable layer, the one space with no recovery path short of destroying the container.
- * 5 × 20MB = 100MB is the deliberate budget. Spill files are scratch — the agent greps the one it was
- * just handed — so a deeper history buys nothing worth that space.
- */
+// Spill files kept per container: 5 × 20MB = a deliberate 100MB budget in a layer that is never
+// recreated. The agent only greps the file it was just handed.
 export const EXEC_OUTPUT_KEEP = 5;
 
-/**
- * Ceiling on bytes queued for the sink but not yet drained into the container. Reached only when the
- * sink writes slower than the command produces; past it the file stops at a prefix. Without this the
- * backlog would sit in the app's heap, which is the exact failure this whole mechanism exists to stop.
- */
+// Bytes queued for a slow sink before the file stops at a prefix, so the backlog never sits in the app's heap.
 export const EXEC_OUTPUT_MAX_BACKLOG = 8 * 1024 * 1024;
 
-/**
- * How long a killed command's process group is given to exit on SIGTERM before SIGKILL follows.
- *
- * Commands are killed routinely and without anyone asking — the silence and max-runtime guards and
- * the disk check all do it, alongside the user's Stop. Going straight to SIGKILL denies git the
- * chance to drop its index.lock and npm the chance to clear its staging dir, so the workspace is
- * left needing repair and the agent spends its next turns doing it. This window is what turns that
- * into a clean abort.
- *
- * Free, in latency terms: the kill is already fire-and-forget relative to the tool's return (see
- * execCommand's killWith), so nothing waits on this — not the user's Stop, not the agent's next turn.
- * Short all the same, because it delays only the forced kill of something already misbehaving.
- */
+// SIGTERM grace before SIGKILL, so git and npm can clean up (index.lock, staging dirs). Nothing waits on
+// it: the kill is already fire-and-forget.
 export const EXEC_KILL_GRACE_MS = 2_000;
 
-/**
- * How long the apt recipe replay may take before the rebuilt container is handed over without it.
- *
- * This is the one step of container creation with no bound of its own: `docker exec` has no timeout,
- * and the replay runs inside _ensureContainer, which every command in the workspace waits on. An apt
- * stalled on an unreachable mirror therefore hangs the workspace itself rather than one tool call —
- * and hangs it silently, with no error and nothing in the logs to explain the stall.
- *
- * The replay was already built to prefer the lesser evil: a workspace missing ffmpeg is degraded and
- * the agent can install it again, a workspace that never starts is dead. Without a clock that choice
- * only covers apt failing, not apt never answering, which lands on the outcome it set out to avoid.
- *
- * Minutes rather than seconds because it is a backstop and not a policy. Recipes hold packages the
- * agent installed one at a time, so they are small, but a cold index plus a compiler toolchain over
- * a slow mirror is honest work — and cutting that short costs the workspace the very tooling the
- * rebuild exists to give back. Long enough that only a genuine stall reaches it.
- */
+// Backstop for the apt recipe replay, which every command waits on and `docker exec` can't time out.
+// Minutes, so a slow mirror installing a toolchain finishes and only a real stall is cut.
 export const APT_REPLAY_TIMEOUT_MS = 5 * 60_000;
 
-/** How long installing the egress relay into an older container may hold up its wake before the
- * container carries on with its own proxy settings. One tiny package; only a stall reaches this. */
+// How long installing the egress relay into an older container may hold up its wake before the
+// container carries on with its own proxy settings. One tiny package; only a stall reaches this.
 export const PROXY_RELAY_INSTALL_TIMEOUT_MS = 2 * 60_000;
 
-// ---------------------------------------------------------------------------
-// File reads — lib/agent/tools/fileRead.ts, lib/agent/tools/driveRead.ts
-// ---------------------------------------------------------------------------
+// ---- File reads — lib/agent/tools/fileRead.ts, lib/agent/tools/driveRead.ts ----
 
-/**
- * How much of a file one read may pull into the process, for `file_read` and `drive_read` alike.
- *
- * Both put bytes into the LLM's context, so the ceiling is set by what a context can absorb, not by
- * what the heap can survive — the same question, hence deliberately the same number rather than two
- * that drift. Generous because file_read sets skipResultCap so a legitimately large file still reads
- * in one call, which leaves this as the only thing bounding it; offset/limit is how you page past it.
- *
- * The two enforce it in different places, and that difference is the point: file_read applies it
- * inside the container with `head -c`, so an oversized file never crosses into this process at all,
- * while drive_read stats host-side before opening. Neither reads first and trims after — reading
- * first IS the bug.
- */
+// Max bytes one `file_read` or `drive_read` pulls in, sized for LLM context; page past it with
+// offset/limit. Enforced before reading (`head -c` in the container, a host-side stat), never after.
 export const MAX_FILE_READ_BYTES = 400_000;
 
-// ---------------------------------------------------------------------------
-// Drive transfers — lib/agent/tools/driveDownload.ts, driveUpload.ts, driveLs.ts
-// ---------------------------------------------------------------------------
+// ---- Drive transfers — lib/agent/tools/driveDownload.ts, driveUpload.ts, driveLs.ts ----
 
-/**
- * Ceiling on a file moved between a workspace and a shared drive.
- *
- * Judge this one by its peak, not by the file: drive_download holds the raw bytes, a base64 copy of
- * them (~1.33×, since exec stdin is text-only), and the copy the runner makes writing that to the
- * child — roughly 3.7× the file size, all live at the same moment. 100MB therefore costs ~370MB of
- * transient heap, which is the number this was chosen against. Raising it to 500MB would not cost
- * 500MB, it would cost 1.85GB and cross V8's string limit on the base64 copy on the way.
- *
- * A folder transfer moves its files one at a time through this same path, so the peak is per-file
- * and does not grow with the folder — a whole directory costs no more transient heap than its
- * single largest file.
- *
- * Large enough for what drives are actually for — a dataset, a SQLite database, a build artifact
- * handed to the next agent. A file past it is a sign the work wants a different shape (split it, or
- * have the agent process it in place rather than moving it), and the tools say so when they refuse.
- */
+// Ceiling on one file moved to or from a drive. Peak heap is ~3.7× the file (raw + base64 + stdin copy),
+// so 100MB costs ~370MB. Folders move file by file, so the peak doesn't grow.
 export const MAX_DRIVE_TRANSFER_BYTES = 100 * 1024 * 1024;
 
-/**
- * How many entries `drive_ls` renders for one directory.
- *
- * Bounds two things at once: the listing text, and the directory scan itself — the tool stops reading
- * at this many rather than materializing every Dirent of a drive holding a million files. An agent
- * cannot use more than this anyway; past it the useful move is narrowing the path, which the
- * truncation notice says.
- */
+/** Entries `drive_ls` reads and renders per directory; bounds both the scan and the listing text. */
 export const MAX_DRIVE_LISTING_ENTRIES = 1_000;
 
-// ---------------------------------------------------------------------------
-// Live console sockets — lib/infra/realtime/wsHub.ts
-// ---------------------------------------------------------------------------
+// ---- Live console sockets — lib/infra/realtime/wsHub.ts ----
 
-/**
- * How far behind a single socket may fall before we stop handing it more.
- *
- * 2MB is far past useful: the console panel keeps only the last 500 lines, so anything queued behind
- * that much backlog has already scrolled out of existence before it could be rendered. Dropping it
- * costs the viewer nothing real — and the drop is reported (console_dropped) rather than hidden.
- */
+// Backlog after which a socket gets no more output. The panel keeps 500 lines, so dropped output was
+// already out of view; drops are reported (console_dropped).
 export const WS_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
 
-/**
- * A socket pinned at the ceiling this long is not a slow viewer, it is a dead one that has not
- * finished dying (a closed laptop, a dropped network with no FIN). Terminating reclaims its buffer
- * and its slot; the browser hook reconnects 2s later and resyncs, so a live viewer loses nothing.
- */
+// A socket pinned at the ceiling this long is dead (no FIN), so it is terminated; a live viewer reconnects and resyncs.
 export const WS_STALL_MS = 30_000;

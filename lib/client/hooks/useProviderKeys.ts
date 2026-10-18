@@ -1,11 +1,5 @@
-// Reads and writes the deployment's LLM provider API keys for the settings modal.
-//
-// Deliberately NOT built on useCredential, despite the family resemblance. That hook models a
-// credential PAODO mints — enable, generate, rotate, reveal once, revoke — and its reveal-once step
-// only makes sense because the server keeps a hash and can never show the value again. These keys go
-// the other way: they come from the vendor, the server must keep them recoverable to spend them, and
-// there is nothing to reveal because the user already has the value. So "rotate" is just saving a new
-// one, and the shape is a plain list.
+// LLM provider keys for the settings modal. Not useCredential: these come from the vendor and stay
+// recoverable, so there's no reveal-once and "rotate" is just saving a new one.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -28,9 +22,7 @@ export function useProviderKeys(load: boolean) {
   const [loading, setLoading] = useState(load);
   const [error, setError] = useState<string | null>(null);
 
-  // Reloading is a token bump rather than a callable fetch, so the request lives entirely inside the
-  // effect below and can be cancelled by it. A `refresh()` that fetched directly would keep writing
-  // state after the modal closed.
+  // A token bump, so the fetch lives in the effect and is cancelled when the modal closes.
   const [reloadToken, setReloadToken] = useState(0);
   const refresh = useCallback(() => setReloadToken((token) => token + 1), []);
 
@@ -62,9 +54,7 @@ export function useProviderKeys(load: boolean) {
     };
   }, [load, reloadToken]);
 
-  // Both mutations re-read the list rather than patching it locally. The server owns `createdAt` and
-  // the hint, and a locally-guessed hint that disagreed with the stored key would be worse than no
-  // hint at all — it is the one field an operator uses to confirm which key is loaded.
+  // Re-read after each mutation: the server owns the hint, which is how an operator confirms which key is loaded.
   const save = useCallback(
     async (provider: string, apiKey: string) => {
       setBusy(provider);

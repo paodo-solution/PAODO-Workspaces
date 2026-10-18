@@ -1,12 +1,5 @@
-// The wire path space is the one thing every file client — the browser, the CLI, an agent tool — has
-// to agree with the server about, so what a caller is allowed to *say* is pinned here rather than
-// inferred from whichever route happens to be reading it.
-//
-// Two properties matter beyond the individual cases:
-//   - a rejection names the right form, because the caller most likely to get this wrong is a model
-//     that will otherwise retry the same string;
-//   - a directory and the same directory with a trailing slash are one key, because the browser uses
-//     the result as its selection and expansion identity.
+// Every file client must agree on the wire path space. A rejection names the right form (a model will retry
+// the same string), and a trailing slash maps to the same key, as the browser uses paths for selection identity.
 
 import { describe, it, expect } from "vitest";
 import { InvalidPathError, relativeDirPath, relativeEntryPath, toRelativePath } from "./relpath";

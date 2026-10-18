@@ -1,7 +1,5 @@
-// The drive file-content route shares its core with the workspace route but runs on a BARE
-// backend: no container write-fallback and, more importantly here, no afterWrite git snapshot.
-// These tests pin the drive-specific wiring — that PATCH is reachable, stays contained, and does
-// not depend on the workspace-only hooks.
+// Same core as the workspace route but on a BARE backend: no container write-fallback, no afterWrite git
+// snapshot. Pins that PATCH is reachable, stays contained, and needs no workspace-only hooks.
 
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import fs from "fs";

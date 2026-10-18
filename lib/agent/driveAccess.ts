@@ -1,6 +1,5 @@
-// Shared helpers for the drive_* agent tools. Resolves a (drive_name, relative path) pair to an
-// absolute host path inside the drive's content directory, scoped to the drives THIS workspace is
-// connected to, with traversal guarded. Drives are touched host-side only — never via a container.
+// Helpers for drive_* tools: resolves (drive_name, path) to a contained host path, only for drives connected
+// to this workspace. Host-side only.
 import path from "path";
 import fs from "fs/promises";
 import { normalizeRelpath } from "./pathUtils";
@@ -37,28 +36,8 @@ export function resolveDrivePath(workspaceId: string, driveName: string, relPath
   };
 }
 
-/**
- * Read a whole file into memory under a ceiling, refusing rather than truncating.
- *
- * Every other ceiling in the app bounds output flowing THROUGH a container or a subprocess. The drive
- * tools are the exception by design — "drives are touched host-side only" (top of this file) — so
- * `fs.readFile` here is a direct, unbounded path into the app's heap that no container limit and no
- * capture ceiling sits above. A multi-gigabyte file on a shared drive was enough to take the whole
- * instance down through an ordinary tool call. This is the bound for that.
- *
- * It refuses instead of truncating because both callers of the transfer ceiling copy bytes: half a
- * SQLite database written to a destination is corruption that reports success, which is worse than
- * an error. drive_read refuses for a different reason — it has no offset/limit to resume from, so a
- * truncated read would be a dead end, and drive_download + file_read is the real way through.
- *
- * Mechanically it stats first, then reads through a handle bounded at `limit + 1`. The stat is what
- * makes the refusal specific ("the file is 312.4MB"); the bounded read is what makes the guarantee
- * hold anyway if the file grows between the two — a live shared drive is exactly where that happens.
- *
- * Returns the bytes, or an `Error: ...` string ready to return straight from a tool (the same
- * convention as resolveDrivePath above). `advice` is appended to the too-large refusal: the size and
- * the ceiling are phrased identically everywhere, and only the way forward differs per tool.
- */
+// Host-side reads skip every container limit, so this bounds them; it refuses rather than truncates,
+// since a half-copied file reports success. The read is capped too, in case the file grows after stat.
 export async function readFileBounded(
   absPath: string,
   limit: number,
@@ -76,16 +55,12 @@ export async function readFileBounded(
     }
 
     handle = await fs.open(absPath, "r");
-    // One byte more than the stat said, so that a file which grew in between reads as "changed"
-    // rather than coming back silently short of itself. Sizing to the stat rather than to the limit
-    // is what keeps a 2KB read from allocating the whole transfer ceiling.
+    // Read one byte past the stat size so a growing file reads as changed, not silently short.
     const expected = Math.min(stat.size, limit);
     const buf = Buffer.alloc(expected + 1);
     const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
     if (bytesRead > expected) {
-      // Someone is writing this file right now. Whatever we hold is a torn read — half of one
-      // version and half of another — and copying that into a drive or a workspace would report
-      // success over a corrupt file, the one outcome this helper exists to prevent.
+      // Being written right now: copying a torn read would report success over a corrupt file.
       return `Error: "${path.basename(absPath)}" changed while being read — it is being written to. Try again once the write has finished.`;
     }
     return buf.subarray(0, bytesRead);
@@ -99,14 +74,8 @@ export async function readFileBounded(
   }
 }
 
-/**
- * Every file under `absDir`, POSIX-relative to it, for a folder transfer that copies them one by one.
- *
- * Reuses the shared tree walker, so the same ignore contract that hides node_modules/.git from every
- * other file surface hides them here too — a folder push never carries a regenerable build dir. There
- * is no file-count ceiling: each file is still bounded individually on transfer, so a whole directory
- * costs no more heap than its largest file, and the caller asked for the whole folder.
- */
+// Files under `absDir` for a folder transfer, with the shared ignore rules. No count cap: each file is
+// bounded on transfer, so heap use never exceeds the largest file.
 export async function enumerateDriveFolder(absDir: string): Promise<string[]> {
   const { nodes } = await buildTree(absDir, { maxDepth: Infinity });
   const files: string[] = [];
@@ -121,15 +90,8 @@ function collectFiles(nodes: TreeNode[], out: string[]): void {
   }
 }
 
-/**
- * One line summarizing a folder transfer: how much moved, and every file that did not and why. A
- * per-file error is collected rather than fatal, so one unreadable or oversized file never aborts the
- * rest — the same "keep going, report the gap" stance the drive_ls truncation notice takes.
- *
- * When nothing moved it leads with `Error:` instead of the success verb: this is only reached with a
- * non-empty folder, so `moved === 0` means every file failed, and "Uploaded 0 files" would let the
- * agent record a total failure as a success.
- */
+// Summarizes a transfer, listing each failed file instead of aborting. Leads with `Error:` when nothing
+// moved, so the agent can't read a total failure as success.
 export function formatFolderTransfer(
   verb: string,
   moved: number,

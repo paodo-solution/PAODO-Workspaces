@@ -1,8 +1,5 @@
-// CRUD endpoint for individual file content within a shared drive.
-// GET classifies and returns the file as text, image, or binary; PUT saves edited text; PATCH moves;
-// DELETE removes.
-// Drives are passive host storage: no git snapshots, no container. Shared workspace file modules
-// run with a bare backend (plain fs writes, no fallback/snapshot).
+// File content CRUD for a drive (GET, PUT, PATCH move, DELETE) over the shared modules, with a bare backend:
+// no snapshots, no container.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";

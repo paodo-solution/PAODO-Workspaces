@@ -61,13 +61,8 @@ interface ProviderMetadata {
 }
 
 interface ProviderDescriptor extends ProviderMetadata {
-  /**
-   * The .env var that switches this provider off for the whole deployment — now the provider's ONLY
-   * env contract. Its API key is not in .env at all: it is entered in the app and held encrypted by
-   * lib/infra/security/providerKeyStore.ts, so a deployment can be handed over without its keys.
-   *
-   * Named per provider rather than derived from the id, so the var is greppable from the registry.
-   */
+  // The provider's only .env contract: its on/off switch. Keys live in providerKeyStore, not .env, so a
+  // deployment can be handed over without them. Spelled out so the var is greppable.
   availabilityEnv: string;
   build: (config: LLMProviderConfig, context: ModelBuildContext) => ChatOpenAI | ChatAnthropic;
 }
@@ -82,15 +77,8 @@ export interface ModelBuildContext {
 // with backoff, hiding the refusals the gateway has to pace around. Every build spreads this.
 const NO_SDK_RETRY = { maxRetries: 0 } as const;
 
-/**
- * A fetch that reports every response's rate-limit headers to the pacer.
- *
- * This exists because LangChain surfaces no headers on a streaming call, and the headers are the
- * only place a provider says what its ceilings are — so the alternative is hard-coding numbers that
- * go stale the moment a customer's support ticket raises them.
- *
- * Reads headers only. It never buffers, inspects or delays a body, so streaming is untouched.
- */
+// Feeds every response's rate-limit headers to the pacer, since LangChain hides them on streaming
+// calls. Reads headers only, so the body still streams untouched.
 function pacedFetch(provider: string, model: string) {
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const response = await fetch(input as RequestInfo, init);
@@ -213,15 +201,8 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
   },
 };
 
-/**
- * The vendor client for a config, unwrapped.
- *
- * RUNTIME CODE MUST NOT CALL THIS — buildModel is the entry point. A bare client is a provider call
- * that nothing measures and, once pacing lands, nothing paces; that is the whole reason the gateway
- * exists. It is split out and exported only so the registry's wiring (model id, key, base URL,
- * reasoning fields) stays directly assertable, which is a claim about the SDK object and cannot be
- * made through an interface that deliberately hides it.
- */
+// The bare vendor client. Runtime code must call buildModel instead, or the call goes unmeasured;
+// exported only so tests can assert the SDK wiring.
 export function buildChatModel(config: LLMProviderConfig, context: ModelBuildContext = {}): ChatOpenAI | ChatAnthropic {
   const descriptor = PROVIDERS[config.provider];
   // Unknown providers fail loudly here rather than silently resolving to another vendor's builder:
@@ -233,13 +214,8 @@ export function buildChatModel(config: LLMProviderConfig, context: ModelBuildCon
   return descriptor.build(config, context);
 }
 
-/**
- * The model for one run, as a ModelGateway rather than a vendor object.
- *
- * The SDK instance stops here. Callers get the gateway (./modelGateway.ts), which is where anything
- * true of every model call belongs — so a provider added above cannot arrive with its own
- * accounting, and a new call site cannot bypass it.
- */
+// The model for one run. Callers only ever get the gateway, so no provider or call site can bypass
+// what holds for every model call.
 export function buildModel(
   config: LLMProviderConfig,
   options: { observe?: ModelCallObserver; cacheScopeId?: string } = {},
@@ -258,44 +234,23 @@ export function buildModel(
 // validation of a workspace's stored provider. Derived from the registry so it can't drift.
 export const SUPPORTED_PROVIDERS = Object.keys(PROVIDERS);
 
-/**
- * Whether a provider is offered in this deployment, per its `<PROVIDER>_AVAILABLE` .env var.
- *
- * Opt-in: only the literal "true" enables one, trimmed and lowercased, so adding a provider to the
- * registry cannot arm spending on an existing deployment. An unnamed provider is withdrawn and its
- * stored key destroyed at startup (purgeProviderKeysExcept). Both spellings of the name are read,
- * because .env files get written either way.
- */
+// Opt-in: only "true" enables a provider, so a newly added one can't arm spending on a deployment.
+// Reads the var in either case, since .env files are written both ways.
 function providerAvailable(availabilityEnv: string, env: Record<string, string | undefined>): boolean {
   const raw = env[availabilityEnv] ?? env[availabilityEnv.toLowerCase()];
   return raw?.trim().toLowerCase() === "true";
 }
 
-/**
- * The providers this deployment offers: every supported one .env has named.
- *
- * DELIBERATELY SAYS NOTHING ABOUT KEYS. It used to also require an API key in .env, which made one
- * list serve two questions — "what may be chosen" and "what can authenticate" — and that conflation
- * is what made a keyless deployment show an empty picker. A provider is offered whether or not
- * anyone has entered its key; whether it can actually run is `hasProviderKey`, asked separately and
- * answered at conversation start.
- *
- * Drives the UI provider picker, GET /api/models, and which providers may be given a key at all.
- * That last one is what gives the switch teeth: a withdrawn provider cannot be keyed, and any key it
- * already had is purged at startup (purgeProviderKeysExcept).
- */
+// The providers this deployment offers: every supported one .env names, key or not (that is
+// `hasProviderKey`). Drives the picker, GET /api/models, and which providers may hold a key at all.
 export function availableProviders(env: Record<string, string | undefined> = process.env): string[] {
   return Object.entries(PROVIDERS)
     .filter(([, { availabilityEnv }]) => providerAvailable(availabilityEnv, env))
     .map(([provider]) => provider);
 }
 
-/**
- * What a provider offers: its models and each one's effort levels, both from lib/models/registry.ts.
- *
- * Exported because validateMetadata resolves against it too — GET /api/models serves the picker this
- * same pair, and one shared builder is what keeps all three surfaces agreeing on what a provider takes.
- */
+// A provider's models and effort levels. Shared by validateMetadata, GET /api/models and the picker so
+// all three agree.
 export function vocabularyFor(provider: string): ModelVocabulary {
   return {
     models: listModels(provider),
@@ -308,23 +263,8 @@ export function modelReasoningEfforts(provider: string, model: string): readonly
   return effortsForModel(vocabularyFor(provider), model);
 }
 
-/**
- * The selection a workspace that has never picked one runs and displays.
- *
- * The RULE is firstAvailableSelection in lib/models/selection.ts; this supplies it with the two
- * things only the registry knows — which providers .env allows, and what each accepts. It lives here
- * rather than in the operations layer because the agent runtime needs it on every run
- * (loadAgentConfig), and an agent that reaches up into the trigger-facing layer for a provider fact
- * has the dependency backwards.
- *
- * "First" is registry order — PROVIDERS above, then the provider's list in lib/models/registry.ts —
- * filtered by availability. A deployment expresses a preference by reordering those lists or by
- * switching providers off, so there is no default constant that could name a provider it disallows.
- *
- * The result may well name a provider with no API key set. That is correct and intended: the picker
- * shows a real choice from the first boot, before anyone has entered a key, and the missing key is
- * reported where it can be acted on rather than by hiding the provider.
- */
+// The first available model in registry order, for a workspace that never picked one. It may lack a
+// key on purpose: the picker shows a real choice before any key is entered.
 export function defaultModelSelection(env: Record<string, string | undefined> = process.env): ModelSelection {
   return firstAvailableSelection(availableProviders(env), vocabularyFor);
 }

@@ -1,17 +1,5 @@
-/**
- * Shared helpers for the file-download routes (workspace + drive): take a list of caller-selected
- * paths and stream them back as a single ZIP.
- *
- * Fast DEFLATE (level 1 — a fraction of the CPU of the default level 6 on source trees, with similar
- * ratios) and streaming generation keep large selections cheap. All filesystem access goes through
- * the shared descriptor budget (./fdLimit.ts): a naive Promise.all over a large tree hits EMFILE and
- * silently drops the unreadable files from the archive.
- *
- * What travels is the shared ignore contract (./ignore.ts), the same answer the tree and an upload
- * give — a zip carrying node_modules the tree never showed would be the two sides disagreeing about
- * what the workspace is. A path named EXPLICITLY by the caller is archived even when the contract
- * would exclude it: that is a deliberate selection, not a traversal.
- */
+// Streams selected paths as one ZIP (fast DEFLATE, shared fd budget). Traversal follows the ignore
+// contract, but an explicitly selected path is archived regardless.
 
 import fs from "fs/promises";
 import path from "path";
@@ -23,9 +11,7 @@ import { relativeEntryPath } from "./relpath";
 
 async function addDirToZip(zip: JSZip, sem: Semaphore, dirPath: string, zipPath: string) {
   const entries = await readTransferEntries(dirPath, sem);
-  // JSZip only materializes a folder when something is placed inside it, so a directory with no
-  // files anywhere beneath it would vanish from the archive. Add an explicit folder entry to keep
-  // empty directories (and dirs holding only empty subdirs) present in the download.
+  // JSZip only creates folders that hold files, so add empty directories explicitly.
   if (entries.length === 0) {
     zip.folder(zipPath);
     return;
@@ -40,12 +26,8 @@ async function addDirToZip(zip: JSZip, sem: Semaphore, dirPath: string, zipPath:
   );
 }
 
-/**
- * The deepest directory every selection shares, as a trailing-slash prefix ("" when they share
- * nothing). Measured segment-wise on each path's PARENT, so `src/app` and `src/application` share
- * `src/`, a lone directory keeps its own name, and a directory selected alongside a file inside it
- * still yields a well-formed entry rather than an empty one.
- */
+// The deepest shared parent as "dir/" ("" if none), compared by segment so `src/app` and
+// `src/application` share only `src/`.
 function commonParentPrefix(entryPaths: string[]): string {
   const parents = entryPaths.map((entryPath) => entryPath.split("/").slice(0, -1));
   let shared = parents[0] ?? [];
@@ -57,12 +39,8 @@ function commonParentPrefix(entryPaths: string[]): string {
   return shared.length > 0 ? `${shared.join("/")}/` : "";
 }
 
-/**
- * The name an entry takes in the archive: the workspace-relative path minus the prefix every
- * selection shares, so downloading one nested file yields that file rather than the empty ancestry
- * above it. Stripping only ever shortens a name, but a malformed result would be a zip-slip against
- * whoever extracts it — anything not a plain relative name falls back to the full path.
- */
+// Strips the shared prefix so one nested file downloads without its empty ancestry. Anything not a
+// plain relative name falls back to the full path, preventing zip-slip.
 function zipEntryName(entryPath: string, prefix: string): string {
   if (prefix === "" || !entryPath.startsWith(prefix)) return entryPath;
   const stripped = entryPath.slice(prefix.length);
@@ -70,21 +48,8 @@ function zipEntryName(entryPath: string, prefix: string): string {
   return stripped;
 }
 
-/**
- * Add each caller-selected path to the zip, recursing into directories. `paths` are
- * workspace-relative (./relpath.ts), the same space the file tree serves and the content route
- * accepts; entries are named by zipEntryName above.
- *
- * A path that cannot be archived is reported through `onSkip` and left out rather than aborting the
- * whole archive — an unreadable file should not cost the user the other 900 — and that includes a
- * path failing containment, which would otherwise be a short archive presented as a complete one.
- * Containment goes through resolveContained rather than a lexical prefix check, so a symlink inside
- * the tree pointing at /etc is refused instead of having its target read into the archive.
- *
- * When `rootFolder` is given, every entry is nested under a single top-level folder of that name, so
- * extracting yields one tidy directory instead of spilling the selection loose into the download
- * location. Callers pass a validated name (no path separators), so folder() resolves to a scope.
- */
+// Unarchivable paths, symlink escapes included, go to `onSkip` instead of failing the zip. A
+// `rootFolder` (validated, no separators) nests everything in one folder.
 export async function addSelectedToZip(
   zip: JSZip,
   baseDir: string,
@@ -122,9 +87,7 @@ export async function addSelectedToZip(
   );
 }
 
-// Stream the archive to the client as it's generated. generateInternalStream emits the zip in
-// chunks; we pump those into a web ReadableStream so the response can start flowing before
-// compression has finished, instead of awaiting a single in-memory buffer.
+// Streams the zip as it's generated, so the response starts before compression finishes.
 export function zipToStreamResponse(zip: JSZip, filename: string): Response {
   const internal = zip.generateInternalStream({
     type: "uint8array",

@@ -1,7 +1,4 @@
-// REST endpoint for a workspace's third-party secrets: GET lists their safe metadata, POST stores
-// one. POST answers with the stored secret's metadata rather than the full update receipt — the
-// caller needs the derived fields (createdAt, blockedBy) this endpoint is about, and the value is
-// never echoed.
+// Workspace third-party secrets: GET lists metadata, POST stores one and returns its metadata (never the value).
 import { type NextRequest, NextResponse } from "next/server";
 import { notFound, requireWorkspace } from "@/lib/api/guards";
 import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/errorResponse";
@@ -16,9 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const ws = requireWorkspace(id, req);
   if (ws instanceof NextResponse) return ws;
-  // Shared with the workspace-details route so the UI block and CLI report one identical shape.
-  // no-store like every other credential-adjacent response: the values never appear here, but which
-  // secrets exist and what hosts they are scoped to is not something to leave in an intermediary.
+  // Same shape as the workspace-details route; no-store, since which secrets exist is still sensitive.
   return NextResponse.json(listWorkspaceSecrets(id), { headers: NO_STORE });
 }
 

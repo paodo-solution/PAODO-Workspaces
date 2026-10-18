@@ -10,38 +10,24 @@ export const ERROR_CODES = {
   RATE_LIMITED: "RATE_LIMITED",
   /** The instance-wide active-agent fuse is full. The request is safe to retry after a run ends. */
   CAPACITY_REACHED: "CAPACITY_REACHED",
-  /**
-   * The filesystem refused the write. Deliberately not FORBIDDEN: 403 already means CSRF rejection in
-   * this app (requestGate.ts), so a read-only file answering 403 would be indistinguishable from "this
-   * request was not allowed to be made" in a log or to a CLI author reading a status.
-   */
+  // The filesystem refused the write. Not FORBIDDEN, since 403 already means a CSRF rejection here.
   FILE_NOT_WRITABLE: "FILE_NOT_WRITABLE",
   /** Over MAX_UPLOAD_BYTES, which is our own policy — hence FILE_, not the 413 status name. */
   FILE_TOO_LARGE: "FILE_TOO_LARGE",
-  /**
-   * One transfer carried too many entries or too many bytes in total, though no single file was over
-   * the limit. Deliberately not FILE_TOO_LARGE: a caller that is told one file is too big drops or
-   * splits that file, while a caller told the transfer is too big has to split the transfer.
-   */
+  // The whole transfer exceeded an entry or byte cap. Not FILE_TOO_LARGE: the fix is splitting the
+  // transfer, not one file.
   TRANSFER_TOO_LARGE: "TRANSFER_TOO_LARGE",
   STORAGE_EXHAUSTED: "STORAGE_EXHAUSTED",
   WORKSPACE_NAME_INVALID: "WORKSPACE_NAME_INVALID",
   WORKSPACE_NAME_CONFLICT: "WORKSPACE_NAME_CONFLICT",
   WORKSPACE_UPDATE_INVALID: "WORKSPACE_UPDATE_INVALID",
   WORKSPACE_UPDATE_FAILED: "WORKSPACE_UPDATE_FAILED",
-  /**
-   * A third-party secret was offered to a route that does not write secrets. Its own code rather than
-   * FORBIDDEN or INVALID_REQUEST: "unknown field" would invite a caller to retry with a better
-   * spelling, and a bare 403 is this app's CSRF rejection (requestGate.ts) — neither tells a program that
-   * the field exists, is refused here on purpose, and has one endpoint of its own.
-   */
+  // A secret sent to a route that doesn't write secrets. Its own code, so a program learns the field
+  // is real but belongs to its own endpoint.
   WORKSPACE_SECRET_FORBIDDEN: "WORKSPACE_SECRET_FORBIDDEN",
   DRIVE_NAME_INVALID: "DRIVE_NAME_INVALID",
-  /**
-   * Drive names are unique on the same folded key workspace names are, and for a sharper reason: a
-   * drive is addressed BY NAME by the agent tools (resolveDriveDir) and materialized by name at
-   * downloads/<drive-name>/, so two drives sharing one would each be reachable only by accident.
-   */
+  // Drive names are unique by folded key: agent tools address drives by name and download them to
+  // downloads/<drive-name>/.
   DRIVE_NAME_CONFLICT: "DRIVE_NAME_CONFLICT",
   SCHEDULE_INVALID: "SCHEDULE_INVALID",
   CREDENTIAL_ALREADY_CONFIGURED: "CREDENTIAL_ALREADY_CONFIGURED",
@@ -88,10 +74,8 @@ export class AppError extends Error {
   }
 }
 
-/**
- * A present value that must be a string. Callers with their own error type (e.g. a capability-specific
- * AppError subclass) pass `fail` instead of taking the default INVALID_REQUEST.
- */
+// A present value that must be a string. Callers with their own error type (e.g. a capability-specific
+// AppError subclass) pass `fail` instead of taking the default INVALID_REQUEST.
 export function requireString(
   value: unknown,
   field: string,
@@ -101,12 +85,8 @@ export function requireString(
   return value;
 }
 
-/**
- * A present value that must be a non-empty (post-trim) string — the common "id"/"name is required"
- * guard. A non-string is refused rather than coerced: every field this guards is an opaque key or
- * label, so `String(value)` would turn a wrong-typed field into a lookup that reports "not found"
- * instead of "bad request".
- */
+// The "id/name is required" guard. Non-strings are refused, not coerced, so a wrong type is a bad
+// request rather than a misleading not-found.
 export function requireNonEmptyString(
   value: unknown,
   field: string,

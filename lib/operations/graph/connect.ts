@@ -33,10 +33,8 @@ function defaultDeps(): WorkspaceCallDeps {
   };
 }
 
-/**
- * Let one workspace delegate to another. An already-connected pair is not an error — the store answers
- * with the edge it has — so a caller can ask for the state it wants without tracking the id.
- */
+// Let one workspace delegate to another. An already-connected pair is not an error — the store answers
+// with the edge it has — so a caller can ask for the state it wants without tracking the id.
 export function connectWorkspaces(input: ConnectWorkspacesInput, deps: WorkspaceCallDeps = defaultDeps()): GraphEdge {
   const source = requireNonEmptyString(input.source, "source");
   const target = requireNonEmptyString(input.target, "target");
@@ -55,10 +53,8 @@ export function connectWorkspaces(input: ConnectWorkspacesInput, deps: Workspace
   return deps.connect(source, target);
 }
 
-/**
- * Remove one edge. An unknown id reports `deleted: false` rather than raising: the state the caller
- * asked for holds either way, and a workspace deleted meanwhile has already dropped its edges.
- */
+// Remove one edge. An unknown id reports `deleted: false` rather than raising: the state the caller
+// asked for holds either way, and a workspace deleted meanwhile has already dropped its edges.
 export function disconnectWorkspaces(
   input: DisconnectWorkspacesInput,
   deps: WorkspaceCallDeps = defaultDeps(),

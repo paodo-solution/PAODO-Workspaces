@@ -1,10 +1,5 @@
-// Holds a message that clears itself `ms` after it is set — for transient failure text that should
-// not linger. Setting a different message restarts the window; the effect cleanup cancels any
-// pending clear, so an unmount or a replacement never fires a stale one.
-//
-// Usage:
-//   const [error, setError] = useTransientMessage(2000);
-//   {error && <div className="text-danger">{error}</div>}
+// A message that clears itself `ms` after being set; a new message restarts the timer.
+// Usage: const [error, setError] = useTransientMessage(2000);
 
 import { useEffect, useState } from "react";
 

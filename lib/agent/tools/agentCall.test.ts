@@ -3,11 +3,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// AgentCallTool's contract enforcement lives in executeSkill (tested separately). What is
-// unique to the tool is the per-(callee, skill) retry bookkeeping: two independent counters
-// with different reset rules, easy to regress because the state is interleaved across calls.
-// These tests pin that bookkeeping and nothing else — executeSkill and config are mocked so
-// each test scripts only the outcome sequence it cares about.
+// Contract enforcement is executeSkill's (mocked here). Pins only the per-(callee, skill) retry bookkeeping:
+// two counters with different reset rules, interleaved across calls.
 
 vi.mock("../skills/executeSkill", () => ({ executeSkill: vi.fn() }));
 

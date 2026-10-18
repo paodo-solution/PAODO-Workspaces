@@ -77,15 +77,17 @@ const stored: ScheduleEntry = {
 
 describe("schedule validation", () => {
   it("canonicalizes the values it accepts", () => {
-    expect(validateSchedule({ ...VALID, prompt: "  padded  ", endAt: "2026-08-01T00:00", enabled: true }, NOW)).toEqual({
-      prompt: "padded",
-      intervalValue: 1,
-      intervalUnit: "day",
-      startAt: "2026-07-13T09:00",
-      endAt: "2026-08-01T00:00",
-      timezone: "UTC",
-      enabled: true,
-    });
+    expect(validateSchedule({ ...VALID, prompt: "  padded  ", endAt: "2026-08-01T00:00", enabled: true }, NOW)).toEqual(
+      {
+        prompt: "padded",
+        intervalValue: 1,
+        intervalUnit: "day",
+        startAt: "2026-07-13T09:00",
+        endAt: "2026-08-01T00:00",
+        timezone: "UTC",
+        enabled: true,
+      },
+    );
   });
 
   // A schedule must never start firing from an omitted field, so an absent `enabled` means disabled.
@@ -261,12 +263,8 @@ describe("schedule validation", () => {
     }
   });
 
-  /**
-   * The declared input types bind in-process callers; a JSON body only claims to match them. Without
-   * these guards `prompt: 5` reached `.trim()` as a number and left this layer as a TypeError — an
-   * opaque 500 rather than the named rejection every other bad value gets — and `enabled: "false"`
-   * was truthy, so it stored a disabled schedule as enabled and put a non-boolean in the file besides.
-   */
+  // JSON only claims to match the declared types: `prompt: 5` hit `.trim()` and became a 500, and `enabled: "false"`
+  // was truthy, storing a disabled schedule as enabled with a non-boolean.
   it("refuses a wrong-typed value instead of coercing or crashing on it", () => {
     const cases: ScheduleInput[] = [
       { ...VALID, prompt: 5 as never },

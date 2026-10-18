@@ -1,14 +1,5 @@
-// The HTTP shape of the file-tree endpoint, shared by the workspace and drive routes. Everything here
-// is transport: read the query string, call the operation, and turn the result into a status and a
-// body. The rules live in lib/operations/files/listing.ts.
-//
-// Shared for the reason lib/api/fileContentRoutes.ts is: a drive and a workspace are two directories
-// behind the same file surface, and a listing that answered `?depth=` on one and ignored it on the
-// other is not a second implementation so much as a route the CLI cannot navigate. The one thing that
-// differs between them — which directory, and which id appears in a log line — is the FileBackend.
-//
-// Paths in and out are root-relative (lib/files/relpath.ts). A client names "src/main.ts"; the host
-// directory never appears in a request or a response.
+// HTTP transport for the file-tree endpoint, shared by workspace and drive routes so both answer the same
+// query; rules live in lib/operations/files/listing.ts. Paths are root-relative (lib/files/relpath.ts).
 import { NextResponse } from "next/server";
 import { createLogger } from "@/lib/infra/logger";
 import { appErrorResponse, errorResponse } from "@/lib/api/errorResponse";
@@ -17,20 +8,8 @@ import type { FileBackend } from "@/lib/files/backend";
 import { MAX_DRIVE_LISTING_ENTRIES } from "@/lib/infra/limits";
 import { listEntries } from "@/lib/operations/files/listing";
 
-/**
- * `?depth=`, in levels below the directory listed: a positive integer for that many, "full" for all of
- * them, absent for the file panel's own rendering budget (lib/files/tree.ts).
- *
- * It used to be a two-way toggle — the panel's budget, or everything — because the only non-panel
- * client wanted everything: a truncation a program cannot see is a wrong answer rather than a short
- * one. A client that navigates wants neither. Asking for one level and listing a directory to descend
- * into it is not a truncation, because every directory in the answer is visibly a directory the caller
- * can ask about next, so the depth belongs to the caller and is a number rather than a flag.
- *
- * A depth this cannot read is refused rather than rounded to the default: a listing is what a caller
- * decides what to read or delete from next, and quietly answering with a different tree than the one
- * asked for leaves nothing in the response to say so.
- */
+// A positive integer, "full", or absent for the panel default. Anything else is refused, not defaulted,
+// to avoid silently answering with a different tree.
 function requestedDepth(value: string | null): number | undefined {
   if (value === null) return undefined;
   if (value === "full") return Infinity;
@@ -43,15 +22,8 @@ function requestedDepth(value: string | null): number | undefined {
   return levels;
 }
 
-/**
- * `?limit=`, the most entries any one directory may contribute: a positive integer, "max", or absent for no
- * ceiling at all — which is what the file panel asks for, and what every caller got before this
- * existed.
- *
- * Refused rather than rounded, for the reason `?depth=` is: a listing is what a caller decides what to
- * read or delete from next, and quietly answering with a different set than the one asked for leaves
- * nothing in the response to say so.
- */
+// Per-directory entry cap: a positive integer, "max", or absent for none (the panel's choice). Invalid
+// values are refused, as with `?depth=`.
 function requestedLimit(value: string | null): number | undefined {
   if (value === null) return undefined;
   // The app's own ceiling, for a caller that wants a bounded listing without restating the bound.
@@ -68,9 +40,7 @@ function requestedLimit(value: string | null): number | undefined {
 export async function getFileTree(request: Request, be: FileBackend): Promise<Response> {
   const { searchParams } = new URL(request.url);
   const log = createLogger("api").child(be.logContext);
-  // Absent means the root, so the panel's own request is unchanged. A caller that names a directory
-  // gets that subtree, still with root-relative paths — see listEntries for why the route does not
-  // filter a full listing instead.
+  // Absent means the root; a named directory gets that subtree, still with root-relative paths.
   const source = searchParams.get("path");
 
   try {

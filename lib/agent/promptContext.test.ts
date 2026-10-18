@@ -1,6 +1,5 @@
-// buildWorkspacePromptInputs is the single place that gathers a workspace's dynamic prompt
-// pieces (AGENTS.md + connected-drives block). These tests pin the combinations of
-// present/absent for each, since every system-prompt path depends on this behavior.
+// buildWorkspacePromptInputs gathers AGENTS.md and the drives block for every system prompt; pins each
+// present/absent combination.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
@@ -8,9 +7,8 @@ import os from "os";
 import path from "path";
 import type { Drive } from "@/lib/drives/store";
 
-// The drive list is looked up by id; mock it so the test owns the result without touching disk.
-// formatDriveLine is pure presentation — mirror the production rendering so the prompt assertions
-// exercise the real one-line shape (`- <name> (id: <id>)<desc>`).
+// Drive lookup is mocked so the test owns it; formatDriveLine mirrors production so assertions see the real
+// `- <name> (id: <id>)<desc>` shape.
 const getDrivesForWorkspace = vi.fn<(workspaceId: string) => Drive[]>();
 vi.mock("@/lib/drives/store", () => ({
   getDrivesForWorkspace: (id: string) => getDrivesForWorkspace(id),

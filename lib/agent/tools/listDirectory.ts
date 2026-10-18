@@ -1,9 +1,5 @@
-// Agent tool that lists the immediate contents of one workspace directory (non-recursive).
-// Runs `find -maxdepth 2` inside the container (depth 2 only to count each subdirectory's
-// children), then sorts entries directories-first and alphabetically. Each line shows a type
-// marker (d=directory, -=file), the name (dirs get a trailing /), a line count for files (via
-// `wc -l`) or child count for directories, and the modified time as a relative age. Paths are
-// confined to the workspace root. For recursive or pattern-based search use the glob tool instead.
+// list_directory: one level, dirs first then alphabetical, with type, line or child count and age. Confined
+// to the workspace; use glob for recursive search.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -59,9 +55,7 @@ Use this instead of ls. For recursive or pattern-based search use glob instead.`
     try {
       const containerDir = relDir === "." ? "/workspace" : `/workspace/${relDir}`;
 
-      // Depth 2 (not 1) so each immediate subdirectory's own children are listed
-      // and can be tallied into a child count. Fields: depth, type, mtime(epoch),
-      // parent dir, name. Only depth-1 rows become entries; depth-2 rows are counted.
+      // Depth 2 only to count each subdirectory's children; fields: depth, type, mtime, parent, name.
       const r = await this.runner.exec([
         "find",
         containerDir,
@@ -113,9 +107,7 @@ Use this instead of ls. For recursive or pattern-based search use glob instead.`
         if (e.type === "d") e.childCount = childCounts.get(`${containerDir}/${e.name}`) ?? 0;
       }
 
-      // Count lines for regular files in a single `wc -l` pass. wc prints one
-      // line per input file as "<count> <path>" (with a trailing "<total> total"
-      // line when there are 2+ files); we map counts back to entries by path.
+      // One `wc -l` pass for all files, mapped back by path (it adds a "total" line for 2+ files).
       const fileEntries = entries.filter((e) => e.type === "f");
       if (fileEntries.length > 0) {
         const paths = fileEntries.map((e) => `${containerDir}/${e.name}`);

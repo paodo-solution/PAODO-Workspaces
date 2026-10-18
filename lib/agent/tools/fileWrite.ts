@@ -1,7 +1,5 @@
-// Agent tool that writes full file content, creating or overwriting the file in the workspace.
-// Auto-creates any missing parent directories (mkdir -p), then pipes the content to the file
-// via `tee` inside the container. Paths are confined to the workspace root. Use this for new
-// files or complete rewrites; for targeted edits to an existing file prefer the file_edit tool.
+// file_write: creates or overwrites a whole file (parents created), confined to the workspace. Prefer
+// file_edit for targeted changes.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

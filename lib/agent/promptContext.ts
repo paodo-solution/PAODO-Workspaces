@@ -1,7 +1,4 @@
-// Single source for the per-workspace dynamic pieces of the system prompt: the workspace's
-// AGENTS.md and its connected-drives block. Every path that builds a system prompt for a
-// workspace gathers its inputs here, so a workspace that has a drive connected always gets the
-// drive instructions in its prompt — no path can silently miss them.
+// Every system-prompt path gathers AGENTS.md and the drives block here, so none can miss drive instructions.
 
 import fs from "fs";
 import path from "path";
@@ -33,9 +30,7 @@ function readAgentsMd(workspaceDir: string): string | undefined {
   }
 }
 
-// Always returned (never undefined) — unlike the other blocks below, which omit themselves when
-// there's nothing to say, network status is foundational capability info the agent should never be
-// left to guess about, on or off.
+// Always present, on or off: the agent should never guess its network access.
 function buildNetworkInfo(workspaceId: string): string {
   const ws = getStore().getWorkspace(workspaceId);
   const enabled = ws ? (ws.internetAccess ?? true) : false;
@@ -61,9 +56,7 @@ Need to keep a file? Move it out of downloads/ into the workspace. Anything left
 }
 
 function buildSecretsInfo(workspaceId: string): string | undefined {
-  // Secrets are only ever substituted on outgoing HTTPS traffic (credentialProxy.ts) — with no
-  // network route out, there is no request for the proxy to inject them into, so documenting them
-  // would just teach the agent to reference variables that can never resolve to anything.
+  // No network means nothing for the proxy to inject into, so don't document secrets.
   const ws = getStore().getWorkspace(workspaceId);
   const enabled = ws ? (ws.internetAccess ?? true) : false;
   if (!enabled) return undefined;
@@ -76,9 +69,7 @@ ${lines}
 Use clients that honour the standard proxy environment variables. Do not validate a secret's format locally. If a CLI rejects it before making a request, use that service's HTTPS API or SDK instead; the proxy can substitute the token only after a request is sent.`;
 }
 
-// Running background processes (dev servers etc.) started in an earlier turn. Surfaced so a later
-// run — which has no memory of a prior run's taskIds — can read their logs or stop them, and knows
-// port 8080 is already taken before starting another server.
+// Background tasks from earlier turns, so a later run can read or stop them and knows which ports are taken.
 function buildBackgroundTasksInfo(workspaceId: string): string | undefined {
   const tasks = getContainers().listBackground(workspaceId);
   if (!tasks.length) return undefined;

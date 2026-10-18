@@ -1,7 +1,5 @@
-// The refresher's job is to keep the LIVE rate table current without a redeploy, and — just as
-// importantly — to never make pricing worse than it already is. A failed fetch, an unwritable cache
-// or a corrupt cache file must all leave the previous rates in force, because the alternative
-// (pricing every model as unknown, or crashing the boot path) is worse than a slightly old rate.
+// Keeps live rates current without a redeploy and never makes pricing worse: a failed fetch, unwritable
+// cache or corrupt file all leave the previous rates in force.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 
@@ -112,12 +110,8 @@ describe("priceRefresher", () => {
     rmSync(asDir, { recursive: true, force: true });
   });
 
-  /**
-   * A source that cannot be reached is the nastiest case, because buildCatalog still RESOLVES: the
-   * tick looks successful, and the wholesale swap then deletes rates the process was already holding.
-   * Turns on those models freeze cost `undefined`, which no later refresh can restate — so a partial
-   * refresh has to end up strictly no worse than not refreshing at all.
-   */
+  // An unreachable source is the worst case: buildCatalog still resolves, so the swap would drop held rates and
+  // freeze those turns' cost as undefined for good. A partial refresh must be no worse than none.
   describe("when one source is unreachable", () => {
     const scaleway = (input: number) => ({
       provider: "scaleway",

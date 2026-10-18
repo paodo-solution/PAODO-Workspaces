@@ -1,12 +1,5 @@
-// Shared "create parent dirs, then write a file" step for the container-backed write tools
-// (file_write and file_edit's create-file branch). Runs `mkdir -p` on the parent, then pipes the
-// content to the target via `tee` inside the container. On success, calls `broadcast` with a
-// files_changed event so the workspace file tree updates immediately, without waiting on the
-// chokidar watcher to notice the write across the container's mount boundary.
-//
-// Returns null on success, or an "Error: …" string ready to return straight from the tool (the
-// "Error:" prefix is load-bearing for classifyToolStatus). `relpath` must already be a normalized,
-// workspace-relative path (see normalizeRelpath) — this does not re-validate containment.
+// mkdir -p + `tee` write in the container for file_write and file_edit, then broadcasts files_changed so the
+// tree updates at once. Returns null or an "Error:" string; `relpath` must already be normalized.
 import path from "path";
 import type { ExecRunner } from "../interfaces";
 import { toolError } from "../toolUtils";

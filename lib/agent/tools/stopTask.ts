@@ -1,7 +1,5 @@
-// Agent tool that stops a background task started via execute_command(run_in_background: true).
-// Mirrors Claude Code's TaskStop/KillShell: kill a running background process by its task ID.
-// Background processes otherwise live until a new run, container stop, or idle eviction — this is
-// the explicit way to free them (e.g. to restart a dev server bound to port 8080).
+// stop_task: kills a background task by id (like Claude Code's KillShell), e.g. to free port 8080. Otherwise
+// tasks live until a new run or the container stops.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

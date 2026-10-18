@@ -6,11 +6,8 @@ export const MANIFEST_MEMBER = "manifest.json";
 /** What the archive holds. Restore dispatches on this rather than guessing from the filename. */
 export type ArchiveKind = "workspace" | "database" | "graph" | "drives";
 
-/**
- * Every manifest format in one registry — the three leaf archives and the "set" parent. Per kind,
- * because they change independently: bumping one for a field it gained must not relabel another as
- * a format this build has never seen. Restore reads this first.
- */
+// Per kind, since formats change independently: bumping one must not relabel another. Restore reads
+// this first.
 export const SCHEMA_VERSIONS: Record<ArchiveKind | "set", number> = {
   workspace: 1,
   database: 1,
@@ -26,12 +23,8 @@ export interface TarMember {
   sha256: string;
 }
 
-/**
- * Where a backup came from. `deployment` is the name we chose (cobalt-lynx), not one the
- * infrastructure handed out: os.hostname() inside a container is a container id that changes on
- * every deploy, and the machine itself is what the disaster replaces. `host` is kept for diagnosis
- * only — never sort or trust by it.
- */
+// `deployment` is our chosen name (cobalt-lynx), since a container's hostname changes every deploy.
+// `host` is for diagnosis only; never sort or trust by it.
 export interface ArchiveSource {
   deployment: string;
   host: string;

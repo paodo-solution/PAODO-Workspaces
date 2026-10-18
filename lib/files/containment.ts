@@ -1,24 +1,10 @@
-// Shared containment guard for any code that resolves a caller-supplied relative path against a
-// workspace/drive root — the HTTP upload route, and (via lib/agent/pathUtils.ts) the agent's own
-// file tools.
-//
-// A lexical-only check (normalize + reject "..") cannot see that a directory somewhere inside the
-// root is actually a symlink to somewhere else on disk — e.g. `ln -s /etc workspace/escape` followed
-// by a request for "escape/passwd" normalizes to a path lexically under the root, but the OS would
-// actually write to /etc/passwd. Guarding against that means realpath'ing not just the root but the
-// nearest EXISTING ancestor of the target and rejoining the not-yet-created remainder onto it, since
-// most targets here (a new upload, an agent-created file) don't exist yet.
-//
-// Sibling: ./assertContained.ts assertInsideWorkspace covers the other ergonomics — an absolute path
-// from an HTTP file route, throwing PathContainmentError so the route can map it to a 4xx.
+// Containment for caller paths (uploads, agent file tools): realpaths the nearest existing ancestor, since a
+// symlink inside the root can point anywhere. assertContained.ts covers absolute paths from HTTP routes.
 import fs from "fs/promises";
 import path from "path";
 
-/**
- * Resolve `requestedPath` against `rootDir`, returning the resolved real path, or `null` if it would
- * escape `rootDir` — via `..`, an absolute path, or a symlink anywhere along the way (including
- * `rootDir` itself). `rootDir` must already exist; `requestedPath` need not.
- */
+// The real path, or null if it escapes `rootDir` via `..`, an absolute path or any symlink. `rootDir`
+// must exist; `requestedPath` need not.
 export async function resolveContained(rootDir: string, requestedPath: string): Promise<string | null> {
   const root = await fs.realpath(rootDir);
   const target = path.normalize(path.resolve(root, requestedPath));

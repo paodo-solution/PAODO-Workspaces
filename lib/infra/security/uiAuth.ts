@@ -1,13 +1,5 @@
-/**
- * The single seam between "how this deployment identifies a browser" and everything that guards a
- * request. httpAuth.ts consumes a UiAuthenticator and never learns which mode produced it, so a new
- * mode is a case in resolveUiAuth and nothing else.
- *
- * The two modes are mutually exclusive by construction, not layered. A deployment fronted by an
- * identity-aware proxy must not also answer a shared password: that password would sit behind the
- * proxy as a bypass for anyone who reaches the origin directly, which is the failure the proxy was
- * adopted to prevent.
- */
+// How a deployment identifies a browser; httpAuth.ts never learns which mode. Modes are exclusive: a
+// password behind an identity-aware proxy would bypass it for anyone reaching the origin.
 import { timingSafeEqual } from "crypto";
 import { readCookie } from "./cookies";
 import { JwksCache, verifyAssertion, type AssertionPolicy } from "./iapAssertion";
@@ -17,10 +9,8 @@ export type UiAuthMode = "basic" | "iap";
 /** "absent" means no credential was offered (challenge); "invalid" means one was, and it failed. */
 export type UiAuthOutcome = "ok" | "absent" | "invalid";
 
-/**
- * Only the fields an authenticator may read. Structural, so httpAuth.ts imports nothing from here.
- * `isUpgrade` marks the /ws handshake, the one request a browser cannot put a header on.
- */
+// Only the fields an authenticator may read. Structural, so httpAuth.ts imports nothing from here.
+// `isUpgrade` marks the /ws handshake, the one request a browser cannot put a header on.
 export type UiAuthInput = { authorization: string; cookie: string; assertion: string; isUpgrade: boolean };
 
 export type UiAuthenticator = {
@@ -34,10 +24,7 @@ export type UiAuthenticator = {
   verify(req: UiAuthInput): UiAuthOutcome;
 };
 
-/**
- * Constant-time string comparison, so a byte-by-byte timing difference cannot be measured to recover
- * the secret.
- */
+// Constant-time string comparison, so a byte-by-byte timing difference cannot be measured to recover the secret.
 export function safeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
@@ -83,17 +70,12 @@ export function iapAuthenticator(settings: IapSettings): UiAuthenticator {
   return {
     mode: "iap",
     assertionHeader: settings.header,
-    /**
-     * No challenge. The proxy authenticates before the origin ever sees the request, so a 401 here
-     * means the assertion was absent or bad — a browser prompt could not satisfy either, and
-     * offering Basic would advertise a scheme this mode does not accept.
-     */
+    // No challenge: the proxy authenticates first, so a browser prompt can't fix a bad assertion and
+    // offering Basic would advertise a scheme this mode refuses.
     challenge: null,
     prime: () => settings.policy.jwks.refresh(),
     verify({ cookie, assertion, isUpgrade }) {
-      // The cookie is the /ws fallback only, for proxies that set no header on a handshake. Reading
-      // it on HTTP as well would make the proxy's cookie an ambient credential on every API route,
-      // leaving the CSRF guard as the only thing between a cross-site POST and a mutation.
+      // Cookie only as the /ws fallback; on HTTP it would be an ambient credential guarded only by CSRF checks.
       const fallback = isUpgrade && settings.cookie ? (readCookie(cookie, settings.cookie) ?? "") : "";
       const token = assertion || fallback;
       if (!token) return "absent";
@@ -136,15 +118,8 @@ function assertHttpsUrl(value: string): string {
   return parsed.toString();
 }
 
-/**
- * Builds the authenticator for the configured mode, throwing when that mode is absent or not fully
- * configured so the caller can refuse to start. There is deliberately no default: a mode that fell
- * back when the variable was empty would silently serve a password to a deployment configured for
- * `iap`, since a migrated .env keeps USERNAME and PASSWORD.
- *
- * Unconditional by design, and never gated on NODE_ENV: doing that once meant a container flipped to
- * debug logging served every route unauthenticated.
- */
+// Throws on a missing or incomplete mode so startup refuses. No default (a migrated .env keeps a
+// password) and no NODE_ENV gate (that once served every route unauthenticated).
 export function resolveUiAuth(
   env: UiAuthEnvironment = {
     PAODO_AUTH_MODE: process.env.PAODO_AUTH_MODE,

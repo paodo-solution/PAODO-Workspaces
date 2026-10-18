@@ -1,6 +1,5 @@
-// Public counterpart to the UI stop route, authenticated with the per-workspace Bearer API key.
-// Lets an external caller (the same one that started a run via POST .../agent) stop that run: the
-// runner observes the abort, finishes its current atomic turn so history stays valid, and exits.
+// Public stop for a run started via POST .../agent (Bearer key); the runner finishes its current turn so
+// history stays valid.
 export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";

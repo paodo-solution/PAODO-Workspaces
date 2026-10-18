@@ -1,17 +1,5 @@
-// Per-workspace git versioning — a SNAPSHOT tool, deliberately independent of any git the
-// user/agent uses inside the workspace for their own project.
-//
-// Two invariants enforce that separation:
-//   1. Our git metadata lives OUTSIDE the workspace tree, at <root>/.versioning/<workspaceId>,
-//      pointed at the workspace via --work-tree. So the workspace never contains our `.git`, and
-//      the agent is free to run its own `git init` in there without colliding with us. The git-dir
-//      is keyed on the stable workspaceId (not the dir name) so it survives workspace renames.
-//   2. We snapshot EVERYTHING with `add --all --force` and core.excludesFile=/dev/null, so a
-//      `.gitignore` the user/agent writes is captured as content but never suppresses files from
-//      our snapshot.
-//
-// Known limitation: if the agent creates its own nested repo (<workspace>/proj/.git), our snapshot
-// records that subtree as an embedded-repo gitlink rather than its file bytes. Accepted for v1.
+// Snapshot versioning, independent of the agent's own git: the git-dir lives outside the tree at
+// .versioning/<id>, and `add --all --force` ignores .gitignore. A nested repo is stored as a gitlink.
 import path from "path";
 import { mkdir, rm } from "fs/promises";
 import { createAuditLogger, createLogger } from "../logger";
@@ -33,10 +21,7 @@ function truncateSubject(s: string): string {
   return s.replace(/\s+/g, " ").trim().slice(0, MAX_SUBJECT);
 }
 
-// A diff is the one git output whose size the agent controls directly: it writes a large file, the
-// post-run snapshot commits it, and the next diff is proportional to what it wrote. gitClient now
-// caps that instead of growing without bound, so this says so rather than handing back a prefix that
-// looks like a complete diff — a silently-cut diff reads as "nothing else changed".
+// gitClient caps output, and a silently cut diff would read as "nothing else changed", so say it was cut.
 function noteIfTruncated(diff: string, truncated: boolean | undefined): string {
   if (!truncated) return diff;
   return `${diff}\n[diff truncated — this snapshot is too large to show in full; narrow it with path]`;
@@ -173,10 +158,8 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
   async history(workspaceId: string, workspaceDir: string): Promise<HistoryEntry[]> {
     const head = await this.headSha(workspaceId, workspaceDir);
     if (!head) return [];
-    // --all lists snapshots across every ref, not just those reachable from HEAD. A restore
-    // (reset --hard) makes the "future" snapshots unreachable from HEAD, but each one keeps its
-    // run/* tag, so --all still surfaces them — letting the user jump forward again. Date-ordered
-    // newest-first. %x1f = field separator, %x1e = record separator (robust against newlines).
+    // --all keeps snapshots after a restore visible (their run/* tags survive reset --hard), so the user can
+    // jump forward again. %x1f separates fields and %x1e records, safe against newlines.
     const r = await this.git.run(
       [...this.base(workspaceId, workspaceDir), "log", "--all", "--pretty=format:%H%x1f%ct%x1f%s%x1e"],
       { trimStdout: false },
@@ -202,11 +185,8 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
     return noteIfTruncated(r.stdout, r.truncated);
   }
 
-  // Snapshots (across all refs, like history()) with each commit's per-file numstat vs its
-  // parent. Read-only, so no serialize() lock. The %x1e record separator prefixes every commit's
-  // pretty line; --numstat rows follow on subsequent lines. Binary files show "-" for add/del in
-  // numstat — we surface them as -1 so the formatter can mark them rather than lie. Omit `n` to
-  // list all snapshots; pass it to cap the overview at the newest N.
+  // Snapshots across all refs with per-file numstat, newest `n` or all. Read-only, so unlocked. Binary
+  // files report -1 for add/del so the formatter can mark them.
   async versionStats(workspaceId: string, workspaceDir: string, n?: number): Promise<VersionStat[]> {
     const count = n === undefined ? undefined : Math.max(1, Math.floor(n) || 1);
     const head = await this.headSha(workspaceId, workspaceDir);
@@ -265,16 +245,12 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
     return noteIfTruncated(r.stdout, r.truncated);
   }
 
-  // Destroy the workspace's entire version history. Called on workspace deletion so versioning
-  // data never outlives the workspace it belongs to. Serialized so it can't race an in-flight
-  // commit (serialize() clears the lock entry afterwards).
+  // Deletes all version history with the workspace; serialized so it can't race an in-flight commit.
   deleteRepo(workspaceId: string): Promise<void> {
     return this.serialize(workspaceId, () => rm(this.gitDirFor(workspaceId), { recursive: true, force: true }));
   }
 
-  // Probe that the `git` binary exists. spawn("git") resolves to code 1 with an ENOENT stderr when
-  // git is absent from the image (see gitClient.ts), which is exactly the silent-failure mode that
-  // disabled snapshots in production. Read-only and identity-free, so no serialize() lock needed.
+  // Probes for the git binary: a missing one only shows up as code 1 with ENOENT, silently disabling snapshots.
   async isGitAvailable(): Promise<boolean> {
     const r = await this.git.run(["--version"]);
     return r.code === 0;
@@ -288,9 +264,7 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
         "--verify",
         `${sha}^{commit}`,
       ]);
-      // Not logged: a stale restore point in an open tab is the user's problem to see, and the
-      // route returns a 400 saying so. Only the reset below — where git had a real commit and
-      // still failed — is a system failure worth a line.
+      // Not logged: a stale restore point is a user error (the route answers 400). Only a failed reset is.
       if (verify.code !== 0) return false;
       const reset = await this.git.run([...this.base(workspaceId, workspaceDir), "reset", "--hard", sha]);
       if (reset.code !== 0) {

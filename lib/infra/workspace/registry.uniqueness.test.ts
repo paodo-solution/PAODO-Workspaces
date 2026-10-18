@@ -1,13 +1,5 @@
-// Name-policy and concurrency invariants for WorkspaceStore's create/rename mutations.
-//
-// Uses a real temp WORKSPACES_ROOT (the established pattern for filesystem-touching store tests, see
-// scheduleStore.test.ts) with vi.resetModules() so paths.ts picks up the temp root. The store is
-// built with its default scaffold, so createWorkspace lays down a real id-keyed directory — letting
-// us assert both the in-memory registry and the on-disk effect (a rename is metadata-only and moves
-// nothing, since the directory is keyed by the immutable id).
-//
-// Errors are asserted on their { name, code } shape rather than `instanceof`, because the store and
-// its WorkspaceNameError come from the freshly re-imported module graph, not this file's imports.
+// Name and concurrency rules for create/rename, on a real temp root (rename moves nothing: dirs are keyed by
+// id). Errors match on { name, code }, as re-imported modules break instanceof.
 import fs from "fs";
 import os from "os";
 import path from "path";

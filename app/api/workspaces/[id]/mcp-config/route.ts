@@ -1,12 +1,5 @@
-// REST endpoint for managing a workspace's MCP configuration (the settings-UI backend), kept on a
-// distinct path from the MCP protocol endpoint (/mcp). GET returns state + the skills the endpoint
-// exposes; PATCH toggles enabled; POST explicitly generates/rotates the bearer key (returned once);
-// DELETE revokes it.
-//
-// The credential verbs come from the shared handlers — the MCP key is a credential like any other.
-// There is deliberately no write verb for the exposed set: enabling the endpoint exposes every skill
-// the workspace declares in .skills/, so the workspace agent decides that surface by authoring
-// contracts and GET is a read-only view of it.
+// MCP settings backend (separate from the /mcp protocol endpoint): GET state and exposed skills, PATCH toggle,
+// POST generate/rotate, DELETE revoke. No write verb for skills: the agent authors them.
 export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";

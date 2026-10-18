@@ -1,10 +1,5 @@
-// Server-side file move policy shared by workspace and drive routes.
-// This module owns validation, containment-safe target resolution, no-clobber filesystem moves,
-// batch outcomes, and the single post-move snapshot. General content CRUD lives in
-// lib/operations/files/content.ts, behind lib/api/fileContentRoutes.ts.
-//
-// Paths in and out are workspace-relative (lib/files/relpath.ts); `destinationDirectory: null` remains
-// the client's way of naming the root.
+// File move policy shared by workspace and drive routes: validation, contained no-clobber moves, batch
+// outcomes and one snapshot. Paths are relative; `destinationDirectory: null` means the root.
 
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -22,11 +17,7 @@ interface MoveBody {
   destinationDirectory: string;
 }
 
-/**
- * Why one item of a batch could not move. It carries a code rather than a status: a batch that moved
- * some of its items answers 200 with the failure inside it, so the transport status is not the place
- * the reason can live.
- */
+// A code, not a status: a partly successful batch answers 200, so the reason lives in the body.
 interface MoveFailure {
   code: AppErrorCode;
   error: string;
@@ -64,9 +55,7 @@ async function resolveMoveTarget(be: FileBackend, body: MoveBody): Promise<MoveT
   // The root cannot appear here at all: requireEntryPath refuses "" for exactly this reason.
   const source = await resolveHostPath(be.dir, body.sourcePath, "sourcePaths");
 
-  // Resolving a symlink and then moving its target would move a different object than the tree row.
-  // This has to lstat the *lexical* path: resolveHostPath returns the realpath, which is the target
-  // rather than the link, so by then the symlink is no longer visible.
+  // lstat the lexical path: resolveHostPath returns the symlink's target, hiding the link itself.
   if ((await fs.lstat(path.join(be.dir, body.sourcePath))).isSymbolicLink()) {
     return { code: "INVALID_REQUEST", error: "Symbolic links cannot be moved" };
   }
@@ -174,10 +163,8 @@ async function moveOne(
     }
     return outcome;
   } catch (err) {
-    // The expected failures — a path the caller may not say, an errno with a public meaning — arrive
-    // as AppError and keep their own code. Anything else is ours, so it is logged once here and the
-    // item reports an opaque INTERNAL_ERROR rather than relaying a message libuv wrote the host path
-    // into.
+    // AppErrors keep their code; anything else is logged once and reported as INTERNAL_ERROR, never libuv's
+    // host-path message.
     const known = err instanceof AppError ? err : fileSystemAppError(err, sourcePath);
     if (known) return { code: known.code, error: known.message };
     log.error(
@@ -188,15 +175,8 @@ async function moveOne(
   }
 }
 
-/**
- * What a batch move answers with, whether or not it succeeded.
- *
- * This is deliberately its own declared shape rather than the plain error envelope: a batch that moved
- * two of three items has to report both halves at once, because the client needs the per-item results
- * to reconcile its tree no matter what stopped the rest. `results` is therefore present on every
- * response, including a refusal — its absence is how the client tells a rejected batch from a request
- * that was never understood (see useFileOperations.handleMoveMany).
- */
+// Not the plain error envelope: `results` is on every response, refusals included, so the client can
+// reconcile its tree; its absence means the request wasn't understood.
 interface MoveBatchBody {
   ok?: boolean;
   results: { sourcePath: string; path: string; unchanged: boolean }[];
@@ -277,9 +257,7 @@ export async function moveFileContent(req: Request, be: FileBackend): Promise<Re
     }
   }
 
-  // A batch that moved nothing is a plain failure and takes the status its code maps to. One that moved
-  // some of its items is a 200 carrying both halves — the transport succeeded, and the client needs the
-  // per-item results to reconcile its tree whatever else went wrong.
+  // Nothing moved: plain failure. Partly moved: 200 with per-item results so the client can reconcile.
   if (failure && results.length === 0) return refuseBatch(req, failure, { failedSourcePath });
 
   const body: MoveBatchBody = {

@@ -1,7 +1,5 @@
-// The sweeper's whole job is telling a genuinely orphaned temp file apart from one that just
-// hasn't finished yet, and from anything that isn't a temp file at all. These tests build a real
-// on-disk tree — fresh .part, stale .part, a non-.part file, and a stale .part nested inside .git —
-// and assert the sweep removes only the one file it's actually supposed to.
+// Tells an orphaned temp file from one still in progress or a non-temp file: in a real tree, only the stale
+// .part is removed, not the fresh one, the non-.part file, or the stale .part under .git.
 
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import fs from "fs";

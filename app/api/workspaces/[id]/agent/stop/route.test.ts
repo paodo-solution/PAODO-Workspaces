@@ -1,6 +1,5 @@
-// The public stop endpoint shares the Bearer-key gate with POST .../agent (same key, same
-// per-workspace scoping) and stops the named conversation's in-flight run. These pin the auth
-// scoping plus the 400/404 branches an external caller can hit.
+// Stop shares POST .../agent's per-workspace Bearer-key gate and stops the named conversation's run.
+// Pins the auth scoping plus the 400/404 branches an external caller can hit.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const KEYS: Record<string, string> = { "ws-a": "key-a", "ws-b": "key-b" };

@@ -8,8 +8,8 @@ interface Props {
   onRetry?: () => void;
   loadingLabel?: string;
   errorLabel?: string;
-  /** Delay before the loading indicator shows. Pass 0 on a just-opened surface (e.g. a modal) so the
-   *  body loads at once rather than sitting blank while the surrounding chrome is already painted. */
+  // Delay before the loading indicator shows. Pass 0 on a just-opened surface (e.g. a modal) so the
+  // body loads at once rather than sitting blank while the surrounding chrome is already painted.
   loadingDelayMs?: number;
   /** Extra classes for the wrapper, e.g. a tighter padding inside a small card. */
   className?: string;

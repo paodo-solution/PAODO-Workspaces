@@ -14,11 +14,8 @@ function isMentionStart(text: string, index: number): boolean {
   return /\s/.test(text[index - 1]);
 }
 
-/**
- * The mention the caret is currently inside, or null. Scans left from the caret to the nearest "@"
- * with no intervening whitespace; that "@" must itself begin a mention. Whitespace between "@" and
- * the caret means the mention has closed.
- */
+// The mention around the caret, or null: the nearest "@" to its left with no whitespace between, and
+// that "@" must start a mention.
 export function activeMention(text: string, caret: number): ActiveMention | null {
   for (let i = caret - 1; i >= 0; i--) {
     const ch = text[i];
@@ -36,10 +33,8 @@ export interface AppliedMention {
   caret: number;
 }
 
-/**
- * Replace the mention starting at `start` (through the caret) with `@path` and a trailing space,
- * appending "/" for a directory. Returns the new text and the caret position after the space.
- */
+// Replace the mention starting at `start` (through the caret) with `@path` and a trailing space,
+// appending "/" for a directory. Returns the new text and the caret position after the space.
 export function applyMention(
   text: string,
   caret: number,

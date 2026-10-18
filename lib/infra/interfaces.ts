@@ -1,9 +1,5 @@
-// Abstractions for the two stateful infra singletons (workspace registry + container
-// lifecycle). Consumers depend on these interfaces rather than the concrete singletons so
-// that tests and the agent layer can inject isolated instances. Production keeps the
-// default singletons via lib/infra/services.ts.
-//
-// Type-only imports below are erased at compile time.
+// Interfaces for the two stateful infra singletons (workspace registry, container lifecycle), so tests and
+// the agent layer can inject isolated instances. Production wires them in lib/infra/services.ts.
 import type { Workspace } from "../workspace/types";
 import type { ReasoningEffort } from "../models/llmSelection";
 import type { DockerResult, DockerStdin } from "./docker/dockerClient";
@@ -32,10 +28,8 @@ export interface IWorkspaceStore extends IWorkspaceCatalog {
   setWorkspaceDescription(id: string, description: string): boolean;
   setWorkspaceLlm(id: string, sel: { provider: string; model: string; reasoningEffort: ReasoningEffort }): boolean;
   setWorkspaceInternetAccess(id: string, enabled: boolean): boolean;
-  /**
-   * Clear the stored model choice of every workspace pointed at a provider outside `allowed`, and
-   * report what was cleared. Startup's counterpart to purgeProviderKeysExcept.
-   */
+  // Clear the stored model choice of every workspace pointed at a provider outside `allowed`, and
+  // report what was cleared. Startup's counterpart to purgeProviderKeysExcept.
   clearWithdrawnLlmSelections(allowed: readonly string[]): Array<{ workspaceId: string; provider: string }>;
 }
 
@@ -55,8 +49,8 @@ export interface VersionFileStat {
   del: number;
 }
 
-/** A snapshot enriched with its per-file diffstat vs its parent — feeds the agent's history
- *  overview and (later) a richer UI history view. Structured so each consumer formats its own way. */
+// A snapshot enriched with its per-file diffstat vs its parent — feeds the agent's history
+// overview and (later) a richer UI history view. Structured so each consumer formats its own way.
 export interface VersionStat {
   sha: string;
   /** Git-relative age, e.g. "2 hours ago". */
@@ -65,8 +59,8 @@ export interface VersionStat {
   files: VersionFileStat[];
   totalAdd: number;
   totalDel: number;
-  /** True for the snapshot the work-tree is currently at (HEAD) — the state on disk. After a UI
-   *  restore, HEAD moves, so this marks where the user parked, not necessarily the newest snapshot. */
+  // True for the snapshot the work-tree is currently at (HEAD) — the state on disk. After a UI
+  // restore, HEAD moves, so this marks where the user parked, not necessarily the newest snapshot.
   current?: boolean;
 }
 
@@ -99,22 +93,16 @@ export interface IWorkspaceVersioning extends IAgentWorkspaceVersioning {
   diff(workspaceId: string, workspaceDir: string, from: string, to: string): Promise<string>;
   /** Permanently remove a workspace's versioning repo. Called when the workspace is deleted. */
   deleteRepo(workspaceId: string): Promise<void>;
-  /**
-   * Probe that the `git` binary this service shells out to actually exists. Snapshot failures are
-   * swallowed at runtime (versioning must never break a run), so a missing binary would otherwise
-   * disable version history silently. Returns false if git can't be invoked.
-   */
+  // Snapshot failures are swallowed at runtime, so without this probe a missing git binary would
+  // disable version history silently.
   isGitAvailable(): Promise<boolean>;
 }
 
-// The container manager exposes three separable roles. They're split into role interfaces (ISP) so a
-// consumer can depend on just the capability it uses — a tool that only kills a background task takes
-// IBackgroundTasks, not the whole 12-method surface, and its tests mock three methods instead of
-// twelve. The concrete ContainerManager implements all three; IContainerManager is their union, kept
-// for the composition root (buildTools) and the services registry, which legitimately wire the lot.
+// Three role interfaces so consumers depend only on what they use (e.g. IBackgroundTasks). IContainerManager
+// is their union, for the composition root (buildTools) and the services registry.
 
-/** Container lifecycle: create/warm, stop, remove, workspace-dir teardown, and the boot-time
- *  credential-proxy reattach. Everything that manages a container's existence, not what runs inside it. */
+// Container lifecycle: create/warm, stop, remove, workspace-dir teardown, and the boot-time
+// credential-proxy reattach. Everything that manages a container's existence, not what runs inside it.
 export interface IContainerLifecycle {
   ensure(workspaceId: string, workspaceDir: string): Promise<void>;
   /** Stop the container. `reason` (e.g. "no live tasks — idle") is logged when the stop is automatic. */
@@ -125,7 +113,7 @@ export interface IContainerLifecycle {
   reattachProxyNetworks(): Promise<void>;
   /** Re-arm the task-aware idle reaper for every running container after an app restart. */
   resumeIdleReapers(): Promise<void>;
-  /** Lazily reclaim per-workspace networks that stop() emptied but no longer deletes inline. */
+  /** Lazily reclaim per-workspace networks that stop() emptied. */
   sweepManagedNetworks(graceMs?: number): Promise<void>;
   /** A run has begun/ended for a workspace — keeps its container warm for the run's whole duration. */
   noteRunStart(workspaceId: string): void;
@@ -134,12 +122,8 @@ export interface IContainerLifecycle {
   assertDockerAvailable(): Promise<void>;
 }
 
-/**
- * A write-only drain for command output the app refuses to hold in memory (see ExecOutput).
- *
- * It writes INSIDE the container for one reason: the agent's shell runs in there, so that is the only
- * kind of path it can go and read afterwards. A host-side file would hand it a path it cannot open.
- */
+// Write-only drain for command output too large to hold in memory (see ExecOutput). Lives inside the
+// container, since that is the only place the agent's shell can read it back.
 export interface OutputSink {
   /** In-container path, handed to the agent so it can grep/tail whatever was not shown inline. */
   readonly path: string;

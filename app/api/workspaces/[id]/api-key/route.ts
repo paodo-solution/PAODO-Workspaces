@@ -1,6 +1,4 @@
-// REST endpoint for managing a workspace's agent API key.
-// GET returns current state; POST explicitly generates/rotates the key (plaintext returned once);
-// DELETE revokes it; PATCH toggles the channel. Everything but GET comes from shared handlers.
+// Workspace agent API key: GET state, POST generate/rotate (plaintext once), DELETE revoke, PATCH toggle.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";

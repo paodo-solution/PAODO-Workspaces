@@ -1,7 +1,5 @@
-// Manages the MITM proxy's CA certificate lifecycle using node-forge.
-// The CA is generated once at startup and persisted to data/.proxy-ca/.
-// Per-domain certs are signed by the CA on first use and cached in memory.
-// Containers trust the CA via NODE_EXTRA_CA_CERTS / CURL_CA_BUNDLE / REQUESTS_CA_BUNDLE mounts.
+// The MITM proxy's CA (node-forge): generated once into data/.proxy-ca/, per-domain certs signed and cached in
+// memory. Containers trust it via NODE_EXTRA_CA_CERTS / CURL_CA_BUNDLE / REQUESTS_CA_BUNDLE.
 import forge from "node-forge";
 import { createHmac, timingSafeEqual } from "crypto";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, chmodSync } from "fs";
@@ -15,10 +13,8 @@ const log = createLogger("proxyCA");
 let caKey: forge.pki.rsa.PrivateKey | null = null;
 let caCert: forge.pki.Certificate | null = null;
 
-// Host-only key used to derive each workspace's proxy secret (HMAC of its id). Never leaves the
-// host and is never handed to a container, so one workspace cannot derive another's secret.
-// Held on `global` so it is shared across the custom server and Next.js route bundles, which each
-// get their own module instance (same isolation pattern as the workspace/proxy singletons).
+// Host-only HMAC key deriving each workspace's proxy secret; never given to a container. On `global` so the
+// server and Next bundles share it.
 const gKey = global as typeof global & { _proxyHmacKey?: Buffer };
 const PROXY_HMAC_FILE = path.join(WORKSPACES_ROOT, ".proxy-ca", "proxy-hmac.key");
 
@@ -50,8 +46,8 @@ const domainCertCache = new Map<string, { cert: string; key: string; notAfter: n
 const DOMAIN_CERT_RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface EnsureCAOptions {
-  /** Refuse to replace existing unreadable/partial trust material. Production uses this because
-   * silently rotating it breaks trust and workspace proxy authentication. */
+  // Refuse to replace existing unreadable/partial trust material. Production uses this because
+  // silently rotating it breaks trust and workspace proxy authentication.
   strictExisting?: boolean;
 }
 

@@ -1,11 +1,5 @@
-/**
- * The gate every model call passes before it leaves. One bucket per provider+model, because the
- * providers meter per model — measured: 8 codestral calls left mistral-large's quota untouched.
- *
- * Admission is serialized within a bucket. That is not tidiness: six simultaneous requests to a
- * limit-4 model were told remaining=3, 1, 1 and 0, so two callers acting on the same reported
- * `remaining` is a real race, and only a queue plus a local decrement prevents it.
- */
+// Gate before every model call, one bucket per provider+model since providers meter per model.
+// Admission is serialized: concurrent callers trusting the same reported `remaining` would overdraw.
 import { globalSingleton } from "../../infra/globalSingleton";
 import type { RateLimitSnapshot } from "./rateLimitHeaders";
 import { abortableDelay } from "./retryPolicy";
@@ -69,11 +63,8 @@ const INITIAL_RECOVERY_MS = 20_000;
 // trusting `remaining` and falls back to what it counted itself.
 const SNAPSHOT_TTL_MS = 60_000;
 
-/**
- * The window the local ledger measures over. Measured recoveries on mistral-large were 16s and 52s
- * for a limit spelled "per minute", so a full minute is the conservative reading: it sends a little
- * slower than the provider would allow and never guesses high.
- */
+// Measured recoveries for a "per minute" limit ranged 16–52s, so a full minute is the conservative
+// window: slightly slow, never high.
 const LEDGER_WINDOW_MS = 60_000;
 
 // Once a refusal has taught us a ceiling, edge back up after this many clean sends at it — so a
@@ -108,13 +99,8 @@ interface Bucket {
   /** Most recent provider-confirmed token-window boundary that has already passed. */
   tokensWindowStartedAt?: number;
   retryAt?: number;
-  /**
-   * What this process has sent inside the window.
-   *
-   * Load-bearing for Mistral specifically: it reports rate-limit headers on ordinary responses and
-   * NONE on streaming ones, and the agent loop streams — so on the one provider that throttles hard
-   * enough to matter, `remaining` is never available and this count is all the pacer has.
-   */
+  // What this process sent inside the window. Mistral sends no rate-limit headers on streams, so for it
+  // this count is all the pacer has.
   sends: Send[];
   /** Ceilings inferred from refusals, for the providers that never state them on a stream. */
   learnedRequests?: number;
@@ -125,8 +111,8 @@ interface Bucket {
   cleanSends: number;
   /** When the fields above were last written from a response. */
   observedAt: number;
-  /** When a call was last admitted. What the spacing fallback measures from — `observedAt` would
-   *  let a run with no fresh readings send its whole loop back to back. */
+  // When a call was last admitted. What the spacing fallback measures from — `observedAt` would
+  // let a run with no fresh readings send its whole loop back to back.
   lastSentAt: number;
   /** Learned drain-to-recovery interval, for providers that report no reset. */
   recoveryMs: number;
@@ -197,22 +183,14 @@ export class ProviderPacer {
     return Math.ceil((bucket.lastCost ?? bucket.lastUsage ?? COLD_TOKEN_ESTIMATE) * ESTIMATE_MARGIN);
   }
 
-  /**
-   * Wait until this call may be sent, then reserve its share of the bucket.
-   *
-   * The returned lease must be released however the call ends — the gateway does it in a `finally`.
-   * Rejects with the signal's reason if the run is cancelled while queued or sleeping.
-   */
+  // Waits, then reserves this call's share. The lease must be released however the call ends; rejects
+  // with the signal's reason if cancelled while waiting.
   async acquire(key: PacerKey, options: AcquireOptions = {}): Promise<PacerLease> {
     const bucket = this.bucketFor(key);
     const startedAt = this.now();
     const queueDepth = bucket.waiters.length + (bucket.admitting ? 1 : 0);
 
-    /**
-     * One caller decides at a time. Everyone else parks here and re-evaluates when the slot reaches
-     * them, so a reopened window is not consumed by every waiter at once. The slot is handed over
-     * directly rather than cleared and re-taken, which would let an arriving caller jump the queue.
-     */
+    // One caller decides at a time, so a reopened window isn't consumed by every waiter at once.
     if (bucket.admitting) await this.queue(bucket, options.signal);
     else bucket.admitting = true;
 
@@ -266,11 +244,8 @@ export class ProviderPacer {
     });
   }
 
-  /**
-   * Hand the admission slot straight to the next waiter, keeping `admitting` true across the
-   * handover. Clearing it first would open a window for a newly arriving caller to take the slot
-   * ahead of everyone already queued.
-   */
+  // Hands the slot straight to the next waiter with `admitting` kept true, so a new arrival can't jump
+  // the queue.
   private passSlot(bucket: Bucket): void {
     const next = bucket.waiters.shift();
     if (next) next.resolve();
@@ -300,13 +275,8 @@ export class ProviderPacer {
     if (drop > 0) bucket.sends.splice(0, drop);
   }
 
-  /**
-   * Advance each provider-owned window independently once its reset passes.
-   *
-   * Clearing the old `remaining` matters as much as recording the boundary: a later response may
-   * publish the NEXT reset without repeating a remaining count, and neither event may resurrect a
-   * snapshot or reservation from the window that just closed.
-   */
+  // Rolls each provider window once its reset passes, clearing the old `remaining` so nothing from the
+  // closed window resurfaces.
   private rollProviderWindows(bucket: Bucket, now: number): void {
     if (bucket.resetRequestsAt !== undefined && now >= bucket.resetRequestsAt) {
       bucket.requestsWindowStartedAt = Math.max(bucket.requestsWindowStartedAt ?? 0, bucket.resetRequestsAt);
@@ -320,15 +290,8 @@ export class ProviderPacer {
     }
   }
 
-  /**
-   * How long before this call may go, in ms. Zero means now.
-   *
-   * The ledger is primary and a reported `remaining` only ever adds pessimism. That ordering is what
-   * makes mixed reporting work: Mistral states a ceiling on its 429s but never a `remaining` on a
-   * successful stream, so a `remaining` of zero read once would otherwise stick and throttle the
-   * bucket forever. Taking the worse of the two instead lets the ledger heal as sends age out, while
-   * a fresh reading still accounts for traffic this process cannot see.
-   */
+  // Ms until this call may go. The ledger is primary and a fresh `remaining` only adds pessimism, so a
+  // stale zero can't throttle forever while unseen traffic still counts.
   private waitFor(bucket: Bucket): number {
     const now = this.now();
     const estimate = this.estimate(bucket);
@@ -344,11 +307,7 @@ export class ProviderPacer {
     // Nothing has stated a ceiling and nothing has refused us. Send, and learn from what comes back.
     if (requestCeiling === undefined && tokenCeiling === undefined) return 0;
 
-    /**
-     * A reading expires two ways: by age, and by its own reset passing — past that instant it
-     * describes a window the provider has already rolled over, and believing it would park the run
-     * on a limit that no longer exists.
-     */
+    // A reading expires by age or once its own reset passes, so a rolled-over limit can't park the run.
     const fresh = (reset: number | undefined) =>
       (reset === undefined || now < reset) && now - bucket.observedAt < SNAPSHOT_TTL_MS;
     const worse = (
@@ -364,12 +323,8 @@ export class ProviderPacer {
     const requestsUsed = worse(requestSends.length, requestCeiling, bucket.remainingRequests, bucket.resetRequestsAt);
     const tokensUsed = worse(sumTokens(tokenSends), tokenCeiling, bucket.remainingTokens, bucket.resetTokensAt);
 
-    /**
-     * A context can outgrow the whole per-minute allowance — measured, mistral-medium charges 49k
-     * against a 25k ceiling by its twelfth turn. No wait makes room for a call that never fits, so
-     * such a call goes out on an empty window and the provider overdraws, which is what it does
-     * anyway. Without this the bucket never admits and the run stalls until its deadline.
-     */
+    // A context can outgrow the whole allowance (49k against a 25k ceiling). No wait makes it fit, so it
+    // goes on an empty window rather than stalling the run until its deadline.
     const unfittable = tokenCeiling !== undefined && estimate > tokenCeiling;
     const overRequests = requestCeiling !== undefined && requestsUsed >= requestCeiling;
     const overTokens =
@@ -409,15 +364,8 @@ export class ProviderPacer {
     return Math.max(...waits);
   }
 
-  /**
-   * Fold a response's headers back into the bucket.
-   *
-   * A reading describes the bucket as the provider saw it, which is only the whole truth if nothing
-   * else was in flight beside this call. With company it is stale — measured, six concurrent callers
-   * were told remaining = 3, 1, 1 and 0 — so the local projection wins and the reading may only
-   * lower it. Alone, the reading is adopted outright, which is also how the bucket recovers from the
-   * zero that `penalize` writes: clamping forever would leave it permanently empty.
-   */
+  // Folds a response's headers in. With other calls in flight the reading is stale, so it may only lower
+  // the projection; alone, it is adopted outright, which lets the bucket recover.
   settle(key: PacerKey, snapshot: RateLimitSnapshot | null): void {
     if (!snapshot) return;
     const bucket = this.bucketFor(key);
@@ -446,23 +394,13 @@ export class ProviderPacer {
     if (tokens > 0) this.bucketFor(key).lastUsage = tokens;
   }
 
-  /**
-   * Wait out a backoff this pacer handed back.
-   *
-   * Exposed so every wait the pacing layer imposes goes through one clock, which is what lets a test
-   * drive a retry sequence without real time passing.
-   */
+  /** Waits out a backoff on the pacer's clock, so tests can drive retries without real time. */
   wait(ms: number, signal?: AbortSignal): Promise<void> {
     return this.sleep(ms, signal);
   }
 
-  /**
-   * How long the caller should wait after a refusal, having recorded that it happened.
-   *
-   * A refusal is also the only ceiling report some providers ever give: whatever the ledger counted
-   * was demonstrably too much, so it becomes the ceiling. Without this the streaming Mistral path
-   * would learn nothing at all and go on colliding at the same rate.
-   */
+  // Records a refusal and returns the wait. For providers that never state a ceiling (streaming
+  // Mistral), what the ledger counted becomes the learned ceiling.
   penalize(key: PacerKey, retryAt?: number): number {
     const bucket = this.bucketFor(key);
     const now = this.now();
@@ -471,10 +409,8 @@ export class ProviderPacer {
     const requestSends = sendsForAxis(bucket.sends, bucket.requestsWindowStartedAt);
     const tokenSends = sendsForAxis(bucket.sends, bucket.tokensWindowStartedAt);
 
-    // pacedFetch may already have folded a Retry-After/reset header from this refusal into the
-    // bucket before the SDK turns the 429 response into an exception. Prefer that provider-owned
-    // deadline to our learned guess. An exact deadline needs no jitter here: admission is serialized
-    // when callers wake, and waking before Retry-After would only buy another refusal.
+    // Prefer a Retry-After that pacedFetch already folded in over our guess; no jitter, since waking earlier only
+    // earns another refusal.
     if (retryAt !== undefined) bucket.retryAt = retryAt;
     const responseWideRetry = bucket.retryAt !== undefined && bucket.retryAt > now ? bucket.retryAt : undefined;
     const requestExhausted =
@@ -492,11 +428,8 @@ export class ProviderPacer {
     ].filter((deadline): deadline is number => deadline !== undefined && deadline > now);
     const providerResetAt = responseWideRetry ?? (quotaDeadlines.length ? Math.max(...quotaDeadlines) : undefined);
 
-    /**
-     * Needs at least two: a single send of ours cannot have exceeded a ceiling by itself, so that
-     * refusal came from traffic we cannot see and teaches us nothing about our own rate. Learning
-     * from it would pin the ceiling at one call per window on the first unlucky collision.
-     */
+    // Needs two sends: refused after one, the cause was unseen traffic, and learning from it would pin
+    // the ceiling at one call per window.
     if (bucket.limitRequests === undefined && requestSends.length > 1) {
       const tooMany = requestSends.length;
       bucket.learnedRequests = Math.max(1, Math.min(bucket.learnedRequests ?? tooMany, tooMany) - 1);
@@ -512,11 +445,8 @@ export class ProviderPacer {
       : clampWait(jitter(bucket.recoveryMs, this.random));
   }
 
-  /**
-   * A call that went through after a wait. Ease the backoff, and once enough have gone cleanly,
-   * try one more per window than last time — a ceiling raised on the provider's side is otherwise
-   * invisible, and the run would stay throttled to the old one until the process restarted.
-   */
+  // Eases the backoff and, after enough clean sends, probes one more per window, so a ceiling raised by
+  // the provider is rediscovered.
   reward(key: PacerKey): void {
     const bucket = this.bucketFor(key);
     bucket.recoveryMs = Math.max(MIN_RECOVERY_MS, bucket.recoveryMs * RECOVERY_DECAY);
@@ -546,11 +476,8 @@ export class ProviderPacer {
 
 const sumTokens = (sends: readonly Send[]) => sends.reduce((total, send) => total + send.tokens, 0);
 
-/**
- * A provider-owned reset is a stronger window boundary than the conservative 60-second ledger.
- * Reservations before the most recently completed boundary no longer consume that quota axis.
- * Keep this filter axis-specific because request and token allowances can reset independently.
- */
+// Sends before the provider's last reset no longer count on that axis. Per axis, since request and
+// token allowances reset independently.
 function sendsForAxis(sends: readonly Send[], windowStartedAt: number | undefined): readonly Send[] {
   if (windowStartedAt === undefined) return sends;
   return sends.filter((send) => send.at >= windowStartedAt);

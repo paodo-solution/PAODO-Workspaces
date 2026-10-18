@@ -1,8 +1,5 @@
-/**
- * Loads and tracks a workspace's conversations for the switcher. Picks the newest as active on
- * first load (creating one if the workspace has none), exposes create/select, and a refresh that
- * re-reads titles/order and the per-conversation `running` flag without disturbing the selection.
- */
+// A workspace's conversations for the switcher. Selects (or creates) the newest on first load; refresh
+// re-reads titles, order and `running` without changing the selection.
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -56,9 +53,8 @@ export function useConversations(workspaceId: string) {
     return conversation.id;
   }, [workspaceId]);
 
-  /* Initial load for the workspace: pick the newest conversation (or create the first one). One
-     combined request (`/conversations/initial`) also brings back that conversation's transcript so the
-     chat renders without a second round-trip. */
+  // Picks the newest conversation (or creates one); `/conversations/initial` also returns its
+  // transcript, saving a round-trip.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -95,10 +91,8 @@ export function useConversations(workspaceId: string) {
     };
   }, [workspaceId, create, requestedConvId, loadNonce]);
 
-  /* Keep the per-conversation "running" dot fresh, but only while a run is actually in flight — so an
-     idle workspace makes zero background requests. Polling starts when something is running (a local
-     run flips a conversation's `running` flag, or `kick()` is called when a run begins) and stops
-     itself on the first poll that finds nothing running. */
+  // Polls the "running" dots only while a run is in flight (started by a running flag or `kick()`),
+  // stopping on the first idle poll, so an idle workspace makes no requests.
   const anyRunning = conversations.some((c) => c.running);
   useEffect(() => {
     if (!anyRunning) return;

@@ -1,11 +1,5 @@
-/**
- * Loads and toggles a workspace's internet-access flag. The load runs through the shared
- * async-resource so a failed read surfaces as `error` (with a retry) instead of resolving to "off" —
- * a network drop used to be indistinguishable from a genuinely closed channel. An optimistic
- * `override` layers the toggle on top of the loaded value so it flips at once and rolls back if the
- * PATCH is rejected. Lifted to the home page so InternetAccessBlock and EnvVarsBlock share one source
- * of truth instead of each polling the endpoint independently and drifting out of sync on toggle.
- */
+// Loads and toggles a workspace's internet-access flag. A failed read is an `error`, never "off"; the
+// toggle is optimistic and rolls back on rejection. Shared by InternetAccessBlock and EnvVarsBlock.
 "use client";
 
 import { useState, useCallback } from "react";

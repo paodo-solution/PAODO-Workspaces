@@ -1,9 +1,5 @@
-// One HTTP representation for the shared workspace mutation result. Routes may translate their
-// request shape (`enabled` to `internetAccess`, for example), but successful writes all return this
-// receipt so UI, CLI and other callers observe the same authoritative server outcome.
-//
-// The receipt type is exported for the browser half (lib/client/workspaceReceipt.ts) to import as a
-// type, so the two ends of the wire cannot drift.
+// The single HTTP receipt for workspace mutations, so UI, CLI and others see the same outcome. Its type is
+// shared with lib/client/workspaceReceipt.ts.
 import { NextResponse } from "next/server";
 import { notFound } from "@/lib/api/guards";
 import { getStore } from "@/lib/infra/services";
@@ -40,30 +36,16 @@ export function receiptResponse(result: UpdateWorkspaceResult): NextResponse<Wor
 /** The two channels whose open/closed flag a credential endpoint's PATCH moves. */
 export type WorkspaceAccessField = "workspaceApiAccess" | "workspaceMcpAccess";
 
-/**
- * The workspace-level facts both channel routes put on every key receipt, so generate, rotate and
- * revoke answer with one field set and a caller reads the same shape whichever verb it called.
- *
- * `internetAccess` is egress and gates neither channel (lib/operations/workspace/access.ts). It is
- * here because a caller administering a workspace's external surface wants that surface in one answer
- * rather than in two calls, and as a plain boolean beside the two channel axes it cannot be mistaken
- * for the thing that decides whether a key is accepted — the receipt states all three and orders none.
- *
- * A subject that no longer resolves contributes nothing rather than failing: the mutation it describes
- * has already happened, and a receipt is the wrong place to discover a workspace was deleted mid-request.
- */
+// Workspace facts on every key receipt (`internetAccess`, which gates neither channel). A workspace
+// deleted mid-request adds nothing rather than failing a completed mutation.
 export function workspaceReceiptContext(subject: CredentialSubject): Record<string, unknown> {
   if (!subject) return {};
   const workspace = getStore().getWorkspace(subject);
   return workspace ? { internetAccess: workspace.internetAccess } : {};
 }
 
-/**
- * The channel-toggle half of a credential endpoint's PATCH, so the api-key and mcp-config routes
- * differ only in which field they name. Going through updateWorkspace is what makes the toggle and a
- * PATCH on the workspace itself report the channel identically; the receipt never carries a key,
- * because minting one is POST's job.
- */
+// A credential route's PATCH, via updateWorkspace so it reports exactly like a workspace PATCH. Never
+// carries a key; minting is POST's job.
 export function channelSetEnabled(field: WorkspaceAccessField) {
   return async (
     _kind: CredentialKind,

@@ -1,9 +1,5 @@
-// The usage write path. A session is created once by the run broker; model turns then reference it.
-// Tool calls are serialized into the turn's JSON column before the single INSERT executes.
-//
-// Failures are logged and swallowed on purpose: usage accounting is a side record of an agent run
-// and must never fail the run that produced it. invalidateAppDataDb drops the cached connection so
-// the next write reopens rather than reusing a handle to a database that just rejected us.
+// Usage write path: the run broker creates a session, model turns reference it. Failures are logged and
+// swallowed so accounting never fails a run; the cached DB connection is dropped to reopen next time.
 import { createLogger } from "../infra/logger";
 import { appDataDb as db, invalidateAppDataDb } from "../data/database";
 import { computeCost, getCurrency } from "../models/pricing";

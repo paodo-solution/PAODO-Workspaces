@@ -1,11 +1,5 @@
-// Per-workspace internet-access on/off policy, consulted by the credential proxy before any
-// tunnel/forward — the application-layer half of the "off means no egress at all" guarantee (the
-// other half is the workspace's Docker network being created --internal, see containerManager.ts).
-//
-// Persisted to disk (not just in-memory) because in production the proxy runs in a separate
-// sidecar PROCESS (docker-compose `credproxy`) with no shared memory with the app — same reason
-// workspaceSecretStore.ts exposes SECRET_STORE_FILE for proxyEntry.ts to poll. The app is the only
-// writer; the sidecar only ever reloads (the shared volume is mounted read-only there).
+// Per-workspace internet policy the proxy checks before any tunnel (defense in depth behind detaching the
+// sidecar). On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
 import path from "path";
 import { readFileSync } from "fs";
 import { WORKSPACES_ROOT } from "../paths";
@@ -57,14 +51,8 @@ export interface InternetAccessRecord {
   internetAccess?: boolean;
 }
 
-/**
- * Rebuild the mirror from the registry. The app calls this at startup, before the sidecar can read
- * the file, because the two records are one security boundary and only the registry survives losing
- * the .proxy-ca volume or a restore from backup. A missing entry here reads as ENABLED, so a mirror
- * that is absent or behind silently reopens a workspace the UI still shows as off — the one drift
- * direction that fails open. Throws if the rebuilt file cannot be written or read back intact;
- * startup treats that as fatal rather than serving egress the registry says is off.
- */
+// Rebuilds the mirror from the registry at startup: a missing entry reads as enabled, so a stale mirror
+// fails open. Throws if the file can't be written and read back, which startup treats as fatal.
 export function reconcileInternetAccessPolicy(workspaces: InternetAccessRecord[]): void {
   const off = new Set(workspaces.filter((w) => w.internetAccess === false).map((w) => w.id));
   const restored = [...off].filter((id) => store[id] !== false);

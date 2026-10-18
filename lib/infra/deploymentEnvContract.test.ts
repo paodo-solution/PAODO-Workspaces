@@ -1,16 +1,5 @@
-/**
- * The compose file and the path modules have to agree, and nothing but this test makes them.
- *
- * Every path constant falls back to a cwd-relative directory when its env var is unset. In the
- * image WORKDIR is /app, so an unset override does not fail — it silently resolves somewhere
- * plausible and wrong, and the app writes state nothing mounts. Compose overrides all of them
- * today, which means those fallbacks are never exercised in a deployed stack and a newly added
- * constant would diverge quietly.
- *
- * The credproxy assertions pin the isolation the compose comments describe: it is the one container
- * an untrusted sandbox can reach, so it must not inherit .env and must not see the provider vault.
- * A comment cannot hold that against a future "the services should match" cleanup.
- */
+// Compose and the path modules must agree: an unset override silently resolves under /app. Also pins that
+// credproxy, the one container a sandbox can reach, inherits no .env and cannot see the provider vault.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";

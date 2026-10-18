@@ -1,12 +1,5 @@
-// Tracks the agent's long-lived, DETACHED background processes (dev servers etc.) per workspace.
-//
-// These deliberately outlive a single agent run: they persist across turns (so a dev server stays
-// up) and are reaped only when the container stops/idles. Unlike execStreaming — whose `setsid --wait`
-// session is group-killed the moment a foreground timeout or user-escape fires — a background task
-// runs in its OWN session with output redirected to a log file, so it is immune to the exec kill path.
-//
-// This collaborator owns only the bookkeeping and the in-container launch/kill/scan scripts. It does
-// NOT bring the container up — the owning ContainerManager calls ensure() before delegating here.
+// Tracks the agent's background processes (dev servers). Each runs in its own session, so it outlives runs and
+// the exec kill path never reaches it. Bookkeeping and scripts only; the caller ensures the container.
 import { randomUUID } from "crypto";
 import { createLogger } from "../logger";
 import { broadcastToWorkspace } from "../realtime/wsHub";
@@ -45,19 +38,11 @@ export class BackgroundTaskManager {
   // Tracked processes keyed workspaceId → taskId. Lost on app restart while the workspace container
   // (and its servers) keep running; rehydrate() rebuilds it from the container's pidfiles.
   private tasks = new Map<string, Map<string, BackgroundTask>>();
-  // Workspaces whose task map has been rebuilt from the container's pidfiles this process-lifetime.
-  // Rehydration runs at most ONCE per workspace so a survivor server is surfaced again after a
-  // restart; cleared by clear() so a post-restart reattach re-scans.
+  // Workspaces already rehydrated from pidfiles in this process (at most once each); clear() resets it.
   private rehydrated = new Set<string>();
 
-  // Launch a long-running command DETACHED from the exec kill path. Starts it in its own session
-  // (setsid, no --wait), redirects output to a log file, and returns immediately. The process is
-  // therefore immune to the foreground exec timeout and lives until stop(), a new run, or container
-  // stop/idle. The user command enters only as an argv positional ($1), never string-interpolated —
-  // no injection. Assumes the container is already running (the caller ensures it).
-  // `env` carries the workspace's secret tokens, which are supplied per exec rather than baked into
-  // the container. The launched process keeps this env for its lifetime — the caller decides what
-  // that should contain.
+  // Launches detached (setsid, no --wait) with output to a log file, and returns at once. The command is
+  // passed as argv $1, never interpolated; the process keeps `env` (secret tokens) for its lifetime.
   async start(
     workspaceId: string,
     command: string,
@@ -73,14 +58,8 @@ export class BackgroundTaskManager {
     let stage = "launch_process";
 
     try {
-      // setsid makes the inner bash a new session/process-group leader; it self-reports that pid
-      // (== pgid) to the pidfile, then execs the user command in place so the recorded pid IS the
-      // server. The trailing `&` frees the launching `docker exec` at once; tini (--init) reaps the
-      // detached tree on container stop. Same `echo $$ > pid; exec "$0" "$@"` idiom as execStreaming.
-      // The command is also recorded verbatim to a .cmd file (via `printf '%s' "$1"` — argv, no
-      // injection) so rehydrate() can recover it if the in-memory map is lost.
-      // .started records the launch epoch (seconds) so the per-task cap survives an app restart —
-      // rehydrate/reconcile read it back rather than restarting the 24h clock from zero on recovery.
+      // Same group-leader idiom as execStreaming, so the recorded pid is the server. .cmd and .started let
+      // rehydrate() recover the command and keep the 24h cap's clock across an app restart.
       const launcher =
         `mkdir -p ${TASK_DIR}; ` +
         `printf '%s' "$1" > ${cmdFile}; ` +
@@ -146,9 +125,8 @@ export class BackgroundTaskManager {
     return { taskId, logFile };
   }
 
-  // Kill a tracked background process by taskId (negative-pgid group kill, so children die too).
-  // Returns false if no such task is tracked for the workspace. An already-dead group is still a
-  // success — the kill is best-effort and we always clear the bookkeeping + pid/cmd files.
+  // Group-kills a tracked task, children included; false only if the task isn't tracked. Bookkeeping
+  // and files are always cleared, even when the group was already dead.
   async stop(workspaceId: string, taskId: string): Promise<boolean> {
     const task = this.tasks.get(workspaceId)?.get(taskId);
     if (!task) return false;
@@ -216,12 +194,8 @@ export class BackgroundTaskManager {
     this.rehydrated.delete(workspaceId);
   }
 
-  // Rebuild a workspace's in-memory task map from the container's pidfiles — the durable source of
-  // truth that survives an app restart (which wipes the map while the workspace container and its
-  // servers keep running). Runs at most once per workspace per process-lifetime, on the first
-  // reattach to an already-running container. A pidfile whose process group is dead
-  // (`kill -0 -<pgid>` fails) is skipped, so this doubles as a stale-task prune. Best-effort: any
-  // failure leaves the map empty (the pre-existing behavior), never throws.
+  // Rebuilds the task map from pidfiles once per workspace after an app restart, skipping dead groups.
+  // Best-effort: on failure the map stays empty; never throws.
   async rehydrate(workspaceId: string): Promise<void> {
     if (this.rehydrated.has(workspaceId)) return;
     this.rehydrated.add(workspaceId);
@@ -232,9 +206,7 @@ export class BackgroundTaskManager {
     }
   }
 
-  // Safe liveness read for the UI: rescan pidfiles and prune anything that has exited (scanLiveTasks
-  // skips dead groups), so a task that ended on its own is reflected at once. Never kills — the cap
-  // is the reaper's job — so a GET driven by this stays side-effect-free.
+  // Liveness read for the UI: rescans and prunes exited tasks but never kills, so a GET stays side-effect-free.
   async listLive(workspaceId: string): Promise<BackgroundTask[]> {
     const live = await this.scanLiveTasks(workspaceId);
     if (!live) return this.list(workspaceId);
@@ -310,8 +282,7 @@ export class BackgroundTaskManager {
       const [taskId, pgidStr, startedStr, cmdB64] = line.split("\t");
       const pgid = parseInt(pgidStr, 10);
       if (!taskId || !Number.isInteger(pgid)) continue;
-      // A missing/blank .started (a task predating this feature) defaults to "now" so a legitimately
-      // running server is never nuked on the first scan for lacking a timestamp it never wrote.
+      // No .started defaults to "now", so a running server without one is never killed on the first scan.
       const startedSec = parseInt(startedStr, 10);
       const startedAt = Number.isInteger(startedSec) ? startedSec * 1000 : Date.now();
       const command = cmdB64 ? Buffer.from(cmdB64, "base64").toString("utf8") : "(unknown — recovered after restart)";

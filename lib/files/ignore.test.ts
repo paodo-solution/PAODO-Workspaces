@@ -1,13 +1,5 @@
-// The ignore contract decides what a file transfer sends and what it leaves out, in both directions.
-// The invariants worth pinning: whole-segment matching only (no false positives on similarly-named
-// files), nested occurrences are still caught, and the excluded bucket is grouped by which rule
-// matched — that grouping is what lets the results summary say "node_modules excluded (14,200 files)"
-// instead of just a bare count.
-//
-// Also pinned here: the directory walker and a flat path list agree. partitionByIgnore (a browser
-// upload, which knows every relative path up front) and ignoreRuleFor (a server walk, which decides
-// per entry as it descends) are the same contract expressed for two different traversals, and a
-// transfer built on both only round-trips cleanly while they stay in step.
+// Pins the ignore contract: whole-segment matching, nested hits caught, exclusions grouped by rule for the
+// summary, and partitionByIgnore (flat list) agreeing with ignoreRuleFor (walk), or transfers stop round-tripping.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -72,8 +64,8 @@ describe("partitionByIgnore", () => {
     },
   );
 
-  // The file tree has always hidden .git, so before the contract was unified a folder upload sent a
-  // .git the UI then refused to show. Both directions now agree it does not travel.
+  // The file tree hides .git, so uploads and downloads must agree it does not travel; otherwise a folder
+  // upload sends a .git the UI then refuses to show.
   it("excludes the workspace's own git metadata", () => {
     const { included, excluded } = partitionByIgnore([entry(".git/objects/ab/cdef"), entry("README.md")]);
     expect(included).toEqual([entry("README.md")]);

@@ -369,9 +369,7 @@ export default function HomePage() {
                   <h1 className="text-[34px] font-semibold tracking-[-0.02em] my-1.5 text-text">{selected.name}</h1>
                 )}
 
-                {/* The whole line has its own loading / retry (metadata read); the creation date shows
-                    as soon as it lands, and the disk size — a slow walk — carries a second spinner /
-                    retry beside it rather than holding the date back. */}
+                {/* The date shows with metadata; the slow disk size has its own spinner and retry. */}
                 <div className="text-text-2 text-sm min-h-5">
                   {meta.loading ? (
                     showMetaSpinner ? (

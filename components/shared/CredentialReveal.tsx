@@ -1,10 +1,5 @@
-// The one moment a minted key is visible. Shown identically wherever a credential is created — the
-// workspace API key, the workspace MCP key, the CLI token — so the "save it now, it will not be shown
-// again" warning cannot drift between them.
-//
-// The prop is `plaintext`, not `key`: React reserves `key` on every element, and the name is the more
-// honest one anyway. What this box holds is the transient plaintext, which exists here and nowhere
-// else; whether a key exists at all is `hasKey`, and that outlives this component.
+// The one moment a minted key is visible, identical for every credential. Prop is `plaintext` (`key` is
+// reserved by React).
 "use client";
 
 import { useState } from "react";

@@ -1,9 +1,5 @@
-/**
- * Folder transfers: drive_upload and drive_download of a directory copy every file under it, one at a
- * time, preserving structure — the same per-file path a single file takes, looped. These pin that the
- * whole tree travels, that the shared ignore contract still keeps node_modules/.git out, and that one
- * bad file is skipped rather than aborting the rest. Download writes host-side, like upload.
- */
+// Folder drive_upload/drive_download copy every file one at a time, preserving structure. Pins the whole tree
+// travels, the ignore contract still applies, and one bad file is skipped rather than aborting.
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import fs from "fs";
 import os from "os";

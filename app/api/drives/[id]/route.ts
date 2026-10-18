@@ -1,10 +1,5 @@
-// REST endpoint for a single shared drive.
-// GET returns it; PATCH renames or re-describes it; DELETE removes the drive, its connections, and
-// its files on disk.
-//
-// Translation only: the name rules and the not-found answers are lib/operations/drives/manage.ts, so
-// the UI and the CLI get the same refusal without either restating it. What is left here is HTTP —
-// reading the body, and turning an AppError into a status.
+// One drive: GET, PATCH rename/describe, DELETE (with its connections and files). HTTP translation only;
+// rules in lib/operations/drives/manage.ts.
 import { type NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/infra/logger";
 import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/errorResponse";

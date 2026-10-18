@@ -1,7 +1,5 @@
-/**
- * The checkpoint for the /ws handshake: host, origin, credential, in that order. Upgrades on any
- * other path are left alone. server.ts supplies the real dependencies; see requestGate.ts.
- */
+// The checkpoint for the /ws handshake: host, origin, credential, in that order. Upgrades on any
+// other path are left alone. server.ts supplies the real dependencies; see requestGate.ts.
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";

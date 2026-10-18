@@ -71,13 +71,8 @@ export function infrastructureFailureFromToolResult(
   return { code: INFRASTRUCTURE_UNAVAILABLE_CODE, message: DOCKER_NETWORK_POOL_EXHAUSTED_MESSAGE };
 }
 
-/**
- * Emit one queryable critical record for a recognized exhaustion failure.
- *
- * A blocked agent can retry tools hundreds of times. Collapse identical host-wide failures into
- * one record per window so they remain visible without rotating the surrounding evidence away.
- * Returns true whenever the error was recognized, including when this occurrence was suppressed.
- */
+// Logs one critical record per window for a recognized exhaustion, since a blocked agent retries
+// hundreds of times. Returns true whenever the error was recognized, even if suppressed.
 export function reportInfrastructureResourceExhaustion(
   logger: ErrorLogger,
   error: unknown,

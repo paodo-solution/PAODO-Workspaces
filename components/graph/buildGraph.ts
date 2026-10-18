@@ -22,8 +22,8 @@ export const driveNode = (drive: DriveItem, cell: CellPosition): Node =>
 const workspaceNode = (workspace: WorkspaceItem, cell: CellPosition): Node =>
   graphNode(workspace.id, "workspace", cell, { label: workspace.name, description: workspace.description ?? "" });
 
-/** A node the editor has never placed gets the first free cell rather than a slot derived from its
- *  index in the response — that index shifts whenever a sibling is added. */
+// A node the editor has never placed gets the first free cell rather than a slot derived from its
+// index in the response — that index shifts whenever a sibling is added.
 export function buildNodes({ workspaces, drives, graph }: Omit<GraphDocumentPayload, "connections">): Node[] {
   const placed = new Map<string, CellPosition>();
   for (const [id, stored] of Object.entries(graph.positions ?? {})) {

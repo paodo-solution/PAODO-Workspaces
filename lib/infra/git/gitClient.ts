@@ -1,13 +1,5 @@
-// Low-level git CLI wrapper: spawns git subprocesses and captures stdout/stderr/exit code.
-// Mirrors dockerClient._spawn (same sync-throw guard + proc.on("error") handling) so no new
-// dependency is pulled in. Defines IGitClient so WorkspaceVersioning can swap in a fake for
-// tests without spawning real git. This is a dumb spawner: the caller supplies the full arg
-// list (including --git-dir/--work-tree); it knows nothing about workspaces or paths.
-//
-// The capture is bounded by the SHARED helper, not a local copy. Mirroring dockerClient is how this
-// file inherited an unbounded `stdout += d.toString()` in the first place, and why capping
-// dockerClient alone left `git diff` — reachable in one agent tool call, on a file the agent itself
-// wrote — able to take the instance down. See lib/infra/spawnCapture.ts.
+// Thin git spawner (callers pass every arg) behind IGitClient, so tests can fake it. Output is capped by the
+// shared lib/infra/spawnCapture.ts, since `git diff` is one agent call away.
 import { spawn } from "child_process";
 import { SpawnCapture } from "../spawnCapture";
 

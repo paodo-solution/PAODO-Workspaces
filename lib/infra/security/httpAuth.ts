@@ -1,14 +1,5 @@
-/**
- * Request authentication and CSRF logic for the custom HTTP server's gates (lib/infra/server/).
- *
- * Kept out of the gates so the security-critical pieces — failure-based blocking, the platform-token
- * route gate and the CSRF guard — are unit-testable in isolation. requestGate.ts and upgradeGate.ts
- * are thin adapters that extract primitives off the Node request and decide the order of checks.
- *
- * How a browser proves who it is belongs to uiAuth.ts, not here: this module takes a
- * UiAuthenticator and never learns whether the deployment runs on a shared password or behind an
- * identity-aware proxy.
- */
+// Auth and CSRF logic for the server gates (lib/infra/server/), kept apart so it is unit-testable.
+// How a browser proves identity is uiAuth.ts's job; this only consumes a UiAuthenticator.
 import type { IncomingMessage } from "http";
 import { isPlatformRouteAllowed } from "./platformAccessPolicy";
 import { isLoopbackAddress } from "./rateLimit";
@@ -48,16 +39,13 @@ export class AuthFailureTracker {
 
 // The agent run and stop endpoints authenticate via Bearer API key, not Basic Auth — exempt POSTs.
 const PUBLIC_API_RE = /^\/api\/workspaces\/[^/]+\/agent(?:\/stop)?$/;
-// The Workspace MCP endpoint authenticates via its own Bearer secret (credentialStore's
-// "workspace-mcp" kind), not Basic
-// Auth, so exempt every method here. POST is the protocol channel: the route validates the secret
-// and returns 401 on failure. GET/DELETE carry no secret and the route rejects them with 405 before
-// any workspace state is touched, so exempting them leaks nothing.
+// Workspace MCP authenticates with its own Bearer key, so it is exempt from Basic Auth. GET/DELETE carry no
+// secret and get 405 before touching state.
 const PUBLIC_MCP_RE = /^\/api\/workspaces\/[^/]+\/mcp$/;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// "ok": UI credential verified (the only result that may mint a session cookie). "platform": instance token
-// verified for this method/path; "forbidden": verified, route not shared. "exempt": route checks its own.
+// "ok": UI credential verified (the only result that may mint a session cookie); "platform": instance token
+// verified for this method/path; "forbidden": verified, route not shared; "exempt": route checks its own.
 export type AuthResult = "ok" | "platform" | "exempt" | "challenge" | "unauthorized" | "forbidden" | "blocked";
 // Takes only the secret: the platform credential is instance-wide, and the route allowlist decides
 // what it may reach.
@@ -75,11 +63,8 @@ export type RequestHostValidation =
       reason: "host_missing" | "host_malformed" | "host_untrusted" | "forwarded_host_malformed" | "host_mismatch";
     };
 
-/**
- * Normalize an HTTP authority to a hostname. Ports are intentionally ignored: they are transport
- * details, while the hostname is the security boundary. URL parsing also canonicalizes case,
- * trailing dots, IDNs and bracketed IPv6 without accepting paths, credentials or header lists.
- */
+// Ports are ignored: the hostname is the security boundary. URL parsing canonicalizes case, trailing
+// dots, IDNs and IPv6 brackets while rejecting paths, credentials and header lists.
 function normalizeHostname(value: string): string | null {
   const candidate = value.trim();
   if (
@@ -142,10 +127,8 @@ export function trustedRequestHosts(
   return normalizeAll(configured, "trusted hostname");
 }
 
-/**
- * Hostnames a /ws handshake may come from. Not trustedRequestHosts: loopback and "app" have to be
- * trusted as a Host but never as an origin, or any local page opens an authenticated socket.
- */
+// Hostnames a /ws handshake may come from. Not trustedRequestHosts: loopback and "app" have to be
+// trusted as a Host but never as an origin, or any local page opens an authenticated socket.
 export function trustedRequestOrigins(
   env: TrustedHostEnvironment = { PAODO_TRUSTED_HOSTS: process.env.PAODO_TRUSTED_HOSTS },
   dev = runtimeMode.hotReload,
@@ -157,11 +140,8 @@ export function trustedRequestOrigins(
   return normalizeAll(configured, "trusted origin hostname");
 }
 
-/**
- * The public API/MCP gateway hostname, normalized, or null when this deployment runs no such gateway.
- * On that host the shared UI credential is not an identity — only machine tokens and self-validating
- * agent/MCP routes may pass. A malformed value is a startup error, mirroring trustedRequestHosts.
- */
+// The API/MCP gateway hostname, or null when there is none. The UI credential is refused on it, and a
+// malformed value is a startup error.
 export function apiRequestHost(
   env: { WORKSPACE_API_DOMAIN?: string } = { WORKSPACE_API_DOMAIN: process.env.WORKSPACE_API_DOMAIN },
 ): string | null {
@@ -172,10 +152,8 @@ export function apiRequestHost(
   return hostname;
 }
 
-/**
- * Reject Host-header poisoning before authentication or Next.js routing. A proxy may omit
- * X-Forwarded-Host; if it sends one, it must be one canonical value and agree with Host.
- */
+// Reject Host-header poisoning before authentication or Next.js routing. A proxy may omit
+// X-Forwarded-Host; if it sends one, it must be one canonical value and agree with Host.
 export function validateRequestHost(
   headers: RequestHostHeaders,
   trustedHosts: ReadonlySet<string>,
@@ -199,17 +177,8 @@ export function validateRequestHost(
   return { ok: true, hostname };
 }
 
-/**
- * Reject a WebSocket upgrade that another site started. A handshake is not covered by the same-origin
- * policy: the browser attaches whatever credential it holds for this host and, unlike a fetch, hands
- * the calling page a readable channel — so without this check any page that knows a workspace id can
- * silently read a live agent session. Origin is set by the browser and script cannot forge it.
- *
- * Absent is refused rather than waved through as a non-browser client, because nothing but a browser
- * connects to /ws. `null` — what a sandboxed iframe sends — fails to parse and is refused with it.
- *
- * Takes trustedRequestOrigins, NOT trustedRequestHosts — see there for why the two differ.
- */
+// Handshakes skip the same-origin policy, so without this any site could read a live session. Takes
+// trustedRequestOrigins; a missing or `null` Origin is refused, since only browsers connect to /ws.
 export function validateRequestOrigin(
   origin: string | string[] | undefined,
   trustedOrigins: ReadonlySet<string>,
@@ -226,21 +195,17 @@ export function validateRequestOrigin(
   return hostname !== null && trustedOrigins.has(hostname);
 }
 
-/**
- * The primitives checkAuth/isCsrf need off a request — extracted so the core logic never touches
- * Node's http types and can be unit-tested with plain objects. `assertion` is the raw value of the
- * header the configured UI mode reads, empty in every mode that reads none. `hostname` is the
- * already-validated request host, used to refuse the UI credential on the API gateway host.
- * `isUpgrade` tells a mode whether this is the /ws handshake, the one request that may fall back to
- * a cookie — see uiAuth.ts.
- */
+// Plain-object view of a request, so the auth logic is testable without Node's http types.
 export type AuthRequest = {
   method: string;
   pathname: string;
   authorization: string;
   cookie: string;
+  /** Raw value of the header the UI mode reads; empty in modes that read none. */
   assertion: string;
+  /** Already-validated host, used to refuse the UI credential on the API gateway host. */
   hostname: string;
+  /** The /ws handshake: the one request that may fall back to a cookie (see uiAuth.ts). */
   isUpgrade: boolean;
 };
 
@@ -269,21 +234,8 @@ export function authRequestFromIncoming(
   };
 }
 
-/**
- * Extracts the client IP. This address is written to the audit trail and keys the brute-force
- * lockout, so a forgeable value is both a poisoned record and a lockout an attacker steps around by
- * rotating a header. cf-connecting-ip is the only forwarded name read: x-real-ip and x-forwarded-for
- * are set by nothing in the chain, so a caller picks their own value. Falls back to the socket peer
- * (the Docker gateway in production — useless for attribution, but never a lie).
- *
- * REQUIRES a hop that overwrites cf-connecting-ip on every route it serves. Cloudflare does at its
- * edge, and deploy/caddy/Caddyfile's forwardedHeaders snippet does for the public API host.
- * A deployment fronted by anything else must strip and re-set it there too, or the caller chooses
- * their own rate-limit bucket. A forwarded loopback address is refused outright — no edge sees a real
- * client at one, and the limiter exempts loopback, so honouring it would waive every limit on demand.
- *
- * Distinct from realtime/clientIp.ts, which reads a NextRequest.
- */
+// Keys the audit trail and lockout, so only cf-connecting-ip is read: every front hop must overwrite it
+// (Cloudflare, Caddyfile). Loopback is refused since the limiter exempts it; falls back to the socket.
 export function getClientIp(req: IncomingMessage): string {
   const forwarded = req.headers["cf-connecting-ip"];
   if (typeof forwarded === "string" && forwarded.trim() && !isLoopbackAddress(forwarded.trim())) {
@@ -318,11 +270,8 @@ export function checkAuth(
       return "unauthorized";
     }
 
-    // Authorization second, and deliberately NOT a tracked failure. Default-deny: a route with no
-    // mapped permission never accepts the platform credential, so adding a UI route cannot silently
-    // create a programmatic capability. Counting these would be wrong and actively harmful — the
-    // tracker is shared with the UI credential, so a misconfigured script polling an unshared route
-    // would lock its own operator out of the web interface after five requests.
+    // Default-deny, and not counted as a failure: the tracker is shared with the UI login, so a script polling an
+    // unmapped route would lock its operator out.
     if (!isPlatformRouteAllowed(req.method, req.pathname)) return "forbidden";
 
     tracker.clear(ip);
@@ -346,19 +295,8 @@ export function checkAuth(
   return "ok";
 }
 
-/**
- * Auth for the /ws upgrade. The configured mode is tried first, so a failed attempt still feeds the
- * brute-force tracker, then `verifyCookie` runs as a fallback for the credential a browser cannot
- * attach to a handshake.
- *
- * In `basic` mode that fallback is the minted session cookie: Chrome and Firefox reuse cached Basic
- * credentials on a same-origin upgrade but WebKit does not, so the cookie — issued only after Basic
- * succeeded on an earlier request — proves the same thing one hop removed. In `iap` mode server.ts
- * passes a verifier that always fails: the proxy's own header or cookie is already checked above,
- * and no session cookie is ever minted.
- *
- * Neither "platform" nor "exempt" is accepted here: those credentials are HTTP-only.
- */
+// Tries the UI mode first so failures feed the tracker, then the session cookie WebKit needs since it
+// won't resend Basic on upgrade (iap passes a never-true verifier). Platform and exempt are HTTP-only.
 export function checkWsAuth(
   ip: string,
   req: AuthRequest,
@@ -375,9 +313,8 @@ export function checkWsAuth(
   return verifyCookie(req.cookie) ? "ok" : result;
 }
 
-// CSRF guard: browsers attach cached Basic Auth to cross-origin requests too. Browsers always send
-// Sec-Fetch-Site; reject cross-site mutations. Requests without the header (non-browser clients,
-// e.g. the external agent API using Bearer) are allowed.
+// CSRF: browsers send Sec-Fetch-Site and attach cached Basic Auth cross-origin, so cross-site mutations are
+// refused. Requests without the header (non-browser) pass.
 export function isCsrf(req: { method: string; pathname: string; secFetchSite: string | undefined }): boolean {
   if (!MUTATING_METHODS.has(req.method)) return false;
   if (!req.pathname.startsWith("/api/")) return false;

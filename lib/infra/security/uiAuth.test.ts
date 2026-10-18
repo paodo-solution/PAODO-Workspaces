@@ -1,6 +1,5 @@
-// The mode seam. The dangerous failures are a mode that authenticates something it should not
-// (unset credentials, an unverified assertion) and a misconfiguration that resolves instead of
-// throwing — a deployment that boots with the wrong mode is one that guards nothing.
+// The mode seam. Dangerous failures: a mode authenticating what it should not (unset credentials, unverified
+// assertions) and a misconfiguration that resolves instead of throwing.
 import { describe, it, expect } from "vitest";
 
 import { basicAuthenticator, resolveUiAuth, safeEqual, type UiAuthEnvironment } from "./uiAuth";

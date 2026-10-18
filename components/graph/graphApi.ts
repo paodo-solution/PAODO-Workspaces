@@ -73,8 +73,8 @@ export function fetchGraphDocument(): Promise<GraphDocumentPayload> {
   ]).then(([workspaces, graph, drives, connections]) => ({ workspaces, graph, drives, connections }));
 }
 
-/** Answers with the edges as stored, in the order they were sent: the app mints each id, so these are
- *  what the canvas must adopt for a newly drawn edge. */
+// Answers with the edges as stored, in the order they were sent: the app mints each id, so these are
+// what the canvas must adopt for a newly drawn edge.
 export async function saveGraph(edges: GraphEdge[], positions: Record<string, CellPosition>): Promise<GraphEdge[]> {
   const response = await fetch("/api/workspace-graph", jsonBody("PUT", { edges, positions }));
   if (!response.ok) throw new Error((await readApiError(response, `Save failed (${response.status})`)).error);

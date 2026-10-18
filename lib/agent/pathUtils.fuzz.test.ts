@@ -1,14 +1,5 @@
-// The containment guard's closure property, swept over ~86k generated paths.
-//
-// pathUtils.test.ts pins named cases. This file pins the invariant those cases are examples of:
-// whatever normalizeRelpath/normalizeDirPath emit is ALWAYS a clean workspace-relative path — no
-// leading slash, no ".." segment, and unchanged if fed back in. That is what makes accepting the
-// container's "/workspace/x" spelling a rename rather than a widening: the output set is exactly
-// the set of paths that were already reachable by typing them relatively, so no file became
-// addressable that was not addressable before.
-//
-// STRICT below is the guard reduced to its harshest form — reject anything absolute or ascending.
-// Every emitted path must survive it untouched, whichever spelling produced it.
+// Closure property over ~86k paths: normalizeRelpath/normalizeDirPath always emit a clean relative path
+// (no leading slash, no "..", idempotent) that survives STRICT, so no new file became addressable.
 
 import { describe, it, expect } from "vitest";
 import path from "path";

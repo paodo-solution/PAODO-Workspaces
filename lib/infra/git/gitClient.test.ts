@@ -1,12 +1,5 @@
-// GitClient is the second spawner, and it inherited the unbounded capture from the first: its header
-// says it "mirrors dockerClient._spawn", and capping dockerClient did nothing for it. It is
-// agent-reachable in one tool call — the agent writes a large file, the automatic post-run snapshot
-// commits it, and workspace_history diffs it, producing stdout proportional to what was written. A
-// RangeError from `stdout +=` in a "data" handler does not reject this promise; it reaches server.ts's
-// uncaughtException guard and exits the instance.
-//
-// So what these tests pin is that this spawner is bounded by the SAME ceiling as the other one, and
-// that the two diff paths say when they were cut instead of returning a prefix that reads as complete.
+// GitClient copied dockerClient's unbounded capture: a large file, snapshotted and diffed, could crash the
+// instance in one tool call. Pins the same ceiling, and that both diff paths say when they were cut.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";

@@ -1,13 +1,5 @@
-// Builds the MCP surface for a single workspace: it exposes every skill the workspace declares in
-// .skills/ as an MCP tool and runs them through the same validated skill path A2A uses
-// (executeSkill), bypassing only the Agent Graph check since an external MCP client is not
-// a connected workspace. Kept transport-agnostic so the list/call logic is unit-testable; the HTTP
-// wiring lives in the route handler.
-//
-// There is no per-skill publication step: the endpoint being enabled plus a valid bearer secret IS
-// the authorization decision, exactly as an Agent Graph edge is for A2A. `.skills/` is therefore
-// the single source of truth, and it is read live on every request — a skill the workspace agent
-// writes is callable immediately, one it deletes stops being listed and stops being callable.
+// MCP surface for one workspace: each .skills/ skill as a tool, run through executeSkill (minus the graph check).
+// Enabled + valid key is the authorization; skills are read live on every request.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -117,11 +109,8 @@ function toolError(text: string): CallToolResult {
   return { isError: true, content: [{ type: "text", text }] };
 }
 
-/**
- * Builds a fresh low-level MCP Server bound to one workspace, with tools/list and tools/call wired
- * to the workspace's declared skills. A new instance is created per request in the stateless HTTP
- * handler, so nothing here holds cross-request state.
- */
+// An MCP server exposing one workspace's skills as tools. Built per request by the stateless handler,
+// so it holds no cross-request state.
 export function buildWorkspaceMcpServer(workspaceId: string, deps: WorkspaceMcpDeps = {}): Server {
   const description = getStore().getWorkspace(workspaceId)?.description?.trim();
   const server = new Server(

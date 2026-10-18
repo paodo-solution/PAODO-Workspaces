@@ -27,13 +27,8 @@ function formatAmount(cost: number, currency: Currency): string {
 
 type SessionCost = Pick<LightSession, "cost" | "costByCurrency">;
 
-/**
- * A session's total, spelled out per currency — the only correct rendering when a run mixed them.
- *
- * A session with no priced turn renders "—" rather than a misleading $0, and one that mixed
- * currencies renders its parts joined by "+", never as one number: euros and dollars are not
- * addable, and the per-currency subtotals are each individually true.
- */
+// Unpriced renders "—", not $0. Mixed currencies are joined with "+", never summed: euros and dollars
+// don't add.
 export function formatSessionCost(session: SessionCost): string {
   const parts = Object.entries(session.costByCurrency) as Array<[Currency, number]>;
   if (parts.length === 0) return "—";

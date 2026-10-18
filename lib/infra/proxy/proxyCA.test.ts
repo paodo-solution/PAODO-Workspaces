@@ -1,6 +1,5 @@
-// The proxy secret is what stops one workspace from assuming another's identity at the credential
-// proxy. These pin that a container gets a stable, workspace-specific secret and that verification
-// rejects anything but the exact value derived from that workspace's id.
+// The proxy secret stops one workspace assuming another's identity. Pins that it is stable and
+// workspace-specific, and that verification accepts only the exact value derived from that id.
 
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import forge from "node-forge";

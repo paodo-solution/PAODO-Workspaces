@@ -1,6 +1,5 @@
-// Captures a whole deployment as one coherent set: graph + database + every workspace under
-// <instance>/<stamp>-<id>/, with a parent backup.json that defines the set. Filesystem only —
-// shipping the set to S3 is the caller's concern, so this stays testable without a network.
+// Captures a whole deployment (graph, database, every workspace) as one set under <instance>/<stamp>-<id>/ with
+// a backup.json. Filesystem only; shipping to S3 is the caller's job.
 import path from "path";
 import { randomBytes } from "crypto";
 import { writeFile } from "fs/promises";

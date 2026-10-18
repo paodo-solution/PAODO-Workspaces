@@ -1,10 +1,5 @@
-// Loads the workspace registry for the home page and owns every mutation against it (create /
-// rename / delete), re-reading the list after each so the sidebar reflects the server's ordering
-// rather than a locally patched copy.
-//
-// Mutations resolve to a MutationResult instead of throwing: a rejected name (duplicate, invalid)
-// is a normal outcome the caller renders inline next to the input, not an error boundary case.
-// Naming policy stays with the caller — `create` persists exactly the name it is given.
+// The home page's workspace list and its create/rename/delete, re-reading after each. Mutations return a
+// MutationResult, since a rejected name is shown inline, not thrown.
 "use client";
 
 import { useState, useCallback } from "react";

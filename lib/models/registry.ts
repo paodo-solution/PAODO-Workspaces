@@ -1,22 +1,11 @@
-/**
- * Curated, hand-maintained catalog of the models offered in the per-workspace model picker: one
- * record per model, holding its id, the effort levels it accepts and any fact only its vendor needs.
- *
- * To add or retire a model, edit its provider's list below — nothing else names a model. Rates are
- * separate: they come from the vendored price list (./pricing.ts), and `npm run update-pricing`
- * FAILS if a model listed here prices in neither of its sources.
- *
- * Each list runs cheapest to priciest: the first entry is what the picker highlights and what
- * defaultModelFor resolves a bare provider choice to. Within a tier the newer model leads.
- */
+// The only place models are named, for the picker. Lists run cheapest first (the first is the default),
+// and `npm run update-pricing` fails if one can't be priced.
 import type { ReasoningEffort } from "./llmSelection";
 
 export interface ModelSpec {
   id: string;
-  /**
-   * The reasoning-effort levels the model accepts, quietest first. Drives the picker and API-side
-   * validation alike. "none" means thinking can be switched off; an empty list means no dial.
-   */
+  // The reasoning-effort levels the model accepts, quietest first. Drives the picker and API-side
+  // validation alike. "none" means thinking can be switched off; an empty list means no dial.
   efforts: readonly ReasoningEffort[];
 }
 
@@ -90,17 +79,8 @@ const MISTRAL_MODELS: readonly ModelSpec[] = [
   { id: "mistral-large-4", efforts: ["none", "high"] },
 ];
 
-/**
- * Serverless ids — the bare names; the `qwen/…:fp8` forms are Dedicated Deployment only. Flash
- * leads: it alone prices cached input, at a fifth of its own rate, which is most of a loop's input.
- *
- * Levels are transcribed from Scaleway's product catalog and CHECKED IN RATHER THAN FETCHED: they
- * decide what the picker offers, so a vendor outage must not narrow a stored choice. Instead
- * `npm run update-pricing` re-reads the same rows and FAILS on any drift from these records.
- *
- * The gateway does not enforce them. It accepts every level on every model and quietly collapses
- * an unsupported one to the model's default, so these records are the only place it is written down.
- */
+// Serverless ids; Flash leads since only it prices cached input. Levels are checked in, not fetched,
+// and the gateway doesn't enforce them; `update-pricing` fails on drift.
 const SCALEWAY_MODELS: readonly ScalewayModelSpec[] = [
   { id: "deepseek-v4-flash-0731", efforts: ["none", "low", "high", "max"], fallbackEffort: "high" },
   { id: "deepseek-v4.1-flash", efforts: ["none", "low", "high", "max"], fallbackEffort: "high" },

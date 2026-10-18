@@ -18,11 +18,8 @@ function matchRank(path: string, query: string): number | null {
   return null;
 }
 
-/**
- * Candidates matching `query`, best first, capped at `limit`. An empty query keeps the incoming order
- * (already directories-first, alphabetical from flattenTree). Matches are ranked by matchRank and
- * ties broken by original order, so the list is stable as the user types.
- */
+// Best matches first, capped at `limit`; an empty query keeps the incoming order. Ties keep original
+// order, so the list is stable while typing.
 export function filterMentions(candidates: TreeNode[], query: string, limit: number): TreeNode[] {
   const q = query.toLowerCase();
   if (!q) return candidates.slice(0, limit);
@@ -36,10 +33,8 @@ export function filterMentions(candidates: TreeNode[], query: string, limit: num
   return ranked.slice(0, limit).map((r) => r.node);
 }
 
-/**
- * Shorten a path for display by dropping leading ancestors, keeping the tail (the most identifying
- * part) and prefixing "…/". The basename is never truncated. Returns the path unchanged when it fits.
- */
+// Shorten a path for display by dropping leading ancestors, keeping the tail (the most identifying
+// part) and prefixing "…/". The basename is never truncated. Returns the path unchanged when it fits.
 export function truncateMiddlePath(path: string, maxLen: number): string {
   if (path.length <= maxLen) return path;
   const segments = path.split("/");

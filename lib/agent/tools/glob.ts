@@ -1,6 +1,4 @@
-// Agent tool that finds files in the workspace matching a glob pattern.
-// Supports *, ?, and ** segments. Dot-files and dot-directories are excluded automatically.
-// Returns paths relative to the workspace root, sorted alphabetically.
+// glob: workspace files matching *, ? and **, dot-files excluded, as sorted relative paths.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

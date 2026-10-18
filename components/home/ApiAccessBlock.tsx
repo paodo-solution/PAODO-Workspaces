@@ -1,7 +1,5 @@
-// Home page block for managing a workspace's external API access.
-// Enable/disable the channel, generate a key (plaintext shown once), rotate it, revoke it.
-// The lifecycle lives in useCredential and the chrome in CredentialPanel, both shared with the MCP
-// block — only the endpoint, the titles and the connection URL are specific to the API channel.
+// Home block for a workspace's API access: toggle, generate, rotate, revoke. Shares useCredential and
+// CredentialPanel with the MCP block.
 "use client";
 
 import CredentialPanel from "@/components/shared/CredentialPanel";

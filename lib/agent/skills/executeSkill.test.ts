@@ -4,10 +4,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { BaseMessage } from "@langchain/core/messages";
 
-// Redirect WORKSPACES_ROOT before any infra module reads it at import time
-// (executeSkill dynamically imports ../tools, which pulls in the store singletons).
-// The dir never needs to exist — every read fails soft to an empty cache and the
-// injected fakes below keep executeSkill from touching disk.
+// Redirect WORKSPACES_ROOT before infra modules read it at import. The dir need not exist: reads fail soft
+// and the injected fakes keep executeSkill off disk.
 vi.hoisted(() => {
   process.env.WORKSPACES_ROOT = `/tmp/executeskill-test-data-${process.pid}`;
 });
@@ -20,10 +18,8 @@ import * as broker from "../runBroker";
 import { createWorkspaceRunTimeout } from "../runTimeout";
 import { ExecutionCapacity } from "../executionCapacity";
 
-// executeSkill is the single enforcement point of the skill contract — every guarantee
-// the PRD makes (authz, both-sides validation, bounded correction retries) lives here.
-// The dangerous bugs are enforcement bypasses: an unauthorized caller getting through,
-// bad args reaching the callee, or unvalidated output reaching the caller.
+// executeSkill is the skill contract's only enforcement point. The dangerous bugs are bypasses: an
+// unauthorised caller, bad args reaching the callee, or unvalidated output reaching the caller.
 
 const SKILL: SkillDefinition = {
   id: "check-stock",
@@ -577,9 +573,8 @@ describe("executeSkill — callee run and output contract", () => {
   });
 
   it("halts the callee when its own conversation is stopped from the broker (callee-tab Stop)", async () => {
-    // The callee's run is threaded with its broker session's abort signal, so a Stop on the
-    // callee's own tab (broker.stop on the callee conversation) reaches the runner — without this
-    // wiring stop() aborts a controller no one observes and the callee runs on regardless.
+    // The callee's run gets its broker session's abort signal, so Stop on the callee's tab reaches the runner;
+    // without it stop() aborts an unobserved controller.
     const CONV = "conv-callee-stop";
     let sawAbort = false;
     const received: AgentEvent[] = [];

@@ -1,10 +1,5 @@
-// Per-workspace view of the proxy-injection vault. Secret values must stay recoverable because the
-// proxy injects them. This vault and its master key are independent from the provider-key pair, so
-// the sidecar can decrypt exactly this credential class and no other.
-// The values are never exposed through the API — only metadata (name, allowed hosts) is returned.
-// Each secret gets a stable opaque proxy token (e.g. __pxy_wsId_NAME__) injected into the
-// container environment instead of the real value. The credential proxy swaps the token for
-// the real value in outbound HTTPS headers.
+// Per-workspace secret vault (its own key, separate from provider keys). The API returns metadata only; the
+// container gets opaque proxy tokens, swapped for real values on outbound HTTPS.
 import { createHash } from "crypto";
 import { createAuditLogger } from "../logger";
 import {
@@ -44,8 +39,8 @@ export function normalizeDomain(input: string): string {
 
 const store: Store = workspaceSecretRecords();
 
-/** Production startup calls this before accepting requests to prevent an empty fallback from
- * overwriting an existing store that could not be read or decrypted. */
+// Production startup calls this before accepting requests to prevent an empty fallback from
+// overwriting an existing store that could not be read or decrypted.
 export function assertSecretStoreAvailable(): void {
   assertWorkspaceSecretVaultAvailable();
 }
@@ -66,14 +61,8 @@ function save(next: Store, context: { operation: string; wsId?: string; name?: s
   commitWorkspaceSecrets(next, context);
 }
 
-// Versioned opaque values placed in the container instead of real secret values.  They must be
-// safe to pass to common CLIs as well as HTTP clients: a surprising number validate `--token`
-// locally and reject punctuation before the request reaches our proxy.  `p` + SHA-256 hex is
-// deliberately alphanumeric-only, stable, and long enough to be unambiguous in a request.
-//
-// This is not an authentication secret.  Credential injection is separately gated by the
-// container's Proxy-Authorization workspace credential, and a token only maps to a real value for
-// its exact allowlisted host.
+// `p` + SHA-256 hex: alphanumeric so CLIs that validate tokens locally accept it. Not a secret: injection
+// also needs the workspace's proxy credential and the exact host.
 export const PROXY_TOKEN_FORMAT_VERSION = "v2";
 
 export function proxyToken(wsId: string, name: string): string {
@@ -81,25 +70,8 @@ export function proxyToken(wsId: string, name: string): string {
   return `p${digest}`;
 }
 
-/**
- * Names a secret may not be injected under, because the container already uses them for something
- * the secret would silently replace.
- *
- * Secrets reach the container as `docker exec -e NAME=<token>`, and an exec-level `-e` outranks the
- * container's own environment. A secret named after the credential proxy's address or one of the
- * CA-trust variables (containerCredentials.ts) would therefore swap that wiring for an opaque token
- * and break the workspace's HTTPS in a way that looks like anything except a naming collision. The
- * rest are the shell's own footing — PATH, HOME, BASH_ENV and the loader vars — which decide what a
- * command resolves to before it runs.
- *
- * Lives here, next to the token derivation, because BOTH ends need it: validateSecret rejects these
- * names at the write boundary so a user gets a real error message, and buildExecEnv drops them at
- * the injection point so a secret stored before this rule existed can't still shadow the wiring on
- * every command. The write gate is the message; this is the boundary.
- *
- * GH_TOKEN is deliberately NOT reserved — buildExecEnv sets it from whichever secret is scoped to
- * github.com, so a user naming their token that outright is the expected case, not a collision.
- */
+// Names a secret can't use: exec `-e` outranks the container env, so they'd replace proxy, CA or shell
+// wiring. validateSecret and buildExecEnv both enforce it; GH_TOKEN is allowed on purpose.
 export const RESERVED_SECRET_NAMES: ReadonlySet<string> = new Set([
   // Credential-proxy routing and trust (buildRunEnv).
   "HTTP_PROXY",
@@ -146,11 +118,8 @@ export function listSecretMeta(wsId: string): { name: string; createdAt: string;
   return Object.entries(ws).map(([name, e]) => ({ name, createdAt: e.createdAt, domains: e.domains }));
 }
 
-// Pick which secret should back git/gh auth for github.com. Selection is keyed off the scoped
-// DOMAIN, not the secret's name, so a user may name their token anything. Its opaque proxy token is
-// injected as GH_TOKEN into the container, where a static git credential helper and gh both consume
-// it. Tiebreak when several secrets are scoped to github.com: exact GITHUB_TOKEN, then GH_TOKEN,
-// then any name mentioning GITHUB/GH, else the first such secret. Returns null when none qualify.
+// Picks the github.com-scoped secret to inject as GH_TOKEN (keyed by domain, not name). Tiebreak: GITHUB_TOKEN,
+// GH_TOKEN, any GITHUB/GH name, then the first; null if none.
 export function selectGithubTokenSecret(metas: { name: string; domains: string[] }[]): string | null {
   const candidates = metas.filter((m) => m.domains.includes("github.com")).map((m) => m.name);
   if (candidates.length === 0) return null;
@@ -196,9 +165,7 @@ export function listSecretWorkspaceIds(): string[] {
   return Object.keys(store);
 }
 
-// Re-read the workspace-secret vault into memory. The credential-proxy sidecar runs separately from
-// the app that writes it, so it reloads on file change to keep injected values current. Failures fail
-// closed: a missing or unreadable vault clears every live injection rule.
+// The sidecar reloads on file change; an unreadable vault clears every rule (fails closed).
 export function reloadSecretStore(): void {
   reloadWorkspaceSecretVault();
 }

@@ -1,10 +1,5 @@
-// Agent tool for reading the workspace's version history (the platform-owned per-run snapshots,
-// the same ones shown in the UI History panel). It is a SERVER-SIDE tool: it calls the versioning
-// service in-process rather than through the container shell, so the versioning git-dir stays
-// outside the agent's reach. The `sha` argument selects the mode — no sha lists snapshots, sha
-// shows that snapshot's diff. Output is token-optimized: numeric churn (not +/- glyphs),
-// boilerplate stripped from diffs, git-standard @@ hunk headers kept, and hard caps so one fat
-// snapshot can't flood the context.
+// Reads the platform's per-run snapshots in-process, keeping the versioning git-dir out of the agent's reach.
+// No sha lists snapshots; a sha shows its diff, compact and capped.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -80,10 +75,8 @@ function parseOverviewLast(last: z.infer<typeof OVERVIEW_LAST> | undefined): num
   return Math.abs(n);
 }
 
-// Strip the per-file boilerplate git emits (diff --git / index / --- / +++) that carries no
-// signal for the agent, while keeping the @@ hunk headers and +/- lines it is trained on. Then
-// page the result by offset/limit and report the visible range vs the total so truncation is
-// always quantified — the agent can tell exactly how much it has and page the rest.
+// Strips git's per-file boilerplate but keeps @@ headers and +/- lines, then pages by offset/limit and reports
+// the visible range against the total.
 function formatDetail(raw: string, offset = 0, limit = MAX_DIFF_LINES): string {
   const out: string[] = [];
   for (const line of raw.split("\n")) {

@@ -7,11 +7,8 @@ import { isPlatformRouteAllowed } from "./security/platformAccessPolicy";
 
 const CADDYFILE = path.resolve(__dirname, "../../deploy/caddy/Caddyfile");
 
-/**
- * Every named matcher in the Caddyfile, as the method/path pair it admits. Matchers pair one
- * `method` line with one `path_regexp` line, which is what makes them a faithful mirror of the
- * policy's method-plus-pathname rules.
- */
+// Each Caddyfile matcher as the method/path pair it admits; one `method` plus one `path_regexp` mirrors the
+// policy's method-plus-pathname rules.
 function gatewayMatchers(): Array<{ name: string; method: string; pattern: RegExp }> {
   const source = fs.readFileSync(CADDYFILE, "utf-8");
   const matchers: Array<{ name: string; method: string; pattern: RegExp }> = [];
@@ -26,11 +23,8 @@ function gatewayMatchers(): Array<{ name: string; method: string; pattern: RegEx
   return matchers;
 }
 
-/**
- * The two routes the gateway forwards that the platform policy does not cover. They authenticate
- * per-workspace inside the route handler instead of against the instance-wide CLI key, so they are
- * deliberately absent from platformAccessPolicy and must be excluded from the comparison.
- */
+// Forwarded routes the platform policy omits: they authenticate per workspace in the handler, not against
+// the CLI key, so they are excluded from the comparison.
 const ROUTE_AUTHENTICATED = new Set(["workspaceAgent", "workspaceMcp"]);
 
 function gatewayAllows(matchers: ReturnType<typeof gatewayMatchers>, method: string, pathname: string): boolean {

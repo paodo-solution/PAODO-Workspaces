@@ -1,6 +1,4 @@
-// In-memory store for the agent's task checklist, scoped per workspace.
-// Todos are written by the agent's todo_write tool during multi-step tasks and read by the UI to show progress.
-// State is not persisted to disk — it resets when the server restarts.
+// In-memory per-workspace checklist written by todo_write and read by the UI; resets on restart.
 export type TodoStatus = "pending" | "in_progress" | "completed";
 export type TodoPriority = "low" | "medium" | "high";
 

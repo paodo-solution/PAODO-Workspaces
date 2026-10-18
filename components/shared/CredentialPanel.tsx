@@ -1,20 +1,5 @@
-// Card chrome for a workspace access channel: title, status, on/off switch, then the generate /
-// rotate / revoke controls and the reveal-once key. Shared by the API-access and MCP home blocks,
-// which differ only in the extra content MCP puts in the middle.
-//
-// Every channel calls its credential a "key", so this file says so in plain strings. It used to take
-// a `noun` prop, which let one channel say "secret" while another said "key" for the same thing —
-// and on the home page "secret" also means a third-party env-var secret, a different primitive
-// entirely. One word per concept is the point; a prop is how it drifted.
-//
-// The card shows two independent axes, and the controls for each are gated only by their own:
-//   - the switch opens or closes the channel;
-//   - `hasKey` decides whether you see Generate, or Rotate and Revoke.
-// So a key can be issued before the channel opens, and a leaked one destroyed after it closes —
-// neither action has to move the switch to reach the other axis.
-//
-// The CLI access modal deliberately does NOT use this — it is a modal, not a card — but it drives the
-// same useCredential hook and reuses CredentialReveal, which is where the real duplication was.
+// Card for a workspace access channel (API access, MCP). Switch and key controls are independent, so a key can
+// be issued before opening or revoked after closing. Says "key": "secret" means env-var secrets on this page.
 "use client";
 
 import type { ReactNode } from "react";
@@ -107,8 +92,7 @@ export default function CredentialPanel({
         </p>
       )}
 
-      {/* Describes what an open channel does, and MCP's tools and URL. Both are true only of a live
-          channel, so unlike the credential controls they stay behind the switch. */}
+      {/* Channel and MCP details are true only of a live channel, so they stay behind the switch. */}
       {enabled && (
         <>
           <p className="m-0 text-xs text-text-3">{description}</p>
@@ -138,10 +122,8 @@ export default function CredentialPanel({
   );
 }
 
-/**
- * Names both axes at once. A closed channel that still holds a key says so rather than reading as a
- * bare "Disabled", which would suggest the key was gone and leave no reason to look for Revoke.
- */
+// Names both axes at once. A closed channel that still holds a key says so rather than reading as a
+// bare "Disabled", which would suggest the key was gone and leave no reason to look for Revoke.
 function statusLabel(enabled: boolean, hasKey: boolean): string {
   if (!enabled) return hasKey ? "Disabled · key exists" : "Disabled";
   return hasKey ? "Key active" : "Key required";

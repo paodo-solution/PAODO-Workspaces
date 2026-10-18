@@ -1,6 +1,4 @@
-// Production singleton for workspace versioning. Exported from its own module (rather than
-// services.ts) so leaf modules like workspaceStore.ts can wire it in without importing services.ts
-// and creating an import cycle.
+// Versioning singleton in its own module, so the registry can use it without importing services.ts (a cycle).
 import { WorkspaceVersioning } from "./workspaceVersioning";
 
 export const defaultWorkspaceVersioning = new WorkspaceVersioning();

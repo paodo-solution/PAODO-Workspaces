@@ -2,9 +2,7 @@
 import path from "path";
 export const WORKSPACES_ROOT = process.env.WORKSPACES_ROOT ?? path.resolve(process.cwd(), "data");
 
-// The agent's home directory, held on the same durable storage as the workspace itself so that
-// everything it installs there survives the container being recreated. Dot-prefixed like the other
-// internal stores (.proxy-ca, .versioning) so it is never mistaken for a workspace directory.
+// Durable agent home, so installs survive container recreation; dot-prefixed to never look like a workspace.
 export const HOMES_DIR_NAME = ".homes";
 
 /** The workspace registry, captured in the database archive beside the rows it indexes. */
@@ -33,10 +31,8 @@ export const workspaceHomeDir = (workspaceId: string, root: string = WORKSPACES_
 export const workspaceHomeSeededMarker = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   `${workspaceHomeDir(workspaceId, root)}.seeded`;
 
-/**
- * System packages this workspace installed, replayed into a rebuilt container. A sibling of the
- * home for the same reason as the marker: durable, but not writable by the agent it describes.
- */
+// System packages this workspace installed, replayed into a rebuilt container. A sibling of the
+// home for the same reason as the marker: durable, but not writable by the agent it describes.
 export const workspaceAptRecipeFile = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   `${workspaceHomeDir(workspaceId, root)}.apt.json`;
 

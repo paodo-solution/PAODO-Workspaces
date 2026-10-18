@@ -26,11 +26,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * One edge, checked and passed on whole — fields this layer has no opinion about (the handles the
- * canvas recorded) belong to the editor. A missing id becomes "" rather than being refused: the store
- * mints every id it keeps, and only a string reaches the prefix check that decides if one survives.
- */
+// Checks an edge and passes it on whole, canvas handles included. A missing id becomes "", since the
+// store mints every id it keeps.
 function checkedEdge(value: unknown, index: number, exists: (workspaceId: string) => boolean): GraphEdge {
   const at = (field: string) => `edges[${index}].${field}`;
   if (!isPlainObject(value)) {
@@ -52,10 +49,8 @@ function checkedEdge(value: unknown, index: number, exists: (workspaceId: string
   return { ...value, id: typeof value.id === "string" ? value.id : "", source, target };
 }
 
-/**
- * Replace the stored graph with the document sent. Every edge is checked before any is written, so a
- * document with one dangling end leaves the stored graph exactly as it was rather than losing an edge.
- */
+// Replace the stored graph with the document sent. Every edge is checked before any is written, so a
+// document with one dangling end leaves the stored graph exactly as it was rather than losing an edge.
 export function saveWorkspaceGraph(input: SaveWorkspaceGraphInput, deps: GraphDocumentDeps = defaultDeps()): GraphFile {
   const submitted = input.edges ?? [];
   if (!Array.isArray(submitted)) {

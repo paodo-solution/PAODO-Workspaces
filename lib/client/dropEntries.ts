@@ -1,8 +1,7 @@
 import type { PathedFile } from "@/lib/client/hooks/useFileUpload";
 
-// Minimal shape of the (non-standard but universally supported) FileSystem entry API used by
-// drag-and-drop. A browser drop only exposes top-level dataTransfer.files, so descending into
-// dropped folders requires webkitGetAsEntry() + a directory reader.
+// The FileSystem entry API used by drag-and-drop: a drop only exposes top-level files, so folders need
+// webkitGetAsEntry() and a directory reader.
 interface FsEntry {
   isFile: boolean;
   isDirectory: boolean;
@@ -46,10 +45,8 @@ export interface DroppedFiles {
   hasDirectory: boolean;
 }
 
-/**
- * Flatten a drag-and-drop DataTransfer into files with workspace-relative paths, recursing into
- * any dropped folders. Falls back to dataTransfer.files if the entry API is unavailable.
- */
+// Flatten a drag-and-drop DataTransfer into files with workspace-relative paths, recursing into
+// any dropped folders. Falls back to dataTransfer.files if the entry API is unavailable.
 export async function readDroppedEntries(dt: DataTransfer): Promise<DroppedFiles> {
   // getAsEntry must be called synchronously before any await — the items list is cleared after.
   const entries = Array.from(dt.items)

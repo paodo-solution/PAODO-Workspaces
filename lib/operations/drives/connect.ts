@@ -1,14 +1,5 @@
-// Drive↔workspace connection use cases.
-//
-// The rule these own is referential integrity: a connection names two entities, and it is only
-// meaningful while both exist. The store cannot enforce that — it holds drives and connections but
-// knows nothing about the workspace registry — so the check has to live above it, and above it used
-// to mean "in the route". A dangling connection is not a harmless row: getDrivesForWorkspace and
-// resolveDriveDir project connections into what an agent can address by name, and the graph editor
-// renders an edge for each one.
-//
-// Input is validated before either lookup, so a caller that sent nothing at all is told what the
-// request needs rather than which of its two absent entities was missed first.
+// Drive↔workspace connections, which must reference two existing entities: the store can't check the
+// workspace side, and agents and the graph act on every connection. Input is validated before lookups.
 import { AppError, requireNonEmptyString } from "@/lib/errors/appError";
 import { connectDrive, disconnectDrive, getDrive, type DriveConnection } from "@/lib/drives/store";
 import { getStore } from "@/lib/infra/services";
@@ -56,11 +47,8 @@ function optionalHandle(value: unknown, field: string): string | undefined {
   return value;
 }
 
-/**
- * Connect a drive to a workspace, or move an existing link's handles. Reconnecting the same pair is
- * deliberately not an error — the store keeps one link per pair and updates its handles — so the
- * graph editor can save a moved edge without first deleting it.
- */
+// Reconnecting a pair just updates its handles, so the graph editor can save a moved edge without
+// deleting it first.
 export function connectDriveToWorkspace(
   input: ConnectDriveInput,
   deps: DriveConnectionDeps = defaultDeps(),
@@ -80,19 +68,14 @@ export function connectDriveToWorkspace(
   return deps.connect(driveId, workspaceId, { sourceHandle, targetHandle });
 }
 
-/**
- * Remove one connection. An unknown id reports `deleted: false` rather than raising: the caller
- * asked for a state this leaves established, and the graph editor prunes links it believes are
- * stale, which races with a drive deletion that already dropped them.
- */
+// An unknown id gives `deleted: false`, not an error: the graph editor's pruning races drive deletions
+// that already dropped the link.
 export function disconnectDriveFromWorkspace(
   input: DisconnectDriveInput,
   deps: DriveConnectionDeps = defaultDeps(),
 ): DisconnectDriveResult {
   const connectionId = requireNonEmptyString(input.connectionId, "connectionId");
-  // An id from the other graph, or from neither, is refused by name rather than reported as a link
-  // that is already gone. The `deleted: false` above answers "this is not connected any more", which
-  // is true of every string ever sent — and so tells a caller holding the wrong id nothing at all.
+  // An id from the wrong graph is refused by name; `deleted: false` would tell its caller nothing.
   if (connectionKind(connectionId) !== "link") {
     throw new AppError("INVALID_REQUEST", "connectionId must be a drive link id, which starts with link_", {
       field: "connectionId",

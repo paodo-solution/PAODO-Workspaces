@@ -1,8 +1,5 @@
-// Workspace MCP protocol endpoint (Streamable HTTP). External AI clients POST JSON-RPC here to
-// discover and call the skills the workspace declares as MCP tools. Authenticated by the workspace's
-// own bearer secret (credentialStore's "workspace-mcp" kind), NOT the site-wide Basic Auth — the path is exempted in
-// httpAuth.ts. Runs stateless with buffered JSON responses, so each POST is a self-contained
-// exchange and there is no server->client SSE channel (GET/DELETE therefore return 405).
+// Exposes a workspace's declared skills as MCP tools over stateless Streamable HTTP. Callers authenticate
+// with the workspace's own bearer key, so httpAuth.ts exempts this route from Basic Auth. GET and DELETE answer 405.
 export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";
@@ -54,9 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (limited) return limited;
 
   if (!validate("workspace-mcp", id, bearer(req))) {
-    // Reachable by anyone on the internet — this is one of the two routes the public Caddy gateway
-    // forwards — so the caller decides how often it logs. Per-IP rate limiting above bounds a single
-    // source; the throttle is what bounds a flood spread across many.
+    // This route is public: the per-IP limit caps any one source, and the log throttle stops a
+    // distributed flood from pushing real history out of Docker's capped logs.
     const ip = getClientIp(req);
     const throttled = throttleLogWithSources("mcp_auth_unauthorized", ip);
     if (throttled) {
@@ -80,11 +76,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (workspaceLimited) return workspaceLimited;
 
-  // Preserve a clone before the transport consumes the original request. If setup or transport
-  // handling itself throws, the fallback still returns a JSON-RPC error with the caller's id.
+  // Clone the request before the transport consumes its body, so that if anything below throws, the
+  // error response can still echo the caller's JSON-RPC id.
   const requestForErrorId = req.clone();
 
-  // Stateless: a fresh server+transport per request, no session id, buffered JSON response.
+  // Stateless: each request gets its own server and transport, no session id, and one buffered JSON response.
   let server: ReturnType<typeof buildWorkspaceMcpServer> | undefined;
   let transport: WebStandardStreamableHTTPServerTransport | undefined;
   try {
@@ -94,8 +90,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       enableJsonResponse: true,
     });
     await server.connect(transport);
-    // enableJsonResponse buffers the full response before this resolves, so the exchange is
-    // complete and it is safe to tear the per-request server/transport down afterward.
+    // With enableJsonResponse, this resolves only once the whole response is buffered, so the finally
+    // block can safely close the server and transport.
     return await transport.handleRequest(req);
   } catch (err) {
     log.error(

@@ -1,7 +1,5 @@
-// The credential proxy's whole job is to swap opaque placeholder tokens for real secret values
-// wherever they ride in an HTTP request. These pin the two non-obvious substitution paths that a
-// plain substring replace misses: base64-wrapped Basic auth, and chunked request-body decoding —
-// plus the response direction: redacting real values back into tokens before the container sees them.
+// Pins the substitutions a plain replace misses (base64 Basic auth, chunked bodies) and the response side:
+// real values redacted back to tokens before the container sees them.
 
 import { describe, it, expect } from "vitest";
 import { once } from "events";

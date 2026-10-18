@@ -1,17 +1,5 @@
-/**
- * The workspace-edge rules, pinned before they move.
- *
- * These edges decide which workspace may delegate to which, so the store is a security boundary as
- * much as a drawing: `isCaller` decides whether a workspace is handed the call tools at all,
- * `getCallees` is the list one agent sees, and `canCall` gates the delegation itself. Today the only
- * writer is the graph canvas, which applies a second copy of these rules in the browser before it
- * saves (components/graph/connectionRules.ts). A future non-browser writer — a CLI, an MCP adapter —
- * reaches the store without passing that copy, so what the store enforces on its own is the real
- * contract and is what this file describes.
- *
- * The last block is the other half of that contract: rules the canvas applies that the store does
- * NOT, asserted as they behave today so the gap is visible rather than assumed closed.
- */
+// Workspace-edge rules: the store is a security boundary (isCaller, getCallees, canCall) that a non-browser
+// writer reaches without the canvas's copy of the rules. The last block pins rules the store does NOT apply.
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -34,16 +22,12 @@ const edge = (id: string, source: string, target: string): GraphEdge => ({ id, s
 const cell = (col: number, row: number) => ({ col, row });
 const readFile = (): StoredGraph => JSON.parse(fs.readFileSync(GRAPH_FILE, "utf-8"));
 
-/** What a saved edge is, minus the id the store replaced: an id a test chose is not one it can then
- *  assert on, because minting them is the store's job and is asserted on its own below. */
+// What a saved edge is, minus the id the store replaced: an id a test chose is not one it can then
+// assert on, because minting them is the store's job and is asserted on its own below.
 const pairs = (edges: GraphEdge[]) => edges.map(({ source, target }) => `${source}->${target}`);
 
-/**
- * The refusal a save raises, asserted by `code` rather than by `instanceof AppError`: every test
- * re-imports the store through a reset module registry, which hands it a second copy of the error
- * class that fails the identity check. The code is the part callers key on anyway — it is what turns
- * this into a 400 rather than a 500 — so checking it is both stable here and closer to the contract.
- */
+// Asserted by `code`, not instanceof: each test re-imports the store, getting a second AppError class. The
+// code is what callers key on anyway, turning this into a 400.
 function refusal(save: () => void): AppError {
   try {
     save();
@@ -60,11 +44,8 @@ interface FreshOptions {
   failSaves?: boolean;
 }
 
-/**
- * The store captures WORKSPACES_ROOT at import and caches its state on a process global (so every
- * Next.js module instance shares one graph), so a test gets a clean store only by clearing the temp
- * root, the global, and the module registry together.
- */
+// The store caches state on a process global captured at import, so a clean store needs the temp root,
+// the global and the module registry all reset together.
 async function freshGraph({ seed, failSaves }: FreshOptions = {}): Promise<GraphModule> {
   fs.rmSync(ROOT, { recursive: true, force: true });
   fs.mkdirSync(ROOT, { recursive: true });
@@ -256,11 +237,8 @@ describe("removeWorkspaceFromGraph", () => {
   });
 });
 
-/**
- * The per-edge writes, which exist so a writer with no canvas can add or remove one edge. What
- * separates them from saveGraph is what they do NOT touch: `positions` is carried through from what is
- * stored, never from the caller, so a CLI that has no layout to send cannot cost the editor one.
- */
+// Per-edge writes for writers with no canvas. Unlike saveGraph, `positions` carries over from the store,
+// so a CLI without a layout cannot erase the editor's.
 describe("addCallEdge and removeCallEdge", () => {
   it("adds one edge and leaves the stored positions exactly as they were", () => {
     graph.saveGraph([edge("e1", "a", "b")], { a: cell(1, 2), b: cell(3, 4) });
@@ -312,12 +290,8 @@ describe("addCallEdge and removeCallEdge", () => {
   });
 });
 
-/**
- * What the canvas refuses and the store accepts. Each of these is a rule that exists only in
- * components/graph/connectionRules.ts, or in React Flow's own edge handling, and therefore does not
- * apply to any writer that is not the canvas. Asserted as the store behaves TODAY: a change here is
- * the point at which one of these moved down into the store, not a regression.
- */
+// Rules only the canvas applies (connectionRules.ts, React Flow). Asserted as the store behaves today, so a
+// change here means a rule moved into the store, not a regression.
 describe("rules the store does not enforce on its own", () => {
   it("accepts a second edge on a pair the canvas would have deduplicated", () => {
     graph.saveGraph([edge("e1", "a", "b"), edge("e2", "a", "b")], {});

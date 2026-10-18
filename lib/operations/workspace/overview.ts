@@ -10,9 +10,8 @@ export type WorkspaceOverview = WorkspaceDetails &
   WorkspaceAccessDetails & {
     exposedSkills: ExposedSkill[];
     thirdPartySecrets: ThirdPartySecret[];
-    /** How much this workspace is connected to, not what it is connected to: the listing at
-     *  /api/drive-connections and /api/workspace-graph owns the detail and the ids. Present even when
-     *  every count is zero, so a caller reads "none" rather than inferring it from a missing field. */
+    // Counts only; the connection routes own the details. Present even when all zero, so "none" is
+    // explicit.
     connections: WorkspaceConnectionCounts;
   };
 

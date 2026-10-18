@@ -1,10 +1,5 @@
-// SQLite-backed registry of a workspace's conversations. Each workspace holds several
-// conversations the user can switch between; each conversation owns its replayable message state.
-//
-// History is loaded lazily and held in memory; the runner mutates the live BaseMessage[] in place,
-// and persist() snapshots it to SQLite (called by the run broker at run end). Persisting only at
-// run end keeps the committed history and the in-flight event buffer non-overlapping, which is
-// what makes live reconnect reconstruct cleanly (see runBroker.ts).
+// SQLite-backed conversations per workspace. History is loaded lazily, mutated in place by the runner, and
+// saved only at run end, which keeps it apart from the live event buffer (runBroker.ts).
 import type Database from "better-sqlite3";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import { createLogger } from "../infra/logger";
@@ -126,9 +121,7 @@ function notifyConversationsChanged(workspaceId: string): void {
   try {
     broadcastToWorkspace(workspaceId, JSON.stringify({ type: "conversations_changed" }));
   } catch (err) {
-    // Best-effort UI hint only: failures must never affect conversation persistence. Debug level
-    // because a disconnected client is routine — it is here only so a UI that has silently stopped
-    // refreshing leaves a trail to follow.
+    // Best-effort UI hint; debug level, since disconnected clients are routine.
     log.debug({ err, workspaceId }, "conversations_changed broadcast failed");
   }
 }
@@ -177,11 +170,8 @@ export function createConversation(workspaceId: string, opts?: { title?: string 
   return meta;
 }
 
-/**
- * Live message history for a conversation, loaded lazily from SQLite and cached. The returned array
- * is the very array the runner appends to — callers must not replace it, only mutate in place.
- * Returns null if the conversation does not exist.
- */
+// The cached live array the runner appends to: mutate in place, never replace. Null if the
+// conversation doesn't exist.
 export function getMessages(workspaceId: string, convId: string): BaseMessage[] | null {
   const s = ensureLoaded(workspaceId);
   if (!s.metas.some((m) => m.id === convId)) return null;
@@ -210,14 +200,8 @@ export function getMessages(workspaceId: string, convId: string): BaseMessage[] 
   return msgs;
 }
 
-/**
- * The last-persisted history for a conversation, read fresh from SQLite and NOT cached.
- * Unlike getMessages, this never reflects an in-flight run: the runner mutates the live in-memory
- * array (appending the user turn at run start), but persist() only snapshots to disk at run end.
- * Callers rendering the "persisted transcript" of a possibly-running conversation must use this so
- * the in-flight user turn isn't double-counted against the client's live `userInput` echo.
- * Returns null if the conversation does not exist.
- */
+// Fresh from SQLite, uncached, so an in-flight run's user turn isn't double-counted against the
+// client's live echo. Null if the conversation doesn't exist.
 export function getPersistedMessages(workspaceId: string, convId: string): BaseMessage[] | null {
   const s = ensureLoaded(workspaceId);
   if (!s.metas.some((m) => m.id === convId)) return null;

@@ -1,9 +1,5 @@
-// resolveContained is the one piece standing between a caller-supplied relative path and a write
-// outside the workspace/drive root — for both the HTTP upload route and (via
-// lib/agent/pathUtils.ts) the agent's own file tools. The case that matters most here is a symlink:
-// a lexical-only check (normalize + reject "..") cannot see that an in-tree directory secretly
-// points somewhere else on disk, but realpath'ing the root and comparing against the resolved target
-// does.
+// resolveContained guards uploads and the agent's file tools. The key case is a symlink: a lexical check
+// cannot see an in-tree dir pointing elsewhere, but comparing realpaths can.
 
 import { describe, it, expect, afterAll } from "vitest";
 import fs from "fs";
@@ -11,9 +7,8 @@ import os from "os";
 import path from "path";
 import { resolveContained } from "./containment";
 
-// realpathSync up front: on macOS, os.tmpdir() itself is a symlink (/var -> /private/var), and
-// resolveContained realpaths the root internally — comparing against the raw (non-realpath'd) path
-// would spuriously fail every assertion below on that platform.
+// realpath up front: macOS's tmpdir is itself a symlink (/var -> /private/var), and resolveContained
+// realpaths the root, so a raw path would fail every assertion there.
 const ROOT = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "path-containment-test-")));
 const WORKSPACE = path.join(ROOT, "workspace");
 const OUTSIDE = path.join(ROOT, "outside");

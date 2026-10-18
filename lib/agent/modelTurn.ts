@@ -96,10 +96,8 @@ function extractContentFromChunk(
   return { tokens, reasoning };
 }
 
-/**
- * A stream's refusal, read off the chunk that closes it. Anthropic answers a declined request with
- * HTTP 200 and `stop_reason: "refusal"`, which LangChain carries in `additional_kwargs` verbatim.
- */
+// A stream's refusal, read off the chunk that closes it. Anthropic answers a declined request with
+// HTTP 200 and `stop_reason: "refusal"`, which LangChain carries in `additional_kwargs` verbatim.
 function refusalFromChunk(chunk: AIMessageChunk): ModelRefusal | undefined {
   const stop = chunk.additional_kwargs as { stop_reason?: unknown; stop_details?: { category?: unknown } | null };
   if (stop?.stop_reason !== "refusal") return undefined;
@@ -132,13 +130,8 @@ function assembleToolCalls(partials: PartialToolCall[]): ResolvedToolCall[] {
     });
 }
 
-/**
- * Open the stream, surfacing any rate-limit wait while it happens.
- *
- * The wait is inside the awaited call, where a generator cannot yield, so the gateway hands notices
- * to a callback and they are drained here. Without this a queued run goes silent for minutes and the
- * UI cannot tell it apart from a hung one.
- */
+// Yields rate-limit wait notices the gateway queues during the awaited open, so a paced run doesn't
+// look hung.
 async function* openStream(
   model: ModelGateway,
   messages: BaseMessage[],

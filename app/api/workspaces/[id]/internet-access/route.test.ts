@@ -1,10 +1,5 @@
-// Route-level coverage for the internet-access toggle's failure-handling. The registry, the proxy
-// policy and the workspace's network are one security boundary, so any step that cannot be
-// confirmed rolls the whole change back rather than reporting a half-applied boundary.
-//
-// The network is rebuilt around a container that keeps running — see applyInternetAccess. This used
-// to stop the container instead, which cascaded into a full recreate and destroyed everything the
-// agent had installed, so the toggle must never touch the container itself.
+// Registry, proxy policy and network are one boundary, so an unconfirmed step rolls the whole change back. The
+// toggle rebuilds the network around a running container and must never stop it: that once wiped every install.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

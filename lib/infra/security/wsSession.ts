@@ -1,32 +1,12 @@
-// Signed session cookie, used for one thing only: authenticating the /ws handshake in `basic` mode.
-// An `iap` deployment never mints one — the proxy's own assertion rides the upgrade.
-//
-// A browser cannot set an Authorization header on a WebSocket handshake. Chrome and Firefox paper
-// over that by reusing the cached Basic credentials for a same-origin upgrade; WebKit does not, so
-// on Safari the handshake is unauthenticatable by Basic alone. A cookie is the one credential every
-// browser does attach to an upgrade, so requestGate.ts mints this after a request proves it knows
-// the Basic credentials, and upgradeGate.ts accepts it as a fallback.
-//
-// Scope is deliberately narrow. This cookie is NOT accepted for HTTP requests — Basic stays the sole
-// HTTP credential — so it adds no bypass for the API surface and, being SameSite=Strict, no CSRF
-// surface either. It carries no identity because there is none to carry: the deployment has a single
-// shared username/password, so the only thing worth signing is an expiry.
-//
-// The key is random per boot and never written to disk. Persisting it would mean writing it under
-// WORKSPACES_ROOT, which the credproxy sidecar mounts read-only — the one container reachable from
-// an untrusted workspace, and the one whose .env was trimmed precisely to keep admin credentials out
-// of it. The cost is that a restart invalidates outstanding cookies; the next authenticated page
-// load mints a fresh one, which is why the client hooks fall back to a "reload to reconnect" state
-// rather than retrying a handshake that cannot start succeeding on its own.
+// Signed cookie that authenticates the /ws handshake in `basic` mode (Safari won't reuse Basic credentials
+// on upgrades). Never accepted for HTTP; SameSite=Strict, expiry only, key random per boot (never on disk).
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { readCookie } from "./cookies";
 
 export const SESSION_COOKIE_NAME = "paodo_ws_session";
 
 const TTL_MS = 12 * 60 * 60 * 1000;
-// Re-mint once a cookie is within this long of expiring, so an open tab's socket does not die
-// mid-session. Every authenticated HTTP request is a chance to refresh; this keeps that from
-// meaning "set the cookie on every asset response".
+// Re-mint near expiry so an open tab's socket survives, without setting the cookie on every response.
 const REFRESH_BEFORE_MS = 60 * 60 * 1000;
 
 let sessionKey: Buffer | null = null;
@@ -57,9 +37,7 @@ export function mintSessionCookie(opts: SessionCookieOptions): string {
   return attrs.join("; ");
 }
 
-// Returns the cookie's expiry timestamp when the signature verifies and the cookie is still valid,
-// otherwise null. Every malformed shape — absent header, missing cookie, no separator, non-numeric
-// expiry, wrong signature length, bad signature, expired — returns null, so callers fail closed.
+// Expiry if the cookie verifies and is unexpired; null for every malformed shape, so callers fail closed.
 export function sessionExpiry(cookieHeader: string | undefined): number | null {
   const raw = readCookie(cookieHeader, SESSION_COOKIE_NAME);
   if (!raw) return null;

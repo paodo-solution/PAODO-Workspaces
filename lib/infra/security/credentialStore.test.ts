@@ -1,17 +1,11 @@
-// validate() is the authentication chokepoint for every programmatic caller — the agent API, the
-// workspace MCP endpoint, and the CLI. The dangerous bug here is not "leaks too much data" but
-// "authorizes a request it should have denied", so the deny paths are what these tests pin.
-//
-// They matter more than they look: every access channel is OFF by default, so "no key" and
-// "disabled" are the COMMON runtime states, not edge cases. The matrix runs once per kind because a
-// single unified store means a mistake in one shared branch fails all three channels at once.
+// validate() authenticates every programmatic caller, so the deny paths are pinned; "no key" and "disabled"
+// are the common states. The matrix runs per kind, since a bug in one shared branch breaks all three.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 
-// Redirect the on-disk store to a throwaway temp dir BEFORE credentialStore (via paths.ts) reads
-// WORKSPACES_ROOT at import time. vi.hoisted runs above the imports, so the module persists into the
-// temp dir, never the real ./data.
+// Redirect the store to a temp dir before paths.ts reads WORKSPACES_ROOT at import; vi.hoisted runs above
+// the imports, so the real ./data is never touched.
 const { ROOT, auditEvents } = vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
@@ -56,11 +50,8 @@ const KINDS: ReadonlyArray<{ kind: CredentialKind; prefix: string; subject: (nam
   { kind: "platform", prefix: "cli_", subject: () => null },
 ];
 
-/**
- * A usable credential: minted, on an open channel. Validation needs both axes and mint() moves only
- * one, so the tests that are about validating say "issue" once rather than each spelling out the
- * setup — leaving the bare mint() calls below to mean "and deliberately nothing else".
- */
+// A usable credential is minted AND on an open channel. Validation tests call issue() once, so a bare mint()
+// below means deliberately nothing else.
 function issue(kind: CredentialKind, target: CredentialSubject): string {
   const plain = mint(kind, target);
   setEnabled(kind, target, true);
@@ -73,8 +64,7 @@ describe.each(KINDS)("$kind — validate fails closed", ({ kind, prefix, subject
   });
 
   it("denies the CORRECT key once the channel is disabled", () => {
-    // The headline case: toggling access off must lock the door even for a caller holding a
-    // once-valid key.
+    // The case that matters most: turning access off must lock out even a caller holding a once-valid key.
     const target = subject("disabled");
     const plain = issue(kind, target);
     expect(validate(kind, target, plain)).toBe(true); // sanity: works while enabled
@@ -94,10 +84,8 @@ describe.each(KINDS)("$kind — validate fails closed", ({ kind, prefix, subject
   it("denies a wrong or empty key on an enabled channel", () => {
     const target = subject("wrong");
     issue(kind, target);
-    // A well-formed key that was never minted — same prefix and length as the real thing, so this
-    // pins the hash comparison rather than a cheap shape check. A literal is used instead of a second
-    // mint() because the platform credential is instance-wide: minting again would overwrite the
-    // record under test and hand back its current valid key.
+    // A never-minted key of the right prefix and length pins the hash compare, not a shape check. A literal, since
+    // re-minting the instance-wide credential would overwrite the record under test.
     expect(validate(kind, target, `${prefix}${"0".repeat(64)}`)).toBe(false);
     expect(validate(kind, target, "")).toBe(false);
   });
@@ -128,10 +116,8 @@ describe.each(KINDS)("$kind — validate authorizes the legitimate case", ({ kin
     expect(validate(kind, target, plain)).toBe(true);
   });
 
-  // Minting is the credential axis; opening the channel is the access axis. If mint moved this flag
-  // it would silently expose a channel whose operator only meant to issue a key in advance — and it
-  // would make "issue now, open when the integrator is ready" the dangerous order rather than the
-  // safe one.
+  // Minting must not open the channel, or a key issued in advance would go live before anyone chose to
+  // expose it.
   it("leaves the channel's enabled flag untouched", () => {
     const closed = subject("mint-keeps-closed");
     setEnabled(kind, closed, false);
@@ -203,11 +189,8 @@ describe("state — never exposes a hash", () => {
   });
 });
 
-// revoke() is idempotent so that destroying a leaked key never depends on the channel's current
-// state. That makes the audit event the thing worth pinning: `credential_revoked` has to mean a key
-// stopped working at that moment, or the log stops being usable as a history of when access ended —
-// and a caller retrying a DELETE, or revoking a channel that never had a key, would otherwise write
-// revocations that never happened.
+// revoke() is idempotent, so `credential_revoked` must mean a key stopped working right then; retries and
+// keyless channels must not log revocations that never happened.
 describe("revoke — audits only a revocation that happened", () => {
   const revocations = () => auditEvents.filter((event) => event.event === "credential_revoked");
 
@@ -247,10 +230,8 @@ describe("persistence", () => {
   });
 
   it("denies rather than throws when a stored hash is the wrong length", () => {
-    // timingSafeEqual throws on a length mismatch, which a truncated or hand-edited store can
-    // produce. That must fail closed, not crash the auth path with a 500. Reaching into the
-    // singleton is deliberate: the length guard is unreachable through the public API, and it is
-    // exactly the branch a corrupted file would hit in production.
+    // timingSafeEqual throws on a length mismatch from a corrupted store; that must fail closed, not 500. Reaching
+    // into the singleton is the only way to hit that branch.
     const plain = mint("workspace-api", "ws-corrupt");
     const singletons = (global as typeof global & { __singletons: Record<string, unknown> }).__singletons;
     const records = singletons.credentials as Record<string, { hash: string }>;

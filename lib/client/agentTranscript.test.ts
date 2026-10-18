@@ -344,9 +344,8 @@ describe("applyDiscreteEvent", () => {
     ]);
   });
 
-  // Unlike those two, a rate-limit wait describes right now rather than something that happened. A
-  // 30-turn run on a throttled model would otherwise leave 30 notices behind it, so it is rendered
-  // from transient hook state and must never reach the transcript.
+  // A rate-limit wait describes now, not history: a throttled 30-turn run would leave 30 notices, so it lives
+  // in transient hook state and never reaches the transcript.
   it("paced leaves no trace in the transcript, however often it arrives", () => {
     const paced = { type: "paced", provider: "mistral", model: "mistral-large-latest", waitMs: 15_000, queueDepth: 2 };
     const start = state([{ role: "assistant", content: "answer" }]);

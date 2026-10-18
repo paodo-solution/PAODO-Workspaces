@@ -1,13 +1,5 @@
-// Set (PUT) or clear (DELETE) one provider's API key.
-//
-// PUT rather than POST: there is exactly one key per provider and writing it again replaces it, so
-// the operation is idempotent and the provider id in the path is the whole address. There is no
-// rotation ceremony to model — unlike the bearer credentials this app mints, this value comes from
-// the vendor, so "rotate" is just pasting the new one.
-//
-// Neither method is in platformAccessPolicy.ts, so the instance CLI token cannot call them. A leaked
-// automation token must not be able to point the deployment's spend at someone else's account, nor
-// delete the keys that make it work.
+// PUT sets (idempotent: one key per provider) or DELETE clears a provider key. Not in platformAccessPolicy.ts,
+// so a leaked CLI token can't redirect spend or delete keys.
 export const runtime = "nodejs";
 
 import { type NextRequest, NextResponse } from "next/server";

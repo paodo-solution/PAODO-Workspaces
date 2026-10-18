@@ -33,12 +33,8 @@ describe("third-party secret validation", () => {
     expect(validateSecret(input)).toEqual(input);
   });
 
-  /**
-   * `secret` is the only field of the update contract whose whole object crosses the wire, so its shape
-   * is a claim rather than something the compiler established. Every malformed spelling has to leave
-   * here as a typed rejection: reaching into a non-object for `.name` raised a TypeError instead, which
-   * is not an AppError, so it surfaced as an opaque 500 rather than a named 400.
-   */
+  // `secret` is the one object-valued field on the wire, so its shape is a claim. Reading `.name` off a
+  // non-object threw a non-AppError 500; every malformed shape must be a named 400.
   it("refuses a secret that is not an object", () => {
     for (const input of [null, "TOKEN=x", 42, true, ["TOKEN"]]) {
       expect(() => validateSecret(input)).toThrow(WorkspaceUpdateError);
@@ -73,12 +69,8 @@ describe("third-party secret validation", () => {
     }
   });
 
-  /**
-   * Secrets are injected as `docker exec -e NAME=<token>`, which outranks the container's own
-   * environment — so one named after the credential proxy's address, a CA-trust variable, or the
-   * shell's own footing would quietly replace that wiring with an opaque token and break the
-   * workspace's HTTPS in a way that looks like anything except a naming collision.
-   */
+  // Secrets go in as `docker exec -e`, outranking the container env, so names like the proxy, CA or shell vars
+  // would break HTTPS in a way that looks like anything but a name clash.
   it("refuses names the container itself already uses", () => {
     for (const name of ["HTTPS_PROXY", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "PATH", "BASH_ENV", "LD_PRELOAD"]) {
       expect(() => validateSecret({ name, value: "v", domains: ["api.example.com"] })).toThrow(WorkspaceUpdateError);
@@ -113,12 +105,8 @@ describe("third-party secret validation", () => {
     }
   });
 
-  /**
-   * Hosts are checked in the normalized form they are stored and matched in, which strips scheme, path
-   * and port. So the common mistake — pasting the whole endpoint URL out of a provider's docs — is
-   * accepted and reduced to its host rather than rejected. Asserted because it is easy to read the
-   * "must be a hostname" message as a promise that this fails.
-   */
+  // Hosts are normalized (scheme, path and port stripped) before checking, so a pasted endpoint URL is reduced
+  // to its host, not rejected, despite the "must be a hostname" message.
   it("accepts a host that only needs normalizing, including a pasted URL", () => {
     for (const domain of ["API.EXAMPLE.COM", "https://api.example.com/v1/chat", "api.example.com:8443", " host.io "]) {
       expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [domain] })).not.toThrow();

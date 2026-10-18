@@ -1,13 +1,5 @@
-// Safe, trigger-neutral tar transfers for one file, one directory, or the workspace root.
-//
-// The wire archive has exactly one virtual top-level entry named `payload`. That name never lands
-// in the workspace: the receiver maps it to the caller's destination entry. This keeps local source
-// names out of the remote layout and makes `put ./build dist` mean "merge build's contents into
-// dist" without trusting a client-authored archive root.
-//
-// Only regular files and directories are part of the contract. File bytes stream unchanged and the
-// sole preserved metadata bit is executable/non-executable (normalised to 0755/0644). Every other
-// tar entry type is rejected before the staging tree is merged.
+// Tar transfers of a file, directory or root. The archive has one virtual root, `payload`, mapped to the
+// destination; only regular files and dirs (0755/0644) are accepted.
 
 import fs from "fs/promises";
 import { createReadStream, createWriteStream } from "fs";
@@ -99,9 +91,7 @@ export async function collectTransfer(rootDir: string, sourceValue: unknown): Pr
   const relPath = requireDirPath(sourceValue, "path");
   const root = await fs.realpath(rootDir);
   const hostPath = await resolveHostPath(rootDir, relPath);
-  // resolveHostPath deliberately follows contained symlinks for ordinary file reads. A transfer has
-  // a narrower type contract, so a selected symlink (or a path through one) must not be silently
-  // converted into its target's bytes.
+  // resolveHostPath follows contained symlinks; a transfer must not turn one into its target's bytes.
   if (path.resolve(root, relPath) !== hostPath) throw unsupported(relPath);
   const stat = await fileSystemCall(relPath || "The root", () => fs.lstat(hostPath));
   if (stat.isSymbolicLink()) throw unsupported(relPath);
@@ -144,15 +134,8 @@ async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
   await pipeline(createReadStream(item.hostPath), target);
 }
 
-/**
- * A Node stream suitable for Response(Readable.toWeb(...)).
- *
- * tar-stream's pack is a streamx stream, not a node:stream Readable, and it carries no
- * readableHighWaterMark. Handing it straight to Readable.toWeb throws ERR_MISSING_OPTION — which made
- * every pull answer INTERNAL_ERROR while the archive itself was being built perfectly. Wrapping it in a
- * real Readable here keeps that trap in one place and makes the signature honest, rather than leaving
- * each caller to discover it.
- */
+// Wrapped in a real Readable: tar-stream's streamx pack lacks readableHighWaterMark, so Readable.toWeb
+// throws ERR_MISSING_OPTION on it.
 export function packTransfer(items: TransferItem[]): Readable {
   const pack = tar.pack();
   void (async () => {
@@ -324,11 +307,8 @@ function targetPath(sourceType: "file" | "directory", dest: string, relPath: str
   return relPath === "" ? dest : path.posix.join(dest, relPath);
 }
 
-/**
- * Stage and validate the complete body, preflight all destination type conflicts, then merge. A
- * runtime filesystem failure during the final merge carries the successfully applied subset so the
- * route can snapshot and report it rather than presenting a partial write as an opaque failure.
- */
+// Stages and validates the whole body, preflights conflicts, then merges. A failed merge carries the
+// applied subset so the route can snapshot and report it.
 export async function putTransfer(
   rootDir: string,
   destValue: unknown,
@@ -349,11 +329,8 @@ export async function putTransfer(
       // The root directory marker carries the source kind but needs no filesystem operation.
       if (targetRel === "" && item.type === "directory") continue;
       const targetHost = await resolveHostPath(root, targetRel, "dest");
-      // Same rule collectTransfer applies on the way out, and for the same reason: resolveHostPath
-      // deliberately follows contained symlinks, but a transfer only carries regular files and
-      // directories. Without this, pushing `report.txt` where that name is a link to
-      // `final-report.txt` overwrites the link's target — a file the receipt never names — while
-      // reporting `report.txt`. Refused here in preflight, so the whole transfer is still untouched.
+      // Same symlink rule as collectTransfer: otherwise pushing onto a link would overwrite its unnamed target.
+      // Refused in preflight, so nothing is touched.
       if (path.resolve(root, targetRel) !== targetHost) {
         throw new AppError("CONFLICT", `${targetRel} resolves through a symbolic link`, { field: "dest" });
       }

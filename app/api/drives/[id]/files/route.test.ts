@@ -1,8 +1,5 @@
-// The drive tree route's transport half. The query parameters and the rules behind them are shared
-// with the workspace route (lib/api/fileTreeRoutes.ts, lib/operations/files/listing.ts) and tested
-// there; what is asserted here is that a drive is actually reachable through them — this route used to
-// call buildTree directly and ignore every one of them — and that an unknown drive is a 404 rather
-// than a listing of a directory that does not exist.
+// Transport half only; the query rules are tested with the workspace route. Pins that a drive reaches them
+// (rather than calling buildTree directly) and that an unknown drive is a 404, not an empty listing.
 import { describe, expect, it, vi, afterAll } from "vitest";
 import fs from "fs";
 

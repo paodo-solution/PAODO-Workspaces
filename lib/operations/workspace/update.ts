@@ -1,11 +1,5 @@
-// The unified workspace update contract: one entry point every trigger writes through — the settings
-// UI, the per-setting REST routes, the CLI, MCP adapters — so the rules and their messages exist once
-// instead of once per transport.
-//
-// This file owns the contract and nothing else. Each field's rules belong to the capability that owns
-// it (metadata for the record's own settings, secrets, access, and egress);
-// what lives here is the part no single capability can provide: validating a whole request before the
-// first write, applying the fields in a fixed order, and accounting for what landed.
+// The one workspace update path for every trigger (UI, REST, CLI, MCP). Field rules live in their capabilities;
+// this validates the whole request first, applies in a fixed order, and reports what landed.
 import { getStore } from "@/lib/infra/services";
 import type { ReasoningEffort } from "@/lib/models/llmSelection";
 import { metadataWrites, validateMetadata, type MetadataWriter, type WorkspaceMetadataInput } from "./metadata";
@@ -21,18 +15,8 @@ import {
 } from "./secrets";
 import { WorkspaceUpdateFailure } from "./errors";
 
-/**
- * The wire names a workspace PATCH accepts, in one place so the route's emptiness check, its
- * unknown-field rejection and the published contract (lib/operations/contract/fields.ts) cannot drift
- * apart. These are the request's field names, which differ from this operation's input shape: the
- * three llm* fields arrive separately and become one `model`.
- *
- * `secret` is deliberately absent. A third-party secret carries a plaintext value, is scoped to
- * domains, and is listed and deleted through its own endpoints — putting it on the general settings
- * PATCH meant the widest-reaching mutation a programmatic caller has could also plant a credential,
- * and advertising it here invited every such caller to try. The route refuses it explicitly rather
- * than leaving it to the unknown-field branch, which would misdescribe a real field as a typo.
- */
+// The PATCH wire fields, shared by the route and the published contract so they can't drift. `secret`
+// is absent on purpose: secrets have their own endpoints.
 export const WORKSPACE_UPDATABLE_FIELDS = [
   "name",
   "description",
@@ -59,11 +43,7 @@ function field<K extends keyof WorkspaceUpdateValues>(
   return value === undefined ? {} : ({ [key]: value } as Pick<WorkspaceUpdateValues, K>);
 }
 
-/**
- * Everything a caller may change in one request, assembled from the capabilities that own each field.
- * Omitted fields are unchanged, including an omitted description; an explicitly empty description
- * clears it.
- */
+/** Omitted fields stay unchanged; an explicitly empty description clears it. */
 export type UpdateWorkspaceInput = WorkspaceMetadataInput & {
   internetAccess?: boolean;
   workspaceApiAccess?: boolean;
@@ -76,11 +56,8 @@ export interface UpdateWorkspaceResult {
   workspaceId: string;
   /** Capability fields successfully applied, in deterministic application order. */
   applied: Array<keyof WorkspaceUpdateValues>;
-  /**
-   * Canonical values established by the write. These come from the shared validators, never from a
-   * transport echo, so every adapter reports trimmed, resolved and otherwise normalized values alike.
-   * A stored third-party secret is represented only by its safe metadata; its value is never echoed.
-   */
+  // Normalized values from the shared validators, not a transport echo. A secret appears only as
+  // metadata, never its value.
   values: WorkspaceUpdateValues;
 }
 
@@ -109,18 +86,8 @@ export interface UpdateWorkspaceDeps {
   secrets?: SecretStore;
 }
 
-/**
- * Applies mutable workspace settings through one trigger-neutral entry point. Returns null when the
- * workspace does not exist, so adapters can translate that into their native not-found result.
- *
- * Every supplied value is checked before the first write. That ordering is the contract, not an
- * implementation detail: a request carrying one bad field changes nothing at all, so a caller never has
- * to reason about which half of its request survived.
- *
- * No field here produces a credential. `workspaceApiAccess` and `workspaceMcpAccess` open and close
- * their channels and nothing more; issuing a key is its own explicit operation on the channel's route,
- * so this result never carries a plaintext secret.
- */
+// Null if the workspace is missing. Validates everything before the first write, so one bad field
+// changes nothing; never mints a credential, so it never returns a secret.
 export async function updateWorkspace(
   id: string,
   input: UpdateWorkspaceInput,
@@ -137,15 +104,10 @@ export async function updateWorkspace(
   const mcpAccess = ifDefined(input.workspaceMcpAccess, (value) => validateChannelEnabled("workspaceMcpAccess", value));
   const secretInput = ifDefined(input.secret, validateSecret);
 
-  // Phase two: apply. Past this point the workspace is known to exist, and every store setter refuses
-  // only for an unknown id — so a refusal here means the workspace was deleted mid-update. Returning
-  // null would reach the caller as "no such workspace", which reads as "nothing happened" even though
-  // earlier fields already landed. Name what was applied instead, so a caller can tell a no-op from a
-  // half-done update.
+  // Setters refuse only for an unknown id, so a refusal now means the workspace was deleted mid-update.
+  // Report what was applied, so a half-done update isn't read as a no-op.
   const appliedFields: Array<keyof WorkspaceUpdateValues> = [];
-  // Takes the field names a write establishes rather than one name: `model` is a single store write
-  // that settles three public fields, and a refusal has to name all of them or it reports a partial
-  // change as a complete one.
+  // Takes all field names one write settles (`model` sets three), so a refusal names every one.
   const applied = (fields: Array<keyof WorkspaceUpdateValues>, ok: boolean): void => {
     if (!ok) {
       throw new WorkspaceUpdateFailure(

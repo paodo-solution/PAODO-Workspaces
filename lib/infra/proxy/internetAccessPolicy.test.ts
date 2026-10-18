@@ -1,8 +1,5 @@
-// isInternetAccessEnabled is the credential proxy's application-layer boundary: a false-positive
-// (returning true for a workspace that was turned off) would silently reopen an "off" workspace's
-// only path to the internet. These pin the default-on behavior, the persisted round-trip, and
-// reloadInternetAccessPolicy's "keep last-known-good on read failure" fail-safe (a naive
-// reset-to-empty-on-error would fail OPEN here, unlike the secret store, where empty is safe).
+// A false positive reopens an "off" workspace's only route out. Pins default-on, the persisted round-trip,
+// and keeping last-known-good on read failure (resetting to empty would fail OPEN here).
 
 import { describe, it, expect, vi, afterAll, afterEach } from "vitest";
 import fs from "fs";

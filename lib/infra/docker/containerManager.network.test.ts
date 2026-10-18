@@ -1,17 +1,13 @@
-// ensureNetwork is the network-layer half of the internet-access toggle: it must create the
-// workspace's network with --internal when access is off, and — since Docker can't flip --internal
-// on an existing network — detect and repair a stale network whose flag doesn't match the current
-// policy. Reached directly (private method) so these tests don't have to drive the full
-// _ensureContainer state machine (image hash, secrets, container run) just to exercise this logic.
+// ensureNetwork creates the network --internal when access is off and repairs a stale one, since Docker cannot
+// flip --internal in place. Called directly to skip _ensureContainer's whole state machine.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { ContainerManager } from "./containerManager";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 
 const OK: DockerResult = { stdout: "", stderr: "", code: 0 };
 
-// Docker stub for the lazy network sweep: `network ls` lists the given networks and `network inspect
-// --format {{len .Containers}}` reports each one's attached-endpoint count, so a test can mark a
-// network empty (0) or in-use (> 0). Every `network rm` is recorded.
+// Sweep stub: `network ls` lists the given networks and `network inspect` reports each one's endpoint count
+// (0 = empty); every `network rm` is recorded.
 function makeSweepDocker(counts: Record<string, number>) {
   const calls: string[][] = [];
   const docker: IDockerClient = {
@@ -91,9 +87,8 @@ describe("ContainerManager.ensureNetwork — recreating a non-internal network (
   });
 
   it("force-disconnects the workspace container and the proxy sidecar before removing the network", async () => {
-    // A container/sidecar that reached this state without a clean stop() can still hold an endpoint,
-    // which would make `network rm` fail with "has active endpoints" — the recreate path must clear
-    // both before attempting rm.
+    // Without a clean stop() a container or sidecar can still hold an endpoint and fail `network rm` ("has active
+    // endpoints"), so recreate must detach both first.
     const { docker, calls } = makeDocker({ inspectCode: 0, internal: false });
     await ensureNetwork(new ContainerManager(docker), "ws1");
     const disconnect = calls.find((c) => c[0] === "network" && c[1] === "disconnect" && c.includes("-f"));

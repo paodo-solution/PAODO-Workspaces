@@ -1,12 +1,5 @@
-/**
- * The download route zips a caller-selected set of workspace-relative paths — the same space the file
- * tree serves, so the browser can hand a selection straight back.
- *
- * Pinned here: empty and empty-only directories survive (JSZip materializes a folder only once
- * something is placed inside it, so a fresh `.skills/` would otherwise vanish); a path the archive
- * cannot honour is reported rather than dropped in silence; and entry names carry the folders that
- * distinguish the selection, but not the empty ancestry above it.
- */
+// Zips a selection of tree-relative paths. Pins: empty directories survive (JSZip drops them otherwise), an
+// unhonourable path is reported not dropped, and names drop shared parents but keep folders that tell entries apart.
 
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import fs from "fs";

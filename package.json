@@ -21,9 +21,6 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build-graph": "tsx dev_tools/viz/generate-graph.ts",
-    "graph": "tsx dev_tools/viz/generate-graph.ts && open dev_tools/viz/graph.html",
-    "query-graph": "tsx dev_tools/query/query-graph.ts",
     "update-pricing": "tsx scripts/update-pricing.ts",
     "backup": "tsx scripts/backup-all.ts",
     "restore": "tsx scripts/backup-restore.ts",
@@ -94,7 +91,6 @@
     "eslint-config-next": "^16.3.7",
     "prettier": "3.9.9",
     "tailwindcss": "^4.3.1",
-    "ts-morph": "^28.0.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   },

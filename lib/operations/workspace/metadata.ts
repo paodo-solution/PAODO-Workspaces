@@ -26,11 +26,7 @@ export interface WorkspaceMetadataInput {
   description?: string;
   maxIterations?: number;
   maxRunMinutes?: number;
-  /**
-   * Any subset of the three model fields. What is omitted is resolved from the workspace's current
-   * choice and the provider's catalog, the same way the picker resolves it — so naming just a provider
-   * is a complete request.
-   */
+  // Any subset of the model fields; the rest resolve like the picker, so a provider alone is enough.
   model?: RequestedModelSelection;
 }
 
@@ -52,19 +48,8 @@ export type MetadataWriter = Pick<
   | "setWorkspaceLlm"
 >;
 
-/**
- * Checks and canonicalizes every supplied metadata field, touching nothing. Pure so the caller can
- * validate a whole request before its first write — see update.ts for why that ordering is the
- * contract rather than an implementation detail.
- *
- * Out-of-range numbers are rejected rather than clamped, and the message states the accepted range:
- * callers with no form to validate against — the CLI, scripts, an agent — otherwise get "ok" back for
- * a value we silently replaced.
- *
- * `current` is the workspace's existing model choice, which a partial model request resolves against.
- * It defaults to the selection a fresh workspace would run, so a caller validating a request with no
- * workspace in hand gets that same answer.
- */
+// Pure, so a whole request is checked before any write. Out-of-range numbers are refused, not clamped;
+// `current` (default: a fresh workspace's) resolves a partial model.
 export function validateMetadata(
   input: WorkspaceMetadataInput,
   current: ModelSelection = defaultModelSelection(),
@@ -104,19 +89,14 @@ export function validateMetadata(
   }
 
   if (input.model !== undefined) {
-    // A present field that cannot be read as a value is a caller error, not an omission — two ways over:
-    // blank, which resolution treats as "not supplied" and would quietly substitute a default for a
-    // value the caller did try to set; and non-string, which has no trim() at all and would leave this
-    // layer as a TypeError, reaching the caller as an opaque 500 rather than a named rejection. Both are
-    // checked before resolution so these keep naming the accepted values rather than the substitute.
+    // A present but blank or non-string field is a caller error, not an omission; checked before resolution so
+    // the error names the accepted values, not a default.
     const unusable = (value: unknown): boolean => value !== undefined && (typeof value !== "string" || !value.trim());
     if (unusable(input.model.provider)) {
       throw new WorkspaceUpdateError(`llmProvider must be one of: ${SUPPORTED_PROVIDERS.join(", ")}`);
     }
     if (unusable(input.model.model)) throw new WorkspaceUpdateError("llmModel required");
-    // Type only, unlike the two above: a blank effort stays an omission here, resolved to the provider's
-    // default, because that is what it already meant. Only the legality of a named level is this
-    // function's business, and that check needs the resolved provider — it waits below.
+    // Type only: a blank effort still means "provider default". Its legality needs the provider, checked below.
     if (input.model.reasoningEffort !== undefined && typeof input.model.reasoningEffort !== "string") {
       throw new WorkspaceUpdateError("reasoningEffort must be a string", { field: "reasoningEffort" });
     }
@@ -125,21 +105,13 @@ export function validateMetadata(
     // means the same thing here as it does in the UI; see lib/models/selection.ts.
     const selection = resolveModelSelection(input.model, current, vocabularyFor);
 
-    // Both rejections name the accepted values. The valid effort levels differ per provider, so a
-    // caller cannot know them ahead of the provider choice — carrying them in the error is the only
-    // place the answer is both correct and available without a second lookup.
+    // Effort levels differ per provider, so the error carries the accepted values.
     if (!SUPPORTED_PROVIDERS.includes(selection.provider)) {
       throw new WorkspaceUpdateError(`llmProvider must be one of: ${SUPPORTED_PROVIDERS.join(", ")}`);
     }
 
-    // Supported is not the same as offered, and only the second one can run: a switched-off provider
-    // has no key (startup destroyed it) and no catalog entry, so storing it buys a workspace that
-    // fails on its next message. Startup clears the workspaces already in that state; this is what
-    // stops the next caller putting one back. The picker cannot express the choice — it only lists
-    // the catalog — but the REST route, the CLI and the MCP adapters all validate through here.
-    // Separate message from the unsupported case above, for the same reason the key form separates
-    // them (lib/operations/settings/providerKeys.ts): "must be one of" sent to someone who
-    // deliberately switched openai off hides the setting they wrote.
+    // Supported isn't offered: a switched-off provider has no key, so storing it would fail on the next message.
+    // Own message, so it doesn't hide the setting the caller wrote.
     const offered = availableProviders();
     if (!offered.includes(selection.provider)) {
       throw new WorkspaceUpdateError(
@@ -155,23 +127,14 @@ export function validateMetadata(
     // resolution supplies a model in every other case.
     if (!selection.model) throw new WorkspaceUpdateError("llmModel required");
 
-    // The pair has to be coherent, not merely well-formed: a model belongs to exactly one provider, and
-    // storing someone else's — or a typo — buys a selection that only fails later, when the run reaches
-    // the provider. The picker cannot express an incoherent pair (its model list is the selected
-    // provider's catalog), so this is what gives a programmatic caller the same guarantee.
+    // The model must belong to the provider; the picker can't express a mismatch, so API callers get the same check.
     const models = vocabularyFor(selection.provider).models;
     if (!models.includes(selection.model)) {
       throw new WorkspaceUpdateError(`llmModel for ${selection.provider} must be one of: ${models.join(", ")}`);
     }
 
-    /**
-     * An effort the caller named that the model does not accept is refused rather than replaced: a
-     * caller with no dropdown constraining it would otherwise read "ok" for a value we substituted.
-     * An omitted one cannot land here — resolution only ever picks a level the model accepts.
-     *
-     * Checked per MODEL, not per provider: Scaleway's levels belong to the model, and its gateway
-     * accepts every level on every one of them, so this is the only thing that can refuse a mismatch.
-     */
+    // A named effort the model rejects is refused, not replaced. Checked per model: Scaleway's gateway
+    // accepts any level, so this is the only check.
     const efforts = modelReasoningEfforts(selection.provider, selection.model);
     const named = input.model.reasoningEffort?.trim();
     // Guards a model with no dial at all, which would otherwise be told to pick "one of: ".
@@ -191,11 +154,8 @@ export function validateMetadata(
   return metadata;
 }
 
-/**
- * The store writes that applying `metadata` requires, one per supplied field and in a fixed order.
- * Returned as descriptors rather than performed here so the caller keeps ownership of what happens
- * between them: which fields it records as applied, and how it reports a write that refuses.
- */
+// One write per supplied field, in a fixed order. Returned rather than run, so the caller decides how
+// to record and report each one.
 export function metadataWrites(
   id: string,
   metadata: WorkspaceMetadata,

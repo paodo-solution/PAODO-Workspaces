@@ -1,7 +1,4 @@
-// Agent tool that reads a workspace file, returning its content with 1-based line numbers
-// (cat -n format). Reads the whole file via `cat`, or a line range via `sed -n` when offset/
-// limit are given (offset is 0-based, so it maps to sed line offset+1). Paths are confined to
-// the workspace root. The agent must read a file with this tool before editing it via file_edit.
+// file_read: workspace file with cat -n line numbers, whole or a range (0-based offset). Must precede file_edit.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -10,15 +7,8 @@ import { toolError } from "../toolUtils";
 import type { ExecRunner } from "../interfaces";
 import { MAX_FILE_READ_BYTES } from "../../infra/limits";
 
-// The ceiling (in lib/infra/limits.ts, shared with drive_read) is enforced INSIDE the container by
-// `head -c`, so an oversized file is never transferred at all. The alternative — read it all, then
-// trim — is the bug, not the fix: a plain `cat` of a large file blew the heap here, and the
-// split/map/join below multiplies whatever arrives by another three copies before anything gets a
-// chance to trim it.
-//
-// This tool sets skipResultCap, deliberately, so that a legitimately large file still reads in one
-// call. That makes the ceiling the only thing bounding it, rather than the 50k dispatch cap — and
-// offset/limit remains the way to page past it.
+// The ceiling (limits.ts, shared with drive_read) is applied in the container with `head -c`, so oversized files
+// never arrive. skipResultCap is set, so it is the only bound; page past it with offset/limit.
 
 const schema = z.object({
   file_path: z.string().describe("File path relative to workspace root"),
@@ -46,13 +36,8 @@ Use this instead of cat, head, or tail.
     super();
   }
 
-  // Truncation has to name the way forward, not just report a stop — the agent already has the right
-  // tool for this (offset/limit), and without the pointer it tends to retry the identical read.
-  //
-  // resumeOffset is the 0-based index of the LAST line shown, not the one after it: the byte ceiling
-  // cuts mid-line, so that last line is a fragment and the agent has to re-read it to get its
-  // remainder. Pointing past it would hand back a notice that exists to stop truncation being silent
-  // while itself losing the tail of a line silently.
+  // Points at offset/limit so the agent doesn't retry the same read. Resumes AT the last line shown, since the
+  // byte cut leaves it partial.
   private moreToRead(resumeOffset: number): string {
     return (
       `\n\n[file truncated at ${MAX_FILE_READ_BYTES} bytes — this is not the whole file]\n` +
@@ -68,9 +53,7 @@ Use this instead of cat, head, or tail.
       const header = `${file_path}\n`;
 
       if (offset === undefined && limit === undefined) {
-        // `head -c` rather than `cat`: the ceiling is applied in the container, so an oversized file
-        // never crosses into this process. One byte over the limit is requested purely so a file that
-        // is exactly at the limit is not misreported as truncated.
+        // One byte over the limit so a file exactly at it isn't reported as truncated.
         const r = await this.runner.exec(["head", "-c", String(MAX_FILE_READ_BYTES + 1), `/workspace/${relpath}`]);
         if (r.code !== 0) return `Error: ${r.stderr || "file not found or unreadable"}`;
         const truncated = Buffer.byteLength(r.stdout, "utf8") > MAX_FILE_READ_BYTES;

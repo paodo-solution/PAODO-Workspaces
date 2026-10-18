@@ -1,13 +1,5 @@
-// Runs an async action while exposing a `pending` flag that only turns true if the action is still
-// running after `delayMs`. Fast actions finish before the timer fires and never flash a spinner;
-// slow ones surface one. Re-entrant calls are ignored while an action is in flight (the guard is a
-// ref, not the lagging `pending` state, so it blocks duplicates during the pre-delay window too).
-//
-// Usage:
-//   const { pending, run } = useDeferredPending();
-//   <button disabled={pending} onClick={() => run(async () => { ...await... })}>
-//     {pending ? "Working…" : "Go"}
-//   </button>
+// Runs an async action; `pending` turns true only after `delayMs`, so fast actions never flash a spinner.
+// Re-entrant calls are ignored (ref guard). Usage: const { pending, run } = useDeferredPending();
 
 import { useCallback, useRef, useState } from "react";
 

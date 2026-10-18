@@ -1,6 +1,5 @@
-// The drive registry is the retry handle for deletion, so the store removes it only after files and
-// connections are gone. This route-level boundary pins the public half of that contract: a cleanup
-// failure is a 500, never the same success receipt as a completed deletion.
+// The registry entry is deletion's retry handle, so it goes only after files and connections. Pinned here:
+// a cleanup failure is a 500, never the success receipt of a completed deletion.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

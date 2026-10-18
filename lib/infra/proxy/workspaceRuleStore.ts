@@ -1,6 +1,4 @@
-// Ownership of per-workspace injection rules + the auth check that gates them.
-// Split out of CredentialProxy so the "which rules apply to this connection" decision — including
-// the fail-closed secret verification — is a pure, socket-free unit that can be tested directly.
+// Per-workspace injection rules and their auth check, kept socket-free so it's testable on its own.
 import { verifyProxySecret } from "./proxyCA";
 import { createAuditLogger } from "../logger";
 import type { DomainRule } from "../security/workspaceSecretStore";
@@ -26,10 +24,8 @@ export class WorkspaceRuleStore {
     this.rules.delete(wsId);
   }
 
-  // Resolve the injection rules a connection is allowed to use. A workspace's rules apply only when
-  // the presented secret matches the one derived from its id. A caller that knows another
-  // workspace's id but not its secret gets an empty rule set — the connection still tunnels/forwards,
-  // but no real value is ever substituted (fail closed).
+  // Rules apply only if the secret matches the id; a wrong secret gets none, so nothing is substituted
+  // (fails closed).
   resolve(auth: ProxyAuth | null): DomainRule[] {
     if (auth && verifyProxySecret(auth.wsId, auth.secret)) {
       return this.rules.get(auth.wsId) ?? [];

@@ -1,6 +1,5 @@
-// Every storage root falls back to a directory under process.cwd() when its env var is unset, which
-// in a test run is the repo itself. Unset, a suite reads and writes the developer's own database,
-// vaults and workspaces, and leaves .paodo-* directories behind. Give each test file a temp root.
+// Storage roots default under cwd (the repo in tests), so give each test file a temp root rather than touch
+// the developer's real data.
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";

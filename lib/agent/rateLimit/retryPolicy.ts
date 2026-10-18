@@ -1,10 +1,5 @@
-/**
- * How long a rate-limited call may keep trying. The pacer decides *when* to send; this decides when
- * to stop believing that waiting will help.
- *
- * The cumulative cap is the guard against a refusal that does not clear in a useful amount of time.
- * Better a clear failure after a bounded wait than a call that hangs until the workspace deadline.
- */
+// When a rate-limited call should stop retrying. The cumulative cap turns a refusal that won't clear
+// into a clear failure rather than a hang until the workspace deadline.
 
 /** Attempts for one logical call, first included. */
 export const MAX_ATTEMPTS = 8;
@@ -45,10 +40,8 @@ export class RetryBudget {
     this.attempts += 1;
   }
 
-  /**
-   * Whether to wait `ms` and try again, given what has already been spent. False means give up —
-   * either the attempt count is used up, or waiting again would breach the cumulative cap.
-   */
+  // Whether to wait `ms` and try again, given what has already been spent. False means give up —
+  // either the attempt count is used up, or waiting again would breach the cumulative cap.
   canRetry(ms: number): boolean {
     return this.attempts < this.maxAttempts && this.waited + ms <= this.maxWaitMs;
   }
@@ -66,13 +59,8 @@ export class RetryBudget {
   }
 }
 
-/**
- * A delay that a run's abort cuts short rather than outliving.
- *
- * Deliberately NOT unref'd, unlike the run timer. This wait is work in progress — a call queued for
- * its turn on the provider — so it must hold the event loop open; unref'ing it lets a process with
- * nothing else pending exit in the middle of a paced run. The abort listener is what bounds it.
- */
+// A delay the run's abort cuts short. Not unref'd: it is in-progress work, and unref would let the
+// process exit mid-run.
 export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);

@@ -1,10 +1,7 @@
 "use client";
 
-// Version-history button for the TopBar's right slot. Clicking the clock icon opens a floating
-// panel listing every snapshot as one line — short sha + timestamp — from
-// GET /api/workspaces/:id/history. Clicking a line rolls the workspace back to that commit via
-// POST /api/workspaces/:id/restore (the hard reset overwrites the work-tree). onRestored() lets
-// the page refresh the file tree/viewer to reflect the reverted files.
+// TopBar history button: lists snapshots (GET .../history); clicking one hard-resets to it (POST .../restore),
+// then onRestored() refreshes the page.
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { LoadingState } from "@/components/shared/LoadingState";

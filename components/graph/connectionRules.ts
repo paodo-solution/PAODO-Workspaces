@@ -16,8 +16,8 @@ interface ConnectionContext {
   edges: Edge[];
 }
 
-/** A drive link is one edge per drive/workspace pair: re-dragging it moves its handles in place
- *  instead of stacking a second link on the same pair. */
+// A drive link is one edge per drive/workspace pair: re-dragging it moves its handles in place
+// instead of stacking a second link on the same pair.
 function resolveDriveLink(connection: Connection, sourceIsDrive: boolean, edges: Edge[]): ConnectionOutcome {
   const driveId = sourceIsDrive ? connection.source : connection.target;
   const workspaceId = sourceIsDrive ? connection.target : connection.source;

@@ -1,6 +1,4 @@
-// Agent tool that replaces the current workspace task checklist with a new list.
-// Used during multi-step tasks to track progress — each call overwrites the full list,
-// so the agent must always pass all items including completed ones.
+// todo_write: replaces the whole task checklist, so every call passes all items, including completed ones.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

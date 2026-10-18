@@ -1,11 +1,5 @@
-/**
- * Agent tool: copy a file or a whole folder from the local workspace into a shared drive so other
- * agents can use it. Workspace bytes are read host-side and written into the drive host-side (drives
- * are never mounted into a container). A drive is a plain live filesystem: one file per path, newest
- * wins. A folder is copied file by file, structure preserved; each file is bounded individually, so a
- * whole directory costs no more heap than its largest file. Uploading over an existing path overwrites
- * it and the result SIGNALS the overwrite. Reads/writes raw bytes, so binary files stay intact.
- */
+// Copies a workspace file or folder into a drive, host-side as raw bytes, one bounded file at a time.
+// Drives are plain filesystems, so an existing path is overwritten and the result says so.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -105,9 +99,7 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
     if (typeof resolved === "string") return { error: resolved };
     if (!resolved.relPath) return { error: "Error: a destination file path within the drive is required" };
 
-    // Same ceiling as drive_download, applied to the workspace side. The workspace directory is a
-    // host volume, so this read lands in the app's heap exactly as a drive read does — the container
-    // is not in the path and none of its limits apply.
+    // Same ceiling as drive_download: the workspace volume is read host-side, into the app's heap.
     const content = await readFileBounded(srcAbs, MAX_DRIVE_TRANSFER_BYTES, {
       missing: `Error: workspace file not found: ${sourceLabel}`,
       isDirectory: `Error: "${sourceLabel}" is a directory, not a file`,

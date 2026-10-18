@@ -49,20 +49,15 @@ export interface ArchiveResult {
   manifest: WorkspaceArchiveManifest;
 }
 
-/**
- * Ordered so a plain alphabetical listing reads correctly: deployment, then the id a rename cannot
- * move, then the instant. The slug trails because it is the one field that changes over a
- * workspace's life — ahead of the timestamp it would sort a renamed history out of order.
- */
+// Ordered to sort alphabetically: deployment, stable id, then time. The slug trails because a rename
+// changes it, and ahead of the timestamp it would scramble the history.
 export function archiveFileName(workspace: Workspace, deployment: string, at: Date): string {
   const stem = `${slugify(deployment)}-${workspace.id}-${archiveStamp(at)}`;
   return `paodo-ws-${stem}-${slugify(workspace.name)}${ARCHIVE_SUFFIX}`;
 }
 
-/**
- * Bundles the workspace's snapshot history. A workspace whose versioning repo has no commits yet
- * yields no member rather than a failure — `git bundle` refuses to write an empty bundle.
- */
+// Bundles the workspace's snapshot history. A workspace whose versioning repo has no commits yet
+// yields no member rather than a failure — `git bundle` refuses to write an empty bundle.
 async function writeFilesBundle(git: IGitClient, gitDir: string, workTree: string, out: string): Promise<boolean> {
   if (!(await exists(gitDir))) return false;
   // Like every runtime git caller (workspaceVersioning.base), pass --work-tree explicitly. Omitting
@@ -78,11 +73,8 @@ async function writeFilesBundle(git: IGitClient, gitDir: string, workTree: strin
   return true;
 }
 
-/**
- * Tars the durable home whole — every file, no exclusions, matching how the versioning repo
- * captures the workspace tree. Exit 1 is tar's "file changed as we read it" warning, expected on a
- * live home and not a reason to fail the backup.
- */
+// Tars the whole durable home, no exclusions. Exit 1 is tar's "file changed as we read it", expected
+// on a live home and not a failure.
 async function writeHomeArchive(homeDir: string, out: string): Promise<boolean> {
   if (!(await exists(homeDir))) return false;
   const result = await run("tar", ["-czf", out, "-C", homeDir, "."]);
@@ -102,11 +94,8 @@ function configOf(workspace: Workspace): WorkspaceArchiveManifest["config"] {
   };
 }
 
-/**
- * Writes a portable archive of one workspace: config, snapshot history, durable home and apt
- * recipe. Nothing inside carries an absolute host path or assumes the id is free on the target,
- * so the result restores onto a different tenant.
- */
+// Archives config, snapshot history, durable home and apt recipe. No absolute host paths or assumed
+// free id, so it restores onto a different tenant.
 export async function archiveWorkspace(
   workspace: Workspace,
   dest: string,

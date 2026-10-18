@@ -1,7 +1,5 @@
-// This layer is the write boundary for the only secret the app spends money with. Two properties
-// matter more than the CRUD: a value must never come back out through the API shape, and a provider
-// the deployment has withdrawn must not be re-keyable — otherwise <PROVIDER>_AVAILABLE=false is
-// defeated by pasting the key straight back in after the startup purge deleted it.
+// Write boundary for the key the app spends with: a value never comes back through the API, and a withdrawn
+// provider cannot be re-keyed, or <PROVIDER>_AVAILABLE=false is undone by re-pasting.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { listProviderKeys, providerHasKey, removeProviderKey, storeProviderKey } from "./providerKeys";
 import { SUPPORTED_PROVIDERS, providerAvailabilityEnv } from "@/lib/agent/buildModel";
@@ -28,9 +26,8 @@ describe("storeProviderKey", () => {
     expect(status).toMatchObject({ provider: "anthropic", hasKey: true, hint: "alue" });
   });
 
-  // Pasting from a vendor dashboard routinely brings a trailing newline, and a key that fails only
-  // because of invisible whitespace is the least diagnosable failure there is — it looks exactly
-  // like a wrong key, and re-pasting reproduces it.
+  // Dashboard pastes often carry a trailing newline, and a whitespace-broken key looks exactly like a wrong
+  // one, even when re-pasted.
   it("trims surrounding whitespace rather than storing an unusable key", () => {
     offerOnly("anthropic");
     storeProviderKey("anthropic", "  sk-ant-value\n");
@@ -48,10 +45,8 @@ describe("storeProviderKey", () => {
     expect(() => storeProviderKey("anthropic", value)).toThrow(/non-empty string/);
   });
 
-  // No format check on purpose: vendors change key prefixes and lengths without warning, and a
-  // validator confident about the shape eventually rejects a key that works perfectly well —
-  // locking the operator out of their own deployment for a cosmetic reason. Whether a key is good
-  // is a question only the provider can answer, and it answers it on the next run.
+  // No format check: vendors change key shapes without warning, and a confident validator eventually locks out
+  // a working key. Only the provider can judge, on the next run.
   it("accepts a value that looks nothing like a key", () => {
     offerOnly("anthropic");
     expect(() => storeProviderKey("anthropic", "not-remotely-a-key")).not.toThrow();

@@ -5,16 +5,8 @@ import type { BaseMessage, BaseMessageChunk } from "@langchain/core/messages";
 import { scalewayModel } from "../models/registry";
 import type { ReasoningEffort } from "../models/llmSelection";
 
-/**
- * The effort to actually send for a model, given the level the workspace selected.
- *
- * A level the model does not support is replaced with that model's documented default rather than
- * passed through. Scaleway's gateway would accept it — it validates against vLLM's union, not the
- * model — and then collapse it to the default anyway, so this only makes the request say what is
- * really going to happen. Both offered models support "none", so switching thinking off always works.
- *
- * A model absent from the registry is sent the level unchanged; there is nothing better to guess.
- */
+// An unsupported level becomes the model's default, which Scaleway would silently apply anyway. A model
+// missing from the registry gets the level unchanged.
 export function scalewayEffort(model: string, effort: ReasoningEffort): ReasoningEffort {
   const spec = scalewayModel(model);
   if (!spec) return effort;
@@ -29,17 +21,8 @@ export function scalewayReasoningConfig(
   return { modelKwargs: { reasoning_effort: scalewayEffort(model, effort) } };
 }
 
-/**
- * Rename Scaleway's reasoning field to the one the SDK reads.
- *
- * Scaleway streams thinking as `reasoning` (and returns `message.reasoning` unstreamed), while
- * @langchain/openai only ever looks at `reasoning_content` — so left alone the whole reasoning
- * stream is billed, then dropped before lib/agent/modelTurn.ts can see it. Both models reason by
- * default, so this is the normal path rather than an edge case.
- *
- * An already-present `reasoning_content` wins: if Scaleway ever adopts the standard spelling, this
- * must not overwrite it with the legacy field.
- */
+// Scaleway sends `reasoning` but the SDK only reads `reasoning_content`, so it would be billed then
+// dropped. An existing `reasoning_content` wins.
 export function renameScalewayReasoning<T extends object>(payload: T): T {
   const { reasoning, reasoning_content } = payload as ScalewayReasoningFields;
   if (typeof reasoning !== "string" || typeof reasoning_content === "string") return payload;
@@ -52,14 +35,8 @@ interface ScalewayReasoningFields {
   reasoning_content?: unknown;
 }
 
-/**
- * Both hooks are overridden because the app uses both call shapes: modelTurn streams a run's turns,
- * while modelGateway.invoke serves the non-streaming paths (compaction, summaries).
- *
- * NOT covered, because Scaleway does not report it: reasoning TOKENS. Its usage payload carries no
- * `completion_tokens_details` at all, so outputTokensReasoning stays 0 for these models however much
- * reasoning text arrives. The tokens are still counted in `completion_tokens`, so no cost is lost.
- */
+// Overrides both the streaming and non-streaming hooks. Scaleway reports no reasoning token count, so
+// outputTokensReasoning stays 0; the cost is still in completion_tokens.
 class ScalewayCompletions extends ChatOpenAICompletions {
   protected _convertCompletionsDeltaToBaseMessageChunk(
     delta: Record<string, unknown>,
@@ -79,13 +56,7 @@ class ScalewayCompletions extends ChatOpenAICompletions {
   }
 }
 
-/**
- * A ChatOpenAI whose inbound half understands Scaleway's field name.
- *
- * ChatOpenAI delegates every completions call to the instance it is handed, so injecting the
- * subclass adapts the wire format without a second client or a forked call path — the same seam
- * ./mistralProtocol.ts uses for that vendor's content blocks.
- */
+/** A ChatOpenAI that reads Scaleway's reasoning field, via the same seam as mistralProtocol.ts. */
 export function createScalewayChatModel(fields: ChatOpenAIFields): ChatOpenAI {
   return new ChatOpenAI({ ...fields, completions: new ScalewayCompletions(fields) });
 }

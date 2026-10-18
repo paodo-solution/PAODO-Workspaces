@@ -1,7 +1,5 @@
-// Permanent removal of a workspace and every resource keyed by its id. Kept apart from the read and
-// update operations because deletion is the only path that reaches all owned resources at once — and
-// the only one whose every step is audit-logged. The concrete cleanup plan is assembled at the HTTP
-// composition boundary; this module only owns deletion policy and ordering.
+// Permanent, audit-logged removal of a workspace and everything keyed by its id. The cleanup plan is wired
+// at the HTTP boundary; this owns policy and order.
 
 export interface DeleteWorkspaceResult {
   deleted: true;
@@ -40,11 +38,8 @@ export interface WorkspaceDeleteDeps {
   cleanupGroups: readonly (readonly WorkspaceDeleteStage[])[];
   log: DeleteLogger;
   audit: DeleteAuditLogger;
-  /**
-   * Derives the on-disk directory for an id whose registry entry is already missing, so a resumed
-   * or duplicate deletion can still target orphaned resources. Only consulted when
-   * `registry.getWorkspace` returns undefined.
-   */
+  // The directory for an id already gone from the registry, so a resumed deletion can still reach its
+  // orphaned resources.
   deriveWorkspaceDir(id: string): string;
 }
 
@@ -76,15 +71,8 @@ async function runDeleteCleanup(
   }
 }
 
-/**
- * Permanently removes an existing workspace and every resource it owns. The registry is finalized
- * last, so a cleanup failure leaves the workspace addressable and the caller can retry the same
- * deletion. A missing registry record is treated as a possibly-interrupted prior deletion, not
- * proof that nothing remains: every cleanup stage still runs against a target reconstructed from
- * the id alone, and only the registry write (a no-op here) is skipped by the store itself. The
- * result is still reported as not found — this sweeps orphaned resources without ever turning a
- * missing workspace into a successful deletion.
- */
+// The registry goes last, so a failed cleanup can be retried. A missing record may be an interrupted
+// deletion: cleanup still sweeps by id, but the result is still not found.
 export async function deleteWorkspace(id: string, deps: WorkspaceDeleteDeps): Promise<DeleteWorkspaceResult | null> {
   const registered = deps.registry.getWorkspace(id);
   const resuming = !registered;

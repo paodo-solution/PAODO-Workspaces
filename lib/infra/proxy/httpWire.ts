@@ -1,22 +1,14 @@
-// HTTP/1.1 wire-protocol mechanics for the credential proxy — parsing a request/response head off a
-// raw socket, decoding a body (Content-Length or chunked), and forwarding it upstream. This module
-// knows nothing about secrets or token substitution: it moves bytes and frames them correctly. The
-// substitution/redaction policy lives in credentialProxy.ts, which drives these helpers. Splitting
-// the two apart keeps each independently testable and lets protocol-correctness changes stay clear
-// of secret-handling changes.
+// HTTP/1.1 framing for the credential proxy: parse heads, decode bodies, forward. Knows nothing about
+// secrets; substitution lives in credentialProxy.ts.
 import * as net from "net";
 import * as http from "http";
 
-// Max request body we buffer in order to substitute inside it. API calls that carry a secret in the
-// body (OAuth token exchange, GraphQL, form posts) are small; larger bodies are binary uploads that
-// don't contain secret tokens, so the caller streams those through untouched rather than buffer them.
+// Max body buffered for substitution; secret-bearing bodies are small, larger ones stream through untouched.
 export const MAX_BODY_SUBSTITUTE = 10 * 1024 * 1024;
 
 const HEADER_SEP = Buffer.from("\r\n\r\n");
 
-// Cap on the request head (status line + headers) we will buffer before finding the terminating
-// CRLFCRLF. The proxy is a single shared process, so an unbounded read lets one container OOM every
-// workspace. Mirrors MAX_BODY_SUBSTITUTE, which already bounds the body path.
+// Head-size cap: one shared proxy process, so an unbounded read would let one container OOM all workspaces.
 const MAX_HEADER_BYTES = 64 * 1024;
 
 // Decode an HTTP/1.1 chunked request body as far as the bytes allow. `done` is true once the
@@ -163,10 +155,7 @@ export async function readHttpHeaders(readable: NodeJS.ReadableStream): Promise<
   });
 }
 
-// Forward the request body to the upstream request and call end() at the right time.
-// The root problem with waiting for socket "end": HTTP/1.1 clients keep the tunnel alive
-// after sending headers, so "end" never fires for GET/HEAD. We use Content-Length instead:
-// if bodyLength === 0 (or absent), end immediately; otherwise stream exactly bodyLength bytes.
+// Ends by Content-Length, not socket "end", which never fires on a kept-alive tunnel.
 export function pipeBody(
   src: NodeJS.ReadableStream & NodeJS.EventEmitter & { resume(): void; removeListener(e: string, fn: unknown): void },
   dest: http.ClientRequest,

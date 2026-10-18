@@ -28,16 +28,8 @@ export interface CredentialRevocationResult {
   hasKey: false;
 }
 
-/**
- * The plaintext, and the channel as it stands once the key exists.
- *
- * The two axes travel with the key for the same reason revocation reports them: minting says nothing
- * about whether the channel is open, and a caller holding a `plain` with no answer to that has a
- * credential it cannot tell apart from a working one. It finds out when every call using it is
- * rejected, by which point the key has usually been handed on and there is nothing left pointing back
- * at the toggle. Issuing against a closed channel stays legal — it is the safe order, since the door
- * is opened after the key is delivered rather than before — so this is reported, not refused.
- */
+// The plaintext plus the channel state, so a key minted on a closed channel isn't mistaken for a working
+// one. That's allowed (deliver the key, then open), so it's reported.
 export interface CredentialIssueResult {
   plain: string;
   enabled: boolean;

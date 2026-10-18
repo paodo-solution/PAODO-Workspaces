@@ -1,9 +1,5 @@
-// The rendered-transcript message shape. It lives here, outside both agent/ and client/, because
-// both sides speak it: lib/agent/messageSerialization.ts projects a *stored* conversation into this
-// shape when the UI reopens history, and lib/client/agentTranscript.ts folds live AgentEvents into
-// the same shape while a run streams. Two producers, one vocabulary — so it belongs to neither.
-//
-// Deliberately dependency-free: no React, no DOM, no agent runtime types.
+// The rendered message shape, produced both by the server (stored history) and the client (live events), so
+// it belongs to neither. Dependency-free.
 
 export interface Message {
   role: "user" | "assistant" | "tool_start" | "error" | "limit_notice" | "reasoning" | "usage" | "disconnected";

@@ -1,8 +1,5 @@
-/**
- * The checkpoint every HTTP request passes before Next.js: host, rate limit, credential, CSRF, in
- * that order. Built from injected dependencies so the order and each rejection can be tested without
- * a listener; server.ts supplies the real ones.
- */
+// Every HTTP request passes here before Next.js: host, rate limit, credential, CSRF, in that order.
+// Dependencies are injected (server.ts supplies them) so the order is testable without a listener.
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "http";
 import { publicErrorBody, type AppErrorCode } from "../../errors/appError";

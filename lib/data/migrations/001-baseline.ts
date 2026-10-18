@@ -1,12 +1,7 @@
 import type { Migration } from "./index";
 
-/**
- * The starting schema. The opening sweep drops by name from sqlite_master rather than a fixed list,
- * so pointing this at a database left behind by an older shape rebuilds it; on the fresh database it
- * normally runs against, it finds nothing.
- *
- * From here on, schema changes are ordinary migrations: add a file, do not edit this one.
- */
+// The starting schema; its sweep drops whatever sqlite_master lists, so an older database is rebuilt.
+// Never edit this file: add a migration instead.
 export const baselineSchema: Migration = {
   version: 1,
   name: "baseline",

@@ -364,9 +364,7 @@ export default function FileTreePanel({
               {upload.summary.uploaded + upload.summary.failed.length === 1 ? "" : "s"} — {upload.summary.failed.length}{" "}
               failed.
             </p>
-            {/* A representative reason files failed (disk full, path rejected, network, ...) gets its
-                own plain-text line — separate from the count above and the routine exclusion notes
-                below, so it doesn't read as just another bullet. */}
+            {/* Own line, so the failure reason doesn't read as another exclusion bullet. */}
             {upload.summary.errorSummary && (
               <p className="text-sm text-text-2 m-0 mb-2 leading-[1.5]">{upload.summary.errorSummary}</p>
             )}
@@ -377,8 +375,7 @@ export default function FileTreePanel({
                 ))}
               </ul>
             )}
-            {/* Only the genuine failures get a ✗ list — excluded files are intentional and summarised
-                in the notes above, never listed here as if they'd failed. */}
+            {/* Only genuine failures get a ✗ list; exclusions are intentional and summarised above. */}
             {upload.summary.failed.length > 0 && (
               <div className="rounded border border-border bg-bg-tint text-2xs text-text-3 p-3 mb-[26px] max-h-[480px] overflow-y-auto font-mono whitespace-pre-wrap">
                 {upload.summary.failed.map((path) => `✗ ${path}`).join("\n")}

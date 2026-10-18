@@ -1,10 +1,5 @@
-// Agent-chosen context compaction. This tool is a SIGNAL only: a tool's _call receives just
-// its args and returns a string — it has no handle to the conversation. The runner owns the
-// `messages` array and performs the actual surgery (see lib/agent/compact.ts) AFTER the turn
-// commits, where the tool_call/tool_result pair is complete (Anthropic's pairing invariant).
-//
-// This tool's returned ack carries `next_step`; for light/medium it survives in context as the
-// last ToolMessage, so the freshly-compacted agent knows what to do next.
+// A signal tool: the runner compacts `messages` after the turn commits, keeping tool_call/result pairs intact.
+// For light/medium, the ack's `next_step` survives as the last ToolMessage.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

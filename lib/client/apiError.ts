@@ -48,6 +48,6 @@ export async function readApiError(res: Response, fallback: string): Promise<Api
   };
 }
 
-/** Outcome of a mutation whose failure message is shown inline (create/rename forms stay open so
- *  the user can correct the input), rather than thrown. */
+// Outcome of a mutation whose failure message is shown inline (create/rename forms stay open so
+// the user can correct the input), rather than thrown.
 export type MutationResult = { ok: true } | ApiFailure;

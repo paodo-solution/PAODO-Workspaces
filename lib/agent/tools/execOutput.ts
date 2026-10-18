@@ -1,27 +1,11 @@
-// Bounds how much of a command's output the app holds in memory, and preserves the rest on disk.
-//
-// execCommand used to do `stdout += chunk` with no ceiling. That is not a safe operation: past V8's
-// maximum string length (~536M chars) the `+=` throws RangeError, and it throws from inside the
-// Docker stream's "data" handler — a callback Node invokes directly, not something on the promise
-// chain execCommand catches. So it escaped to process.on("uncaughtException") in server.ts, which
-// fatal()s by design, taking down every workspace, WebSocket session and in-flight run on the
-// instance. A command printing a binary or a verbose build log got there in under a second, and none
-// of the container limits applied: the memory was in the app, not the container.
-//
-// The cap makes that unreachable. The spill file is what stops the cap from losing anything: past
-// the cap the output keeps streaming into a file inside the container, where the agent's own shell
-// can grep or tail it — the same place background task logs already live.
+// Caps command output held in memory: unbounded, `+=` would throw RangeError in a stream handler and crash the
+// instance. Past the cap, output streams to a file in the container that the agent can grep or tail.
 
 import type { OutputSink } from "../../infra/interfaces";
 import { MAX_INLINE_BYTES, PREVIEW_BYTES, STDERR_SAMPLE_BYTES, formatOutputBytes } from "../../infra/limits";
 
-/**
- * Accumulator for one command's output, shared by its stdout and stderr streams.
- *
- * Under the cap it behaves exactly as the old string concatenation did — the streams stay separate
- * so diagnoseStderr and the existing result format still work on whole output. Over the cap it stops
- * retaining and hands everything to a sink instead, keeping only a head preview.
- */
+// One command's stdout and stderr. Under the cap they're kept whole and separate; over it, everything
+// goes to a sink and only a head preview is kept.
 export class ExecOutput {
   // Arrival-order copy, used to flush a complete file at spill time and to cut the preview. Only
   // retained until the spill happens, which is the only moment it is needed.
@@ -55,9 +39,8 @@ export class ExecOutput {
       return;
     }
 
-    // Retain the WHOLE crossing chunk before deciding to spill. Truncating it here instead would
-    // drop the bytes between the cap and the chunk boundary, and those bytes would then be missing
-    // from the file too — the one place the output is supposed to survive intact.
+    // Keep the WHOLE crossing chunk before spilling, or the bytes past the cap would be missing from the
+    // file too.
     this.ordered.push(buf);
     (stream === "stdout" ? this.stdoutKept : this.stderrKept).push(buf);
     this.inlineBytes += buf.length;
@@ -128,11 +111,8 @@ export class ExecOutput {
     return this.overflowed ? this.stderrSample() : Buffer.concat(this.stderrKept).toString("utf8");
   }
 
-  /**
-   * The inline block for an over-cap result: size, where the full output went, and the head preview.
-   * Shaped after Claude Code's own message so the agent reads a familiar contract — a preview plus a
-   * path it is expected to go query, not a dead end.
-   */
+  // Size, file path and head preview for an over-cap result, modelled on Claude Code's message so the
+  // agent knows to go query the file.
   overflowNotice(): string {
     const sink = this.sink;
     if (!sink || !this.preview) return "";

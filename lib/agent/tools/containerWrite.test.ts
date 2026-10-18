@@ -1,6 +1,5 @@
-// writeContainerFile is the one chokepoint both file_write and file_edit's create branch write
-// through — this pins that a full disk is refused BEFORE any container exec runs (no mkdir, no
-// tee), the same "don't even try" stance the HTTP upload route takes via checkFreeSpace.
+// writeContainerFile backs file_write and file_edit's create branch; a full disk must be refused BEFORE any
+// exec (no mkdir, no tee), as the upload route does via checkFreeSpace.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExecRunner } from "../interfaces";

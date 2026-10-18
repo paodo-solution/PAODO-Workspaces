@@ -1,11 +1,5 @@
-// file_read was the sharpest instance of the unbounded-capture bug: a plain `cat` with no
-// offset/limit, whose result is then split/mapped/joined into three more full copies of itself. Two
-// allowed tool calls — write a large file, then read it back — could exhaust the heap, and a heap
-// exhaustion is an abort no try/catch can intercept. skipResultCap exempts this tool from the 50k
-// dispatch cap, and that cap runs after materialization regardless, so nothing upstream helped.
-//
-// The fix stops the bytes in the container instead of transferring them to drop them, so these tests
-// care about which command is issued, not only about what comes back.
+// A bare `cat` once let two tool calls exhaust the heap, beyond any try/catch, and the 50k dispatch cap ran
+// too late. The fix stops bytes in the container, so these tests check the command issued.
 import { describe, it, expect } from "vitest";
 import { FileReadTool } from "./fileRead";
 import type { ExecRunner, ExecResult } from "../interfaces";
@@ -54,9 +48,8 @@ describe("FileReadTool capture limits", () => {
   });
 
   it("resumes ON the cut line, not past it", async () => {
-    // Three lines where the third was cut mid-way by the byte ceiling. It is displayed as line 3,
-    // whose 0-based offset is 2 — pointing at 3 would resume on line 4 and lose the rest of line 3
-    // without a word, which is the exact silence this notice exists to prevent.
+    // The byte ceiling cut line 3 mid-way, so resuming must point at offset 2: offset 3 would silently skip the
+    // rest of line 3, the silence this notice exists to prevent.
     const body = `alpha\nbeta\n${"g".repeat(400_000)}`;
     const { runner } = runnerReturning({ stdout: body });
     const out = await read(new FileReadTool(runner), { file_path: "huge.log" });

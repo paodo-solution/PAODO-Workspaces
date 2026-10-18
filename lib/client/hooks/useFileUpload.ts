@@ -10,18 +10,14 @@ export interface PathedFile {
   path: string;
 }
 
-// Files go up one request each, in parallel but bounded: enough sockets to keep a fast link busy on
-// a tree of small files, few enough to stay inside the server's per-workspace upload rate limit.
-// They are deliberately NOT bundled into an archive first — that would mean holding the whole
-// archive in browser memory before sending a byte, and holding it again server-side to read it.
+// One request per file, bounded in parallel to stay under the server's upload rate limit. No archive, which
+// would sit whole in memory on both ends.
 const CONCURRENCY = 6;
 
 // Thousands of files would mean thousands of re-renders, and no one reads every increment.
 const PROGRESS_STEP = 10;
 
-// A large tree can push files faster than the server's upload limiter refills, so a 429 is expected
-// backpressure rather than a failure — dropping a 10,000-file batch because file 8,000 arrived a
-// second early would be indefensible. Retry-After says exactly how long to hold off.
+// A 429 here is expected backpressure on large trees, not a failure; wait as Retry-After says.
 const RATE_LIMIT_RETRIES = 5;
 const RETRY_AFTER_CAP_SECONDS = 30;
 
@@ -43,11 +39,8 @@ export interface UploadQueueResult {
   errorSummary: string | null;
 }
 
-/**
- * Drain an upload queue, one request per file, bounded concurrency. Pulled out of the hook so its
- * per-file behavior (every file is attempted; a failure only ever costs that one file) can be
- * unit-tested against a mocked fetch, independent of React state.
- */
+// One request per file, bounded concurrency; a failure costs only that file. Outside the hook so it
+// can be tested without React.
 export async function runUploadQueue(
   initialQueue: PathedFile[],
   opts: { apiBase: string; onProgress?: (uploaded: number) => void },
@@ -111,36 +104,23 @@ export async function runUploadQueue(
 /** Result of the most recently finished upload batch, shown in the results popup. */
 export interface UploadSummary {
   uploaded: number;
-  /**
-   * Files we actually tried to put in and couldn't — over the per-file size limit, or rejected by
-   * the server / lost to the network. These are genuine failures: each is attempted on its own, so
-   * this only ever holds the specific files that couldn't upload, and `uploaded + failed.length` is
-   * the size of the attempted batch. Ignore-rule exclusions are deliberately NOT here — those are
-   * intentional, counted in `excluded`, and the upload lands fully around them.
-   */
+  // Files attempted that failed (too big, rejected, network), so `uploaded + failed.length` is the
+  // attempted batch. Ignore-rule exclusions go in `excluded`, not here.
   failed: string[];
-  /** How many files the ignore rule left out (node_modules, .git, ...). Intentional, not a failure — reported for transparency only; the rest of the drop still uploads. */
+  /** Files the ignore rule left out (node_modules, .git…). Intentional, not a failure. */
   excluded: number;
-  /**
-   * One line per triggered category — e.g. `node_modules excluded (12 files)`, `3 files over the
-   * 1 GB limit` — so each cause reads as a single sentence instead of forcing the reader to infer it
-   * from the raw path list below.
-   */
+  /** One sentence per cause, e.g. `node_modules excluded (12 files)`. */
   notes: string[];
-  /** A representative reason files failed (507 out of disk, 500, network, ...), shown for context. Informational — nothing was stopped on its account. */
+  /** A representative failure reason (507, 500, network…), for context only. */
   errorSummary: string | null;
 }
 
-/**
- * Shared upload logic for the file tree panel — used by both the Files/Folder buttons and the
- * drag-and-drop zone. Every entry point funnels into one per-file uploader.
- */
+// Shared upload logic for the file tree panel — used by both the Files/Folder buttons and the
+// drag-and-drop zone. Every entry point funnels into one per-file uploader.
 export function useFileUpload(apiBase: string, onUploaded: () => void) {
   const [status, setStatus] = useState<string | null>(null);
   const [summary, setSummary] = useState<UploadSummary | null>(null);
-  // Authoritative "one upload at a time" guard. A ref is synchronous and render-independent, so a
-  // second call in the same tick is rejected immediately, unlike the status state which only
-  // reflects after a re-render.
+  // A ref, not state, so a second call in the same tick is refused before any re-render.
   const inFlight = useRef(false);
 
   const uploadEntries = async (entries: PathedFile[], applyIgnorePatterns: boolean) => {
@@ -151,9 +131,8 @@ export function useFileUpload(apiBase: string, onUploaded: () => void) {
     // Set synchronously so the panel shows busy from the first click rather than appearing idle.
     setStatus("Uploading…");
 
-    // Folder uploads default-exclude generated directories (node_modules, .venv, ...) silently —
-    // no confirmation step, since it's just as easy to say so in the results list afterward as it
-    // is to ask first. Never applied to the plain Files button or a flat-file drop.
+    // Folder uploads silently skip generated dirs (node_modules, .venv…) and say so in the results. Never for
+    // plain file picks or drops.
     const excluded = applyIgnorePatterns ? partitionByIgnore(entries).excluded : new Map<string, PathedFile[]>();
     const excludedPaths = Array.from(excluded.values())
       .flat()
@@ -161,12 +140,8 @@ export function useFileUpload(apiBase: string, onUploaded: () => void) {
     const excludedSet = new Set(excludedPaths);
     const candidates = entries.filter((entry) => !excludedSet.has(entry.path));
 
-    // Checked before a single byte leaves the browser: an individually-oversized file is excluded
-    // from the queue up front rather than discovered at file 16,000 of 18,000. This is a skip, not a
-    // reason to fail the batch — the rest of a real folder (e.g. a vendored binary sitting next to
-    // thousands of legitimate source files) has every reason to still upload. The server enforces the
-    // same limit on every request regardless, so this is an optimization (skip the doomed request
-    // entirely) plus an up-front explanation, not the actual guard.
+    // Oversized files are skipped up front instead of failing the batch. The server enforces the same limit;
+    // this just avoids doomed requests and explains early.
     const clientOversized = candidates.filter((entry) => entry.file.size > MAX_UPLOAD_BYTES).map((entry) => entry.path);
     const queue = candidates.filter((entry) => entry.file.size <= MAX_UPLOAD_BYTES);
 
@@ -184,9 +159,7 @@ export function useFileUpload(apiBase: string, onUploaded: () => void) {
     };
 
     if (queue.length === 0) {
-      // Nothing left to send — everything was excluded or oversized. No onUploaded() call: nothing
-      // in the workspace changed. Excluded files are intentional, so only the oversized ones count
-      // as failures here.
+      // Nothing left to send. No onUploaded(): nothing changed. Only oversized files count as failures.
       setSummary({
         uploaded: 0,
         failed: [...clientOversized],

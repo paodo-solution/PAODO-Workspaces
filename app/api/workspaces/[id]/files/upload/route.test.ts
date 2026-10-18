@@ -1,23 +1,12 @@
-// The upload route writes a caller-controlled path into the workspace dir. One input decides where
-// bytes land: the `?path=` query param. The bug class is path traversal — a path like "../escape.txt"
-// (or an absolute one) escaping the workspace and overwriting host files. E2E only uploads
-// well-formed files, so this guard is invisible there; it must be unit-pinned. These tests use a real
-// on-disk workspace and a sibling location OUTSIDE it where a successful escape would deposit its
-// payload, so a broken guard fails the "never landed outside" assertion rather than being masked.
-//
-// The size limit is pinned here too. It is the difference between a clear 413 and an OOM: the handler
-// streams to disk precisely so an over-limit body is refused without ever being held in memory, and
-// a refused upload must leave neither a truncated file at the target path nor a stray temp file.
+// Pins ?path= traversal ("../x" or absolute) against a real workspace with a sibling dir OUTSIDE it, and the
+// size limit: an over-limit body is a 413, never held in memory, leaving no truncated or temp file.
 
 import { describe, it, expect, vi, afterAll, beforeEach } from "vitest";
 import fs from "fs";
 import path from "path";
 
-// Real workspace dir on disk (the route calls fs.realpath on it), with a sibling location OUTSIDE
-// it where a successful traversal would deposit its payload.
-// LIMIT lives in here with them because vi.mock below is hoisted above any plain top-level const.
-// It is small enough to exceed with a few bytes, so the over-limit paths are exercised for real
-// rather than approximated by faking a Content-Length header.
+// Real workspace and outside sibling on disk (the route realpaths it). LIMIT lives here because vi.mock is
+// hoisted, and is tiny so over-limit paths run for real instead of faking Content-Length.
 const { ROOT, WS_DIR, LIMIT } = vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
@@ -73,8 +62,8 @@ describe("files/upload POST — path containment", () => {
     expect(fs.existsSync(ESCAPE_TARGET)).toBe(false);
   });
 
-  // Refused for being absolute, not for where it points: an absolute path that happened to land
-  // inside the workspace used to be accepted, which left ?path= speaking two path spaces at once.
+  // Refused for being absolute, not for where it points: accepting an absolute path that lands inside
+  // the workspace would leave ?path= speaking two path spaces at once.
   it("rejects an upload whose ?path is absolute", async () => {
     const res = await post(`?path=${encodeURIComponent(ESCAPE_TARGET)}`, { body: "PWNED" });
 

@@ -46,9 +46,8 @@ describe("files tree GET", () => {
     expect(names((await res.json()).tree)).toEqual(["src/lib", "src/lib/util.ts", "src/main.ts"]);
   });
 
-  // What a client that navigates asks for: the top of the tree, then the same call again naming one of
-  // the directories it just learned about. `src` comes back as a directory with nothing under it, which
-  // is the caller's cue to ask about it rather than a claim that it is empty.
+  // A navigating client asks for the top, then again for a directory it just learned of. `src` coming back
+  // childless is the cue to ask about it, not a claim that it is empty.
   it("descends only as many levels as a numeric ?depth= asks for", async () => {
     const res = await list("?depth=1");
     expect(res.status).toBe(200);

@@ -1,12 +1,5 @@
-// The workspace's outbound network access. A registry field on the surface, but three systems have to
-// agree for the toggle to mean anything: the registry records it, the credential proxy enforces it, and
-// the workspace's network has to be rebuilt with the correct --internal flag (containerManager.ts).
-// Its own file because that agreement is a security boundary with a rollback rule, not a setter.
-//
-// The network is rebuilt around a container that keeps running. Earlier this stopped the container so
-// the network would be rebuilt on next use, which cascaded into a full recreate and silently destroyed
-// everything the agent had installed — the container's writable layer is the workspace's real content,
-// so a toggle must never cost it.
+// Internet access: the registry, the proxy policy and the sidecar attachment (containerManager.ts) must agree,
+// with rollback on failure. Applied to the running container, never by recreating it.
 import type { IWorkspaceStore } from "@/lib/infra/interfaces";
 import { getContainers } from "@/lib/infra/services";
 import { setInternetAccessPolicy } from "@/lib/infra/proxy/internetAccessPolicy";
@@ -39,15 +32,8 @@ export function validateInternetAccess(value: unknown): boolean {
   return value;
 }
 
-/**
- * Sets the workspace's egress and brings the proxy and the running container in line with it.
- *
- * `previous` is the value to restore if the proxy rejects the change: the registry and the proxy policy
- * are one security boundary and must never be left disagreeing, so a failure there rolls the registry
- * back and raises rather than reporting success on a half-applied boundary. The network rebuild is
- * part of that same success contract: if it cannot be confirmed, restore the previous policy and
- * store value and report failure.
- */
+// Registry, proxy policy and network are one boundary: if the proxy or the network rebuild fails, all
+// roll back to `previous` and it throws.
 export async function setInternetAccess(
   id: string,
   enabled: boolean,

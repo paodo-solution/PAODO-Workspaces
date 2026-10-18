@@ -1,6 +1,5 @@
-// Loads and manages the content of the single file open in the viewer. Fetches type + content
-// from the files/content route, tracks an editable draft with a dirty flag, and exposes save and
-// delete actions. File changes reload only the open, clean file; deletions close the viewer.
+// Content of the file open in the viewer: editable draft with dirty flag, save and delete. Reloads only a
+// clean open file on change; closes on deletion.
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -36,18 +35,14 @@ export function useFileContent(
   const onCloseRef = useRef(onClose);
   const onSelfWriteRef = useRef(onSelfWrite);
   const draftRef = useRef(draft);
-  // Set only while a move covering the open file is in flight. Saves and moves are not serialized
-  // against each other: PUT opens the file without O_CREAT and the move relinks the same inode, so
-  // an in-flight save follows the file to its new name. This ref exists solely so the watcher's
-  // source-deletion event does not close the viewer mid-move (see notifyFilesDeleted).
+  // Set while a move covering the open file is in flight, so its source-deletion event doesn't close the
+  // viewer. An in-flight save follows the inode.
   const pendingMoveRootRef = useRef<string | null>(null);
   const preservedMovedPathRef = useRef<string | null>(null);
 
   const isDirty = fileType === "text" && draft !== content;
 
-  // Mirror the latest props/derived values into refs in an effect (not during render) so they
-  // only ever track committed renders. All of these are read solely inside the async callbacks
-  // below, so effect-timing updates are always current by the time a read happens.
+  // Mirrored in an effect so refs track committed renders only; they are read only in async callbacks.
   useEffect(() => {
     filePathRef.current = filePath;
     onCloseRef.current = onClose;
@@ -161,9 +156,7 @@ export function useFileContent(
 
   const notifyFilesDeleted = useCallback((paths: string[]) => {
     const currentPath = filePathRef.current ?? "";
-    // A local move is observed by chokidar as a source deletion plus a destination addition. The
-    // deletion can arrive before the PATCH response, so do not close the viewer while that move is
-    // pending; completion remaps the path, while cancellation clears this exception.
+    // A move arrives as delete + add, possibly before the PATCH returns, so don't close mid-move.
     if (pendingMoveRootRef.current !== null && paths.includes(currentPath)) return;
     if (paths.includes(currentPath)) onCloseRef.current();
   }, []);

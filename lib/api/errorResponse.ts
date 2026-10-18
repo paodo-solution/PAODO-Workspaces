@@ -48,15 +48,8 @@ export function requestIdOf(request?: Request): string | undefined {
   return request?.headers.get("x-request-id")?.trim() || undefined;
 }
 
-/**
- * The transport status a code maps to.
- *
- * Exported for the one caller whose failure body is genuinely not the envelope alone: a batch endpoint
- * that refused after doing part of the work has to carry its per-item results too. That caller declares
- * its own body type and composes publicErrorBody into it, which keeps this module's return type an
- * honest description of what it returns — an `extra` option here would have made
- * NextResponse<ApiErrorBody> a lie for every caller in order to serve one.
- */
+// Exported for the batch move, whose failure body adds per-item results to publicErrorBody; an `extra`
+// option here would make ApiErrorBody's type a lie for every caller.
 export function statusForCode(code: AppErrorCode): number {
   return STATUS_BY_CODE[code];
 }
@@ -83,11 +76,8 @@ export function appErrorResponse(error: unknown, request?: Request): NextRespons
   });
 }
 
-// A route's unexpected-failure branch is deliberately NOT factored out to sit alongside this. It
-// would have to make the log call, and errorLogContract.test.ts requires `event` and `outcome` to be
-// string literals at the site that emits them — so an operator can grep an event name straight to
-// the code that raises it. Every catch block therefore spells out its own two branches: the expected
-// AppError through appErrorResponse, then one literal log record and an opaque 500.
+// Unexpected failures aren't factored out here: errorLogContract.test.ts requires literal event/outcome at each
+// site, so every catch spells out appErrorResponse, then its own log line and a 500.
 
 /** Read the object-shaped JSON body expected by mutation routes, with the public failure contract. */
 export async function readJsonObject(request: Request): Promise<Record<string, unknown> | NextResponse<ApiErrorBody>> {

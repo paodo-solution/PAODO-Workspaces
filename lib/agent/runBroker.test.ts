@@ -286,9 +286,8 @@ describe("runBroker — the reason a run stopped survives on the history", () =>
 
 describe("runBroker — a run that dies before the loop still reports itself", () => {
   it("turns a throw from outside the agent loop into a visible error and closes the stream", async () => {
-    // What buildModel raises for a stored model the provider no longer accepts. It escapes runAgent
-    // entirely — before the loop that would have converted it into an error event — so the broker
-    // is the only layer left that can say anything.
+    // buildModel's error for a model the provider dropped escapes runAgent before its error-event loop, so the
+    // broker is the only layer left to report it.
     const messages = [new HumanMessage("go")] as BaseMessage[];
     const run = (() => {
       throw new Error('no model selected for provider "deepseek"');

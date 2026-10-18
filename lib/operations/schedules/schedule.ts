@@ -18,12 +18,8 @@ import {
 } from "@/lib/schedules/types";
 import { ScheduleInvalidError } from "./errors";
 
-/**
- * A whole schedule as a caller supplies it — unvalidated. PUT semantics: this is a replace, not a
- * patch, so every field except `endAt` and `enabled` is required and an omission is a rejection
- * rather than "leave it alone". Field types state what a well-formed request claims; validateSchedule
- * checks them, because a JSON body only claims to match.
- */
+// An unvalidated PUT body: a full replace, so every field but `endAt` and `enabled` is required. The
+// types are only a claim; validateSchedule checks them.
 export interface ScheduleInput {
   prompt?: string;
   intervalValue?: number;
@@ -88,15 +84,8 @@ function formatMessage(field: "startAt" | "endAt", example: string): string {
   return `${field} must be YYYY-MM-DDTHH:mm on the timezone's clock, no seconds, Z or offset, e.g. ${example}`;
 }
 
-/**
- * Checks and canonicalizes a whole schedule, touching nothing. Pure, so a caller can validate a
- * request before its first write, and so every message below is reachable from a unit test.
- *
- * Each rejection states the accepted values: a caller with no form constraining it — the CLI, a
- * script, an agent — otherwise gets "ok" back for a value we quietly replaced, or a 500 for one that
- * reached `.trim()` as a number. Every bad field is reported in one rejection, so fixing them takes
- * one round trip rather than one per field. `now` only decides whether an enabled schedule has a run left.
- */
+// Pure. One rejection lists every bad field with its accepted values, so a formless caller fixes all
+// in one round trip. `now` only decides if an enabled schedule has a run left.
 export function validateSchedule(input: ScheduleInput, now: Date = new Date()): ScheduleConfig {
   const issues: ScheduleIssue[] = [];
   const reject = (field: string, error: string, acceptedValues?: readonly string[]) => {
@@ -148,7 +137,8 @@ export function validateSchedule(input: ScheduleInput, now: Date = new Date()): 
   const timezone = text(input.timezone ?? "", "timezone");
   if (timezone !== undefined) {
     if (missing(timezone)) reject("timezone", "timezone is required");
-    else if (!isValidTimezone(timezone)) reject("timezone", "timezone must be a standard timezone name, e.g. Europe/Paris");
+    else if (!isValidTimezone(timezone))
+      reject("timezone", "timezone must be a standard timezone name, e.g. Europe/Paris");
   }
   // Dates are read as the scheduler reads them; UTC stands in for a refused zone so they still get checked.
   const zone = timezone && isValidTimezone(timezone) ? timezone : "UTC";
@@ -212,10 +202,8 @@ function invalid(issues: ScheduleIssue[]): ScheduleInvalidError {
   return new ScheduleInvalidError(issues.map((issue) => issue.error).join("; "), { issues });
 }
 
-/**
- * A schedule as callers see it: only the entity's own fields, whatever else the stored record holds,
- * and every recorded time on the schedule's clock beside startAt. Storage keeps its own instants.
- */
+// A schedule as callers see it: only the entity's own fields, whatever else the stored record holds,
+// and every recorded time on the schedule's clock beside startAt. Storage keeps its own instants.
 export function presentSchedule(entry: ScheduleEntry): PresentedSchedule {
   const clock = (instant: string) => onScheduleClock(instant, entry.timezone) ?? instant;
   const { lastRun } = entry;
@@ -244,11 +232,8 @@ export function presentSchedule(entry: ScheduleEntry): PresentedSchedule {
   };
 }
 
-/**
- * A workspace's schedule as callers see it. A workspace always has one: until a first save it is the
- * unset job, disabled, with nothing pre-filled, since a reader should never be shown a guess. Nothing
- * is stored for it, so it costs no write on workspace creation and no backfill.
- */
+// Always returns a schedule: before the first save, an unstored, disabled, empty one rather than a
+// guess.
 export function getWorkspaceSchedule(
   id: string,
   schedules: ScheduleReader = scheduleStore,
@@ -267,17 +252,8 @@ export function getWorkspaceSchedule(
   };
 }
 
-/**
- * Replaces a workspace's schedule, or creates it. Returns null when the workspace does not exist, so
- * adapters can translate that into their native not-found result — the check belongs here because a
- * schedule must never outlive or precede the workspace it fires (lib/infra/workspaceDeleteDeps.ts
- * clears it from the other end).
- *
- * A replace keeps the schedule's IDENTITY and its HISTORY. Only the configuration is caller-owned:
- * the id, the creation time and the last run carry over, because editing the prompt or the
- * interval does not make this a different schedule and must not erase what it has already done. That
- * rule is the reason this function exists rather than a bare `setSchedule` call.
- */
+// Null if the workspace is missing, so no schedule precedes it. A replace keeps the id, creation time
+// and last run: editing the config doesn't make it a new schedule.
 export function setWorkspaceSchedule(
   id: string,
   input: ScheduleInput,

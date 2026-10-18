@@ -1,7 +1,5 @@
-// The workspace registry is the primary record of a workspace's egress; this file is only the
-// sidecar-visible mirror of it, and a missing entry in it reads as ENABLED. So a mirror that was
-// lost with its volume, restored from an older backup, or never written fails OPEN while the UI
-// still shows the workspace as off. reconcile is what makes the mirror derived rather than precious.
+// This file mirrors the registry for the sidecar, and a missing entry reads as ENABLED, so a lost or stale
+// mirror fails OPEN while the UI says off. reconcile makes the mirror derived, not precious.
 
 import { describe, it, expect, vi, afterAll } from "vitest";
 import fs from "fs";

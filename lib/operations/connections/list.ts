@@ -5,11 +5,8 @@ import { getGraph, type GraphEdge } from "@/lib/agent/graph";
 import { listConnections, listDrives, type DriveConnection } from "@/lib/drives/store";
 import { getStore } from "@/lib/infra/services";
 
-/**
- * One end of a listed connection. `name` is null when nothing answers to the id any more: neither
- * store refuses an id on write, so a dangling row is listed rather than dropped — its id is the only
- * handle a caller has to remove it by.
- */
+// `name` is null for a dangling id. Such rows are listed, not dropped, since the id is the only way to
+// remove them.
 export interface ListedEnd {
   id: string;
   name: string | null;
@@ -77,11 +74,8 @@ function byNames<Row extends { id: string }>(rows: Row[]): Row[] {
   return [...rows].sort((a, b) => key(a).localeCompare(key(b), "en") || a.id.localeCompare(b.id, "en"));
 }
 
-/**
- * Every connection of both kinds, or with `forId` only those touching that workspace or drive. An id
- * neither registry holds is refused rather than answered with an empty listing: nothing connected and
- * no such thing would otherwise read alike.
- */
+// All connections, or those touching `forId`. An unknown id is refused, so "no such thing" never reads
+// like "nothing connected".
 export function connectionListing(forId?: unknown, deps: ConnectionListDeps = defaultDeps()): ConnectionListing {
   const workspaceNames = namesById(deps.workspaces());
   const driveNames = namesById(deps.drives());

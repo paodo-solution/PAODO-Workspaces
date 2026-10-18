@@ -1,10 +1,5 @@
-// Lightweight global registry of active WebSocket connections shared between the custom
-// server (which owns the sockets) and the Next.js API routes that need to broadcast events.
-//
-// WHY global: in Next.js development mode the module system re-evaluates files on every
-// hot-reload, which would reset a module-level Map and drop all live connections. Hanging
-// state off `global` survives hot-reloads because the Node.js global object is never reset
-// between reloads. The guard `if (!g._wsConnections)` ensures only one Map is ever created.
+// Registry of live WebSocket connections shared by the custom server and API routes, on `global` so hot
+// reloads don't drop them.
 import type { WebSocket } from "ws";
 import { WS_MAX_BUFFERED_BYTES, WS_STALL_MS } from "../limits";
 
@@ -13,30 +8,20 @@ if (!g._wsConnections) g._wsConnections = new Map();
 
 const connections = g._wsConnections;
 
-// WHY the sends below are bounded at all: `ws.send()` never blocks. When the client cannot read as
-// fast as we write — a backgrounded tab, a throttled phone, a laptop that went to sleep — the bytes
-// do not wait in the kernel, they queue on OUR heap, and execute_command broadcasts every chunk of a
-// command's output. A `find /` or a verbose build therefore parks its entire output in this process,
-// once per connected tab, with nothing to stop it. That is the same unbounded-accumulation defect as
-// execOutput.ts and dockerClient.ts, just reached through a socket instead of a string.
-//
-// The two numbers — how far behind a socket may fall, and how long it may stay there before it counts
-// as dead rather than slow — are in lib/infra/limits.ts, with every other ceiling.
+// ws.send() never blocks, so a slow client queues on our heap; sends are bounded by the limits in
+// lib/infra/limits.ts.
 
 // Per-socket drop bookkeeping. WeakMap so an entry cannot outlive the socket it describes — this map
 // is never cleaned up on disconnect, and must not be a reason a closed connection stays reachable.
 const lagging = new WeakMap<WebSocket, { dropped: number; overSince: number }>();
 
-/**
- * Send unless the socket is already too far behind, in which case drop the message instead of
- * queueing it. Every write to a client goes through here — a bound that some paths skip is not a
- * bound, since one unbounded caller is all it takes.
- */
 /** Whether this socket is currently draining fast enough to be given more. */
 function keepingUp(ws: WebSocket): boolean {
   return ws.readyState === 1 /* OPEN */ && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES;
 }
 
+// Drops rather than queues once the socket is too far behind. Every client write must go through
+// here: one unbounded caller defeats the bound.
 function sendBounded(ws: WebSocket, data: string): void {
   const state = lagging.get(ws);
 
@@ -87,15 +72,8 @@ export function broadcastToWorkspace(workspaceId: string, data: string): void {
   }
 }
 
-/**
- * Send to ONE connection for this workspace (the agent runner's notify seam).
- * Returns false when there is nobody connected — a run continues with no one watching.
- *
- * Prefers a socket that is keeping up rather than the first open one in iteration order. With two
- * tabs open, that order could put a backgrounded tab first, and the ceiling then turned every
- * tool_call and tool_result_log of the run into a drop while a foreground tab sat there draining
- * fine. The bound has to cost the tab that is behind, not the one that is watching.
- */
+// Sends to one connection, preferring one that keeps up so a backgrounded tab can't cause drops for the
+// tab being watched. Returns false when nobody is connected.
 export function sendToWorkspace(workspaceId: string, data: string): boolean {
   const sockets = connections.get(workspaceId);
   if (!sockets) return false;

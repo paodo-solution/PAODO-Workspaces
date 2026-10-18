@@ -1,12 +1,5 @@
-// Streaming tar transport used by the CLI for one file, a directory tree, or the workspace root.
-//
-// The transport itself is lib/api/fileTransferRoutes.ts, shared with the drive route. What is left
-// here is what only a workspace has: a rate-limit budget shared with the browser's upload, and the git
-// snapshot that makes a push undoable. The drive route passes no versioning at all — see that module
-// for why that is a statement about the space rather than a shortcut.
-//
-// A pull is not rate limited; a push spends the same budget as the browser's upload. See PUT below for
-// why that is parity rather than a bound.
+// CLI tar transport for a workspace (shared core: lib/api/fileTransferRoutes.ts). Adds the git snapshot that
+// makes a push undoable; pushes spend the browser upload's budget, pulls don't.
 export const runtime = "nodejs";
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -30,13 +23,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return getFileTransfer(req, backend(id, ws.dir));
 }
 
-/**
- * Commit the pushed tree so the transfer is undoable from version history, and report only whether
- * that succeeded. The commit sha is deliberately not returned to the client: it names a snapshot of
- * the whole workspace rather than of what was pushed, so a caller reading it beside a list of pushed
- * paths reads it as an identifier for those paths, which it is not. History and restore are where a
- * revision is chosen, and both name it in a context that makes clear what it covers.
- */
+// Commits so the transfer can be undone, returning only success. No sha: it snapshots the whole
+// workspace and would be misread as naming the pushed paths.
 async function snapshot(id: string, ws: { id: string; dir: string }, receipt: PutTransferReceipt): Promise<boolean> {
   try {
     await snapshotWorkspaceStrict(
@@ -56,10 +44,8 @@ async function snapshot(id: string, ws: { id: string; dir: string }, receipt: Pu
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // The same bucket the browser's folder upload spends, so one client cannot bypass the upload budget
-  // by choosing the other transport. Note what this does and does not buy: a whole-tree push is a
-  // single request and so spends a single token, which makes this parity of policy rather than a bound
-  // on the request. What actually bounds one transfer is MAX_TRANSFER_ENTRIES and MAX_TRANSFER_BYTES.
+  // Same bucket as browser uploads, for parity. A whole push is one token; MAX_TRANSFER_ENTRIES/_BYTES are
+  // the real bound.
   const limited = rateLimited(req, { policy: "upload", scope: id, logContext: { workspaceId: id } });
   if (limited) return limited;
 

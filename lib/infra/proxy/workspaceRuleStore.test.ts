@@ -1,6 +1,5 @@
-// The rule store owns the fail-closed decision that gates credential injection: a workspace's rules
-// apply only when the container proved it holds that workspace's derived proxy secret. These pin
-// that decision directly (verifyProxySecret is mocked so we test the store's branching, not crypto).
+// Rules apply only when the container proves it holds that workspace's proxy secret, failing closed.
+// verifyProxySecret is mocked to test the store's branching, not the crypto.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { DomainRule } from "../security/workspaceSecretStore";

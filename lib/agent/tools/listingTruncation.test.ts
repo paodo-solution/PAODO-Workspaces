@@ -1,7 +1,5 @@
-// glob and list_directory both build their answer from one `find` whose output the docker client
-// caps at 8MB. A cut listing is indistinguishable from a complete one — "no files matched" and "we
-// stopped looking" are different answers — so both have to say when they were cut. file_read and the
-// git diff paths already do; these two were the pair still returning a prefix as if it were the whole.
+// glob and list_directory read one `find` the docker client caps at 8MB. A cut listing looks complete, so
+// both must say when it was cut, as file_read and git diff already do.
 import { describe, it, expect } from "vitest";
 import { GlobTool } from "./glob";
 import { ListDirectoryTool } from "./listDirectory";

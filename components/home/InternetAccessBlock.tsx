@@ -1,8 +1,5 @@
-// Home page block for a workspace's internet-access toggle. Binary on/off: when off, the container's
-// Docker network has no route out at all — http_get, apt_install, and npm/pip/curl from
-// execute_command are all blocked at the network layer, not just hidden from the agent.
-// Controlled by the parent (via useWorkspaceInternetAccess) so EnvVarsBlock's "third-party secrets"
-// visibility can share the same state and update immediately when this toggle flips.
+// Internet-access toggle: off blocks http_get, apt_install and all shell egress at the network layer. State
+// is shared with EnvVarsBlock via useWorkspaceInternetAccess.
 "use client";
 
 import { AsyncState } from "@/components/shared/AsyncState";

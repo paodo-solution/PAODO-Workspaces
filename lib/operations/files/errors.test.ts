@@ -1,12 +1,5 @@
-// The classifier is what makes a file failure actionable by a program rather than only readable by a
-// person, so both halves are pinned here: the errno picks the code, and the message names the caller's
-// own relative path and nothing else.
-//
-// The second half is the one worth a real filesystem. libuv builds messages like
-//   EACCES: permission denied, open '/data/workspaces/ada/notes.md'
-// so a test that constructs a fake `{ code: "EACCES" }` object would pass while the real thing leaked
-// the host layout. These provoke the errnos on disk and assert the host path is absent from what a
-// client would be shown.
+// Errno picks the code, and the message names only the caller's relative path. libuv messages embed host
+// paths, so real errnos are provoked on disk rather than faking `{ code: "EACCES" }`.
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import fs from "fs";
@@ -75,9 +68,8 @@ describe("fileSystemAppError", () => {
     expect(failure?.details).toEqual({ field: "path" });
   });
 
-  // THE test this module exists for. libuv appends the host path to its message; a response built from
-  // that message publishes the server's directory layout on a surface whose whole point is that the
-  // layout is private.
+  // THE test here: libuv appends the host path, and publishing it would expose the server's directory layout
+  // on a surface meant to hide it.
   it("never carries the host path in the message, for any errno it recognises", async () => {
     const target = path.join(WS_DIR, "locked.txt");
     fs.writeFileSync(target, "x");
@@ -99,9 +91,8 @@ describe("fileSystemAppError", () => {
   });
 
   it("leaves an errno it has no public answer for unclassified, so the caller answers 500", () => {
-    // A caller that turned every failure into a 4xx would report its own bugs as user error. The table
-    // is deliberately short for the same reason: an errno nobody has reasoned about is not classified
-    // on the strength of it looking plausible.
+    // Classifying everything as 4xx would report our bugs as user error, so an errno nobody has reasoned about
+    // stays unclassified.
     expect(fileSystemAppError({ code: "EWHATEVER" }, "x.txt")).toBeNull();
     expect(fileSystemAppError({ code: "EDQUOT" }, "x.txt")).toBeNull();
     expect(fileSystemAppError({ code: "EMFILE" }, "x.txt")).toBeNull();

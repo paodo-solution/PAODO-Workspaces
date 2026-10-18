@@ -1,30 +1,10 @@
-// The one path space the file API speaks: relative to the root of whatever it is serving —
-// a workspace or a drive — POSIX-separated, that root spelled "".
-//
-// It used to speak two. The file tree served absolute host paths, the browser handed them straight
-// back, and PUT alone also accepted a relative path (the old backend.lexicalFilePath). That works
-// while the only client is a UI that treats the string as an opaque row key, but it makes the host's
-// directory layout part of the public contract — the same layout lib/operations/workspace/read.ts
-// deliberately keeps out of WorkspaceDetails — and it leaves an external client no way to name a file
-// at all, since it cannot know the host dir. One space, chosen here, and the host path stays private
-// to the server.
-//
-// This module is lexical only: it decides what a caller is allowed to *say*, not what exists on disk.
-// The filesystem half — realpath'ing away a symlink that points out of the tree — is
-// ./containment.ts resolveContained, and both run on every request. A lexical check alone would pass
-// "escape/passwd" where `escape` is a symlink to /etc.
-//
-// Callers in lib/operations/files/paths.ts turn these failures into AppError; kept separate so this
-// stays a pure function of its input and can be tested without a workspace or an HTTP request.
+// The file API's only path space: POSIX, relative to the workspace or drive root (spelled ""), so host paths
+// stay private. Lexical only; symlink escapes are caught by ./containment.ts, which also runs on every request.
 
 import path from "path";
 
-/**
- * Where the agent's container mounts the workspace. Named here because it is the single most likely
- * thing a caller gets wrong: an agent that has been editing /workspace/src/main.ts through its own
- * tools will reach for that same string here, and it deserves an answer that names the right form
- * rather than a bare "invalid path".
- */
+// The container's mount point, named so an agent sending /workspace/... is told the right form rather
+// than a bare "invalid path".
 export const CONTAINER_MOUNT = "/workspace";
 
 /** A path a caller is not allowed to say. Lexical only — see resolveContained for the disk half. */
@@ -42,11 +22,8 @@ function reject(attemptedPath: string, reason: string): never {
   throw new InvalidPathError(attemptedPath, reason);
 }
 
-/**
- * Normalize a caller-supplied path into the wire space. Returns "" for the root; every other result
- * is a relative POSIX path with no "." or ".." segments and no trailing slash, so it is usable as a
- * stable identity key as well as a path.
- */
+// "" for the root, else a relative POSIX path with no "."/".." or trailing slash, usable as an identity
+// key.
 function normalizeClientPath(clientPath: string): string {
   const trimmed = clientPath.trim();
 
@@ -64,10 +41,8 @@ function normalizeClientPath(clientPath: string): string {
     reject(clientPath, "Paths must be relative to the root, not absolute");
   }
 
-  // normalize collapses "a//b", "./a" and "a/b/../c"; it leaves a leading ".." in place, which is
-  // exactly the escape we then refuse. It also preserves a trailing slash, so "src/" and "src" would
-  // otherwise be two different identity keys for one directory — strip it before anything reads the
-  // result, including the root check below ("./" normalizes to "./", not ".").
+  // normalize leaves a leading ".." (refused below) and a trailing slash, stripped so "src/" and "src"
+  // are one key (and "./" reaches the root check as ".").
   const normalized = path.posix.normalize(trimmed).replace(/\/$/, "");
   if (normalized === "" || normalized === ".") return "";
   if (normalized === ".." || normalized.startsWith("../")) {
@@ -76,10 +51,8 @@ function normalizeClientPath(clientPath: string): string {
   return normalized;
 }
 
-/**
- * A path that must name an entry inside the space. The root is refused: every caller of this reads,
- * writes or deletes one thing, and "" reaching fs.rm would take the whole workspace or drive with it.
- */
+// A path that must name an entry inside the space. The root is refused: every caller of this reads,
+// writes or deletes one thing, and "" reaching fs.rm would take the whole workspace or drive with it.
 export function relativeEntryPath(clientPath: string): string {
   const relPath = normalizeClientPath(clientPath);
   if (relPath === "") reject(clientPath, "Path names the root, not an entry inside it");
@@ -92,11 +65,7 @@ export function relativeDirPath(clientPath: string | null | undefined): string {
   return normalizeClientPath(clientPath);
 }
 
-/**
- * The wire path for an absolute host path known to sit under `rootDir` — the direction the file tree
- * and the filesystem watcher need, since both start from what the OS handed them. Returns "" for
- * `rootDir` itself.
- */
+/** Host path under `rootDir` to wire path ("" for the root), for the tree and the watcher. */
 export function toRelativePath(rootDir: string, absPath: string): string {
   const relative = path.relative(rootDir, absPath);
   return relative === "" ? "" : relative.split(path.sep).join("/");

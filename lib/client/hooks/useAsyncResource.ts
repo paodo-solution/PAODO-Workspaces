@@ -18,11 +18,8 @@ interface ResourceState<T> {
   error: boolean;
 }
 
-/**
- * Pass a useCallback fetcher whose dependencies identify the resource. A changed fetcher hides
- * the old result immediately; reloading the same resource retains its data until the read finishes.
- * Reload is awaitable, and superseded/unmounted requests cannot update state.
- */
+// The fetcher's useCallback deps identify the resource: a new fetcher hides old data at once, a reload
+// keeps it until done. Stale or unmounted requests never set state.
 export function useAsyncResource<T>(
   fetcher: Fetcher<T>,
   { enabled = true, refreshKey }: { enabled?: boolean; refreshKey?: number } = {},

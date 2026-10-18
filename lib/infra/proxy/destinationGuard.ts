@@ -1,8 +1,5 @@
-// SSRF guard for the credential proxy. The proxy is the single egress path for every workspace
-// container, so it must let containers reach the public internet (pip/npm/apt/git) while refusing
-// to relay to internal addresses — host loopback, the Docker gateway, cloud metadata
-// (169.254.169.254), and other private ranges. We block by destination *IP class* rather than an
-// explicit host allowlist so ordinary package installs keep working.
+// SSRF guard for the credential proxy: allows the public internet but blocks internal IP classes (loopback,
+// Docker gateway, cloud metadata, private ranges).
 import * as net from "net";
 import * as dns from "dns";
 
@@ -37,19 +34,15 @@ function isBlockedIPv4(ip: string): boolean {
   return false;
 }
 
-// True when an IPv6 address is not globally routable. Handles the common non-global forms plus
-// IPv4-mapped addresses, which are re-checked through the IPv4 path in BOTH the dotted
-// (::ffff:1.2.3.4) and all-hex (::ffff:0102:0304) notations — the kernel routes either to the
-// embedded IPv4, so missing the hex form would let ::ffff:a9fe:a9fe reach 169.254.169.254.
+// IPv4-mapped IPv6 is re-checked as IPv4 in both dotted and hex forms; missing hex would let
+// ::ffff:a9fe:a9fe reach 169.254.169.254.
 function isBlockedIPv6(ip: string): boolean {
   const lower = ip.toLowerCase().split("%")[0]; // drop any zone id
   if (lower === "::" || lower === "::1") return true; // unspecified + loopback
   // IPv4-mapped / IPv4-compatible, dotted-quad tail: defer to the v4 rules on the embedded address.
   const mapped = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(lower);
   if (mapped) return isBlockedIPv4(mapped[1]);
-  // Same address in all-hex tail form (::ffff:c0a8:0101, or the fully expanded
-  // 0:0:0:0:0:ffff:c0a8:0101). The leading run must be all zeros, so a genuine public address whose
-  // 6th group merely happens to be ffff won't match. Reconstruct the IPv4 from the last 32 bits.
+  // All-hex mapped form; the leading run must be zeros, so a public address with ffff in group 6 won't match.
   const mappedHex = /^(?:0*:)*:?(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower);
   if (mappedHex) {
     const hi = parseInt(mappedHex[1], 16);
@@ -73,11 +66,8 @@ export function isBlockedAddress(ip: string): boolean {
   return true;
 }
 
-// Build a `net.LookupFunction` (usable as the `lookup` option of net.connect / http(s).request) that
-// resolves a hostname and refuses the connection if the resolved address is blocked. Because the
-// same call both resolves and validates, the address that is actually dialed is the one that was
-// checked — closing the resolve-then-connect (DNS-rebinding) gap. `localhost` resolves to loopback
-// and is therefore blocked; IP literals are returned verbatim by dns.lookup and re-checked here.
+// Resolves and validates in one call, so the dialed address is the checked one (no DNS-rebinding gap).
+// localhost and IP literals are checked too.
 export function makeGuardedLookup(isBlocked: (ip: string) => boolean = isBlockedAddress): net.LookupFunction {
   return (hostname, options, callback) => {
     dns.lookup(hostname, options, (err, address, family) => {

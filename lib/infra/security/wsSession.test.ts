@@ -1,9 +1,5 @@
-// This cookie is a credential: it is the only thing standing between an unauthenticated caller and
-// a /ws upgrade on browsers that cannot present Basic on a handshake. The dangerous failure is
-// verifySessionCookie returning true for anything the server did not mint, so every malformed and
-// forged shape is asserted false. The attribute assertions matter for the same reason — a cookie
-// without HttpOnly is readable by injected script, and one without SameSite rides cross-site
-// requests.
+// This cookie is the /ws credential where browsers cannot send Basic on a handshake, so every forged shape
+// must fail verification, and HttpOnly and SameSite are asserted too.
 import { describe, it, expect, vi } from "vitest";
 
 import {

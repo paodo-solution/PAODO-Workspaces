@@ -1,7 +1,5 @@
-// runUploadQueue is the per-file core of the folder-upload UX: every file is attempted on its own, so
-// one file that can't upload — over-size (413), a server error (500/507), or a network drop — only
-// ever costs that one file, never the rest of the drop. A 429 is real backpressure and is retried.
-// fetch is mocked so every scenario is deterministic and no real network/server is involved.
+// Each file is attempted alone, so a 413, 500/507 or network drop costs only that file; a 429 is backpressure
+// and retried. fetch is mocked to keep every scenario deterministic.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runUploadQueue, type PathedFile } from "./useFileUpload";
@@ -45,8 +43,8 @@ describe("runUploadQueue", () => {
   });
 
   it("skips a 500 on one file and still uploads every other file", async () => {
-    // The bug this replaces: a single non-413 failure used to abort the batch, so a whole folder was
-    // dropped over one bad file. Now the failing file is set aside and the rest all go up.
+    // One non-413 failure must not abort the batch, or a whole folder is lost over one bad file: the
+    // failing file is set aside and the rest still go up.
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("broken.txt")) return jsonResponse(500, { error: "internal error" });
       return jsonResponse(200, { ok: true });

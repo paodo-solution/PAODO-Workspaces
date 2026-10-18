@@ -1,18 +1,5 @@
-// http_get runs its fetch INSIDE the workspace container, through the credential proxy. That
-// placement is the security property — not an implementation detail — so these tests pin the
-// invariants that make it hold, rather than re-testing curl:
-//
-//   - the URL is passed as its OWN argv element (never interpolated into a shell string), so a
-//     hostile URL cannot become a command;
-//   - --noproxy is NEVER passed. HTTP_PROXY is env-var convention, not iptables: the moment this
-//     tool opts out of the proxy it also opts out of destinationGuard's SSRF checks and audit
-//     logging, which is the whole reason the old app-side ssrfGuard.ts could be retired;
-//   - http:// is upgraded to https://, and non-http(s) schemes are refused before any exec — the
-//     proxy only substitutes secrets over HTTPS, and cleartext must stay off the table;
-//   - redirects are curl's job (-L, capped), because each hop then transits the guarded proxy —
-//     but they stay pinned to https (--proto-redir), since normalizeUrl never sees a Location.
-//
-// The runner is faked (canned stdout/stderr/exit code) so no container or socket is involved.
+// http_get curls INSIDE the container through the credential proxy, whose destinationGuard is the SSRF
+// check. The argv and scheme rules below all keep traffic on that path; the runner is faked.
 
 import { describe, it, expect, vi } from "vitest";
 import { WebFetchTool, buildCurlArgs } from "./webFetch";

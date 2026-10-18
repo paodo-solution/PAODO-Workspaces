@@ -1,11 +1,5 @@
-// The instance-wide CLI access token, as one section of the settings modal.
-//
-// Drives the same useCredential hook and reuses CredentialReveal like the workspace API-key and MCP
-// blocks. Enabling and generating are two steps here, exactly as they are for the other two channels.
-//
-// The modal chrome that used to live in this file is now SettingsModal.tsx, because the modal holds
-// more than one thing: this section and the provider API keys. Everything below is unchanged from
-// when it was CliAccessModal — only the surrounding dialog moved out.
+// The instance-wide CLI access token as a settings-modal section, built on useCredential and
+// CredentialReveal like the API-key and MCP blocks.
 "use client";
 
 import { useEffect, useState } from "react";

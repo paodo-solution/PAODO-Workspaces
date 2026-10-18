@@ -1,6 +1,4 @@
-// Owns file-tree selection state and policy: direct/cascading selection, shift ranges, clearing,
-// and path remapping after a move. Kept separate from file operations so selection does not depend
-// on network actions.
+// File-tree selection (cascading, shift ranges, remap after moves), separate from network operations.
 
 import { useState } from "react";
 import { remapMovedPath } from "../fileMove";
@@ -9,9 +7,7 @@ import type { TreeNode } from "./useFileOperations";
 
 export function useFileTreeSelection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // The row a shift+click range measures from: the last one checked *without* shift. Every
-  // successive shift+click re-measures from it rather than from the previous one, so a range can be
-  // widened and narrowed by clicking around without re-anchoring.
+  // Shift+click ranges measure from the last plain-click row, so a range can grow and shrink without re-anchoring.
   const [anchorPath, setAnchorPath] = useState<string | null>(null);
 
   const handleSelect = (paths: string[], on: boolean) => {

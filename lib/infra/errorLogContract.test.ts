@@ -1,6 +1,5 @@
-// Error records feed the surfaced-log UI, so they need stable machine-readable grouping and an
-// explicit operational result. This source-level guard keeps new call sites from falling back to a
-// bare message/stack that an operator cannot group or interpret.
+// Error records feed the surfaced-log UI, so this source guard requires stable grouping and an explicit
+// result rather than a bare message or stack.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -11,13 +10,8 @@ const LOGGER_RECEIVERS = new Set(["log", "wlog", "elog", "this.log"]);
 const EVENT_NAME = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const LOG_METHODS = new Set(["trace", "debug", "info", "warn", "error", "fatal"]);
 
-// Pino writes these itself: `level`/`time`/`pid`/`hostname` as base bindings, `msg` from the
-// message argument, and `context`/`audit` from the children createLogger/createAuditLogger bind.
-// A call-site binding of the same name does not override them — it appends a second key with the
-// same name, and JSON readers take the last one. That silently rewrites the record: a `hostname`
-// binding replaced the machine identity with the upstream host being proxied, and a `level`
-// binding turned an info line into `"level":"light"`, which jq ranks ABOVE 40 (strings sort after
-// numbers), so info lines matched the `select(.level >= 40)` triage recipe in deploy/README.md.
+// Pino owns these keys: a call-site binding of one appends a duplicate that JSON readers take instead. A
+// `hostname` binding once replaced the machine name, and `level: "light"` sorted above 40 in the jq triage.
 const RESERVED_BINDINGS = new Set(["level", "time", "pid", "hostname", "msg", "context", "audit"]);
 
 /** Receivers that are plausibly a logger — deliberately broader than LOGGER_RECEIVERS above. */

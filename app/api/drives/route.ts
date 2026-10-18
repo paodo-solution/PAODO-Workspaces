@@ -1,9 +1,4 @@
-// REST endpoint for the shared-drive collection.
-// GET returns all drives; POST creates a new one with an isolated content directory on disk.
-//
-// Translation only: the name rules and the not-found answers are lib/operations/drives/manage.ts, so
-// the UI and the CLI get the same refusal without either restating it. What is left here is HTTP —
-// reading the body, and turning an AppError into a status.
+// Drive collection: GET lists, POST creates. HTTP translation only; rules in lib/operations/drives/manage.ts.
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger } from "@/lib/infra/logger";
 import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/errorResponse";

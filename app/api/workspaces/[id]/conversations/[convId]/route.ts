@@ -1,7 +1,5 @@
-// A single conversation's saved transcript, for rendering when the user opens/switches to it.
-// `transcript` is the persisted history only. If `running` is true, the in-flight run is NOT in
-// the transcript (conversations persist at run end); the client appends `userInput` and then
-// re-attaches to the live stream to watch the rest (see chat/route.ts attach mode).
+// A conversation's saved transcript. If `running`, the in-flight run isn't in it yet: the client appends
+// `userInput` and re-attaches to the live stream.
 import type { NextRequest } from "next/server";
 import { notFound } from "@/lib/api/guards";
 import { appErrorResponse } from "@/lib/api/errorResponse";

@@ -1,10 +1,5 @@
-// These operations exist so file work is reachable without an HTTP request — a directory transfer is
-// N of these calls and cannot synthesize N fake Requests, and an agent tool has no Request to hand
-// over. This file is that claim under test: no Request, no route, no server, just a directory on disk.
-//
-// The route tests next to app/api/**/files/content cover the transport (status codes, raw bytes); what
-// is pinned here is the vocabulary those routes translate — which failure is a NOT_FOUND, which is a
-// CONFLICT, and that a write that lost a race to a move never recreates the path it lost.
+// File work without a Request (transfers, agent tools), tested on a bare directory. Routes cover transport;
+// this pins the vocabulary: NOT_FOUND vs CONFLICT, and a write that lost to a move never recreates the path.
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import fs from "fs";
@@ -75,9 +70,8 @@ describe("readFileEntry", () => {
   });
 });
 
-// A window is asked for by a caller that cannot hold the whole file, so the two ways it can quietly go
-// wrong are the ones to pin: lines that come back shifted from the ones asked for, and a range the
-// caller got wrong answering with content instead of a refusal.
+// The two quiet failures of a window: lines shifted from those asked for, and a wrong range answered with
+// content rather than refused.
 describe("requireLineRange", () => {
   it("is null only when neither value was named, so a caller that never pages is unaffected", () => {
     expect(requireLineRange(null, null)).toBeNull();
@@ -150,10 +144,8 @@ describe("countLines", () => {
     expect(countLines("")).toBe(0);
   });
 
-  // The property that matters, stated as one: this is the count a listing reports so a caller can pick
-  // a window, and sliceLines is what applies that window. If they disagreed by one, every caller
-  // reading a file to its end would either miss its last line or ask for one past it — and the content
-  // it did get back would look perfectly correct.
+  // The count a listing reports must be exactly what sliceLines reaches; off by one, reading to the end misses
+  // the last line or asks past it, with output that looks correct.
   it("is exactly the number of lines sliceLines can reach", () => {
     for (const content of ["", "one", "one\n", "one\ntwo", "one\ntwo\n", "\n\n", "a\r\nb\r\n", "\n"]) {
       const total = countLines(content);
@@ -253,9 +245,8 @@ describe("removeEntry", () => {
     expect(fs.readFileSync(path.join(WS_DIR, "real", "kept.txt"), "utf8")).toBe("x");
   });
 
-  // The list is bounded so one call cannot answer with a few hundred thousand paths; the count is not,
-  // because how much went is the part a caller cannot reconstruct once the tree is gone. The note is
-  // there so a list that stops at a round number cannot be read as the whole answer.
+  // The list is capped so one call can't return huge numbers of paths; the count is not, since it cannot be
+  // rebuilt after. The note stops a capped list reading as complete.
   it("caps the list it names, keeps counting past the cap, and says so", async () => {
     const dir = path.join(WS_DIR, "many");
     fs.mkdirSync(dir, { recursive: true });

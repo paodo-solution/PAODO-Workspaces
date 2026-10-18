@@ -1,13 +1,5 @@
-// Standalone entry point for the credential-proxy SIDECAR container (docker-compose service
-// `credproxy`). In production the app runs inside its own container; hosting the proxy there would
-// force the app onto every per-workspace network and hand the untrusted sandbox an L3 route to the
-// control plane (0.0.0.0:3000 + /ws), defeating client-IP attribution and cross-workspace isolation.
-// Instead this minimal process runs ONLY the proxy: the app attaches THIS container (never itself)
-// to each workspace network, so port 9998 is the sole thing a workspace can reach.
-//
-// It shares no IPC with the app: it reads CA material, the encrypted vault and the master key from
-// three separate read-only mounts and nothing else. It reloads rules when the vault changes. The
-// app owns all generation and writes; this side only loads existing material.
+// Credproxy sidecar entry point. Hosting the proxy in the app would put the control plane on every workspace
+// network; instead only this container (port 9998) is reachable. Read-only mounts; reloads on vault change.
 import * as fs from "fs";
 import * as path from "path";
 import { createLogger, exitAfterLogs } from "./lib/infra/logger";
@@ -25,10 +17,8 @@ import { reloadInternetAccessPolicy, INTERNET_ACCESS_POLICY_FILE } from "./lib/i
 
 const log = createLogger("credproxyEntry");
 
-// Mirrors server.ts. This sidecar is its own long-running process, so it needs its own handlers:
-// the main().catch() at the bottom covers startup only, and once main() resolves everything runs
-// on event-loop callbacks (the watchFile handler, every proxy socket). An unhandled throw there
-// would kill the process with no log line at all, leaving a silent Docker restart loop.
+// Own crash handlers (as server.ts): after startup everything runs on callbacks, where an unhandled throw
+// would restart-loop with no log line.
 function fatal(reason: string, err: unknown): never {
   log.fatal({ event: "process_fatal", outcome: "process_exit", err, reason }, "process exiting after fatal error");
   exitAfterLogs(1);
@@ -128,9 +118,7 @@ async function main(): Promise<void> {
   proxy.listen(CREDENTIAL_PROXY_PORT);
 
   let ids = applyAllRules(proxy, new Set());
-  // internetAccessPolicy's globalSingleton already loads INTERNET_ACCESS_POLICY_FILE at import time;
-  // reload explicitly here (rather than relying on import ordering) so its first read happens at a
-  // predictable point after the CA wait, matching how secret rules are applied above.
+  // Reload explicitly so the first read happens after the CA wait, not at import time.
   reloadInternetAccessPolicy();
   log.info({ workspaces: ids.size, port: CREDENTIAL_PROXY_PORT }, "credential proxy sidecar ready");
 

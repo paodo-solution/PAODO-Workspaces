@@ -1,16 +1,5 @@
-// Registry of shared drives and their connections to workspaces.
-//
-// A *drive* is a named shared directory on disk that can be connected to multiple workspaces so
-// their agents can exchange files. Drives are PASSIVE storage: their content lives at
-// data/.drives/<driveId>/ and is NEVER mounted into any container — only host-side fs touches it.
-// This keeps the security promise that only sandboxed workspaces execute code.
-//
-// Drive↔workspace connections are stored here, SEPARATELY from the agent-call graph
-// (workspaceGraph.ts), whose edges drive list_agents/call_agent and must stay a clean DAG.
-//
-// Accessors read fresh from disk on every call. The files are tiny, and reading fresh avoids the
-// stale-cache problem across Next.js module instances (the agent runner and the API routes may be
-// bundled separately), so a drive connected via the API is immediately visible to a new agent run.
+// Shared drives and their workspace connections. Content lives in data/.drives/<id>/, never mounted into a
+// container. Separate from the agent-call graph; read fresh from disk so every module instance agrees.
 import path from "path";
 import fs from "fs";
 import { rm } from "fs/promises";
@@ -62,11 +51,8 @@ export function driveContentDir(driveId: string): string {
   return path.join(DRIVES_DIR, driveId);
 }
 
-/**
- * One-line rendering of a drive for an agent: `- <name> (id: <id>)<desc>`. The id is surfaced so
- * an agent can pass it on to the next agent as a stable handle (drive tools accept id or name).
- * Shared by the system-prompt drives block and the drive_ls listing so they never drift.
- */
+// `- <name> (id: <id>)<desc>`, with the id as a stable handle agents can pass on. Shared by the system
+// prompt and drive_ls so they never drift.
 export function formatDriveLine(drive: Drive): string {
   return `- ${drive.name} (id: ${drive.id})${drive.description ? ` — ${drive.description}` : ""}`;
 }
@@ -104,12 +90,8 @@ function saveConnections(
   }
 }
 
-/**
- * Throws DRIVE_NAME_CONFLICT if any *other* drive already uses an equivalent name. Compared on the
- * folded key, so case- and Unicode-equivalent spellings cannot coexist: resolveDriveDir below already
- * answers a drive_* tool's name lookup case-insensitively, and drive_download lands every drive at
- * downloads/<drive-name>/ — two same-named drives make both of those pick one arbitrarily.
- */
+// Throws DRIVE_NAME_CONFLICT if another drive has the same folded name; otherwise name lookups and
+// downloads/<drive-name>/ would pick one arbitrarily.
 function assertNameAvailable(name: string, drives: Drive[], exceptId?: string): void {
   const key = normalizeForUniqueness(name);
   for (const drive of drives) {
@@ -174,10 +156,8 @@ export async function deleteDrive(driveId: string): Promise<boolean> {
   return true;
 }
 
-/**
- * Connect a drive to a workspace. Only one link per pair exists; reconnecting updates the chosen
- * handle positions so the rendered edge stays where the user attached it.
- */
+// Connect a drive to a workspace. Only one link per pair exists; reconnecting updates the chosen
+// handle positions so the rendered edge stays where the user attached it.
 export function connectDrive(
   driveId: string,
   workspaceId: string,
@@ -246,12 +226,8 @@ export function getDrivesForWorkspace(workspaceId: string): Drive[] {
   return listDrives().filter((d) => driveIds.has(d.id));
 }
 
-/**
- * Resolve a drive reference (its id OR its name) to its content dir, scoped to what THIS
- * workspace is connected to. The id (a UUID) is the stable key agents pass between each other;
- * the name is matched case-insensitively as a human-friendly fallback. Returns null when the
- * workspace has no connected drive matching the reference.
- */
+// Resolves an id (stable, what agents pass on) or a case-insensitive name to a drive connected to this
+// workspace, or null.
 export function resolveDriveDir(workspaceId: string, driveRef: string): { drive: Drive; dir: string } | null {
   const ref = driveRef.trim();
   const wantedName = ref.toLowerCase();

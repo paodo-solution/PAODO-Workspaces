@@ -48,9 +48,8 @@ export interface ExecuteSkillOptions {
   persistFn?: typeof persist;
   /** Test seam; production uses the process-wide execution ceiling. */
   capacity?: ExecutionCapacityGate;
-  /** Fired the instant the callee's conversation is created (before the run finishes), so the
-   *  caller's UI can show the session deep-link mid-call. createConversation already writes the
-   *  conversation to SQLite, so the link resolves immediately. */
+  // Fires once the callee's conversation is saved, so the caller can show a working deep-link
+  // mid-call.
   onConversationStart?: (conversationId: string) => void;
   outputMaxRetries?: number;
 }

@@ -1,6 +1,5 @@
-// ExecOutput is the ceiling that makes an unbounded `stdout += chunk` unreachable. The tests that
-// matter most here are not the formatting ones — they are the two that guarantee the ceiling is real
-// (memory stops growing) and that reaching it costs nothing (every byte still lands in the sink).
+// ExecOutput is the ceiling on `stdout += chunk`. The tests that matter prove it is real (memory stops
+// growing) and costs nothing (every byte still reaches the sink).
 import { describe, it, expect } from "vitest";
 import { ExecOutput } from "./execOutput";
 import { MAX_INLINE_BYTES, PREVIEW_BYTES, STDERR_SAMPLE_BYTES, formatOutputBytes } from "@/lib/infra/limits";
@@ -106,9 +105,8 @@ describe("ExecOutput", () => {
 
   it("keeps stderr diagnosable after the spill", () => {
     const { output } = makeOutput();
-    // The shape that exposed this: the command fails for a reason we have guidance for, and is also
-    // noisy enough to blow the cap. The spill drops the separated streams, so before the sample
-    // existed the tool result was the "output too large" notice with no trace of why it failed.
+    // A failure we have guidance for, noisy enough to overflow. The spill drops the split streams, so before the
+    // sample the result said "output too large" with no trace of why it failed.
     output.append("stderr", "exec: no matching entries in passwd file\n");
     output.append("stdout", "q".repeat(MAX_INLINE_BYTES * 2));
 

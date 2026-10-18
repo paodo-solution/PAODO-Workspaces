@@ -1,7 +1,5 @@
-// Exercises the workspace deletion operation's cascade against real stores and a temp
-// WORKSPACES_ROOT. Guards the invariant that a workspace-owned resource must not outlive its
-// workspace. Schedules regressed this once: scheduleStore had no removal function at all, so
-// deleting a workspace left its schedule (and the prompt it fires) behind forever.
+// Deletion's cascade against real stores: no workspace-owned resource may outlive its workspace. Schedules
+// once did, as scheduleStore had no removal function at all.
 import { describe, it, expect, vi, afterAll } from "vitest";
 import fs from "fs";
 import os from "os";

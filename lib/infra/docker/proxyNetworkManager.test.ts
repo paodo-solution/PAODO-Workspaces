@@ -1,8 +1,5 @@
-// ProxyNetworkManager has had no direct coverage — it was only exercised indirectly through
-// containerManager.proxy.test.ts's ensure() flow. These pin it in isolation: attach/detach/verify's
-// self-heal and loud-failure behavior, and reattachAll's shouldAttach filter (which excludes
-// internet-access-off workspaces from the boot-time reattach — reattaching the sidecar to one of
-// those would hand its network a live route back to the internet).
+// Pins attach/detach/verify's self-heal and loud failure, and reattachAll's shouldAttach filter: reattaching
+// the sidecar to an internet-off workspace would hand it a live route out.
 import { describe, it, expect } from "vitest";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 

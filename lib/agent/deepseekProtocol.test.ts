@@ -16,13 +16,8 @@ function thinkingTurn(id: string, reasoning: string, provider?: string): BaseMes
   ];
 }
 
-/**
- * A gateway whose captured fetch never reaches the network.
- *
- * Built through createModelGateway rather than around a bare client, because the object the runner
- * calls is the one bindTools returns — a different object wrapping the same client. Replay that works
- * on the client alone and not through here is replay that never runs in production.
- */
+// A gateway whose captured fetch never hits the network, built via createModelGateway: the runner calls the
+// object bindTools returns, so replay must work through it, not just on the bare client.
 function gatewayWithCapturedRequest() {
   const seen: { body?: string } = {};
   const fetchStub = vi.fn(async (_input: unknown, init?: { body?: unknown }) => {
@@ -74,8 +69,8 @@ describe("deepseek reasoning replay", () => {
     expect(assistantWithTools(sent)?.reasoning_content).toBe("I should read the file first.");
   });
 
-  // Every provider's reasoning is stored now. What is SENT must stay what it was when only the
-  // replaying providers stored any: theirs goes out, reasoning kept for display does not.
+  // Every provider's reasoning is stored, but what is SENT must not change: a replaying provider's
+  // reasoning goes out, reasoning kept only for display does not.
   it.each(["deepseek", "mistral"])("replays reasoning a replaying provider (%s) wrote", async (author) => {
     const sent = await sentMessages(thinkingTurn("call_a", "Read first.", author));
 
@@ -146,11 +141,8 @@ describe("deepseek reasoning replay", () => {
     expect(assistantWithTools(sent)?.reasoning_content).toBe("Streamed thought.");
   });
 
-  /**
-   * The bug this guards: the lookup used to live on the client, which the tool-bound gateway shares
-   * with the unbound one. A call that resolved could leave entries behind for a later call that had
-   * no business seeing them, so the scope has to close with the request that opened it.
-   */
+  // The lookup once lived on the client, shared by bound and unbound gateways, leaking entries into later
+  // calls; the scope must close with the request that opened it.
   it("does not carry one call's reasoning into the next", async () => {
     const { gateway, seen } = gatewayWithCapturedRequest();
 

@@ -28,13 +28,8 @@ export interface SkillDefinition {
   output: SkillSchema;
 }
 
-/**
- * Result of a skill call, returned by executeSkill. `conversationId` is the id of the persisted
- * conversation in the CALLEE's workspace for this run — present whenever the callee actually ran
- * (completed, or failed after starting), absent for pre-run rejections (NOT_CONNECTED,
- * SKILL_NOT_FOUND, INPUT_VALIDATION_ERROR). It is UI metadata for deep-linking, never shown to
- * the calling model.
- */
+// `conversationId` is the callee's conversation, set whenever the callee ran (absent on pre-run
+// rejections). UI deep-link metadata, never shown to the calling model.
 export type SkillCallResult =
   | { state: "completed"; output: Record<string, unknown>; conversationId?: string }
   | { state: "failed"; code: SkillErrorCode; message: string; conversationId?: string };
@@ -59,10 +54,6 @@ export type SkillErrorCode =
   | "PROVIDER_UNAVAILABLE"
   | "EXECUTION_ERROR";
 
-/**
- * Reserved output key: a callee that cannot resolve schema-valid args (typo'd id,
- * ambiguous value) replies `{ "_needs_input": "<question>" }` instead of the output
- * schema. executeSkill intercepts it before output validation and surfaces it to the
- * caller as a NEEDS_INPUT failure so the caller can re-call with corrected args.
- */
+// A callee that can't resolve its args replies `{ "_needs_input": "<question>" }`; executeSkill turns
+// it into a NEEDS_INPUT failure so the caller can retry.
 export const NEEDS_INPUT_KEY = "_needs_input";

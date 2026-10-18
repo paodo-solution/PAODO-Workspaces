@@ -112,9 +112,8 @@ describe("setting workspace egress", () => {
     expect(policies).toEqual([false, true]);
   });
 
-  // A refusal from a store that only refuses unknown ids means the workspace disappeared. Reporting it
-  // as not-applied lets the caller say so; touching the proxy for a workspace that no longer exists
-  // would leave a policy entry nothing owns.
+  // A store that only refuses unknown ids means the workspace is gone: report not-applied, since touching the
+  // proxy would leave a policy entry nothing owns.
   it("reports not-applied without touching the proxy when the registry refuses", async () => {
     const result = await setInternetAccess(
       "ws-1",

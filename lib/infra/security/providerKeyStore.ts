@@ -1,20 +1,5 @@
-// Deployment-wide LLM provider API keys, entered in the app rather than .env.
-//
-// These must stay recoverable — buildModel hands the plaintext to the provider SDK on every run —
-// so this is encryption, not hashing (contrast credentialStore.ts, which only ever stores a SHA-256
-// of the bearer tokens PAODO itself mints and can therefore never give one back). The at-rest
-// envelope uses the same reviewed AES-256-GCM mechanics as workspace secrets, but an independent
-// vault and independent master key. Both live on app-only mounts outside ordinary workspace data,
-// so the credential proxy and workspace backups cannot recover provider credentials.
-//
-// ONE KEY PER PROVIDER, FOR THE WHOLE DEPLOYMENT. There is no workspace dimension here on purpose:
-// the operator who runs the instance is the account holder, and a per-workspace key would mean a
-// workspace could not switch provider without someone pasting a second key first.
-//
-// WHY THIS IS NOT THE WORKSPACE SECRET STORE. Workspace-secret values are swapped into a container's
-// outbound HTTPS by the credential-proxy sidecar. Provider values go the other way: the app itself
-// spends them, and neither proxy nor sandbox should see them. Separate vault/key pairs enforce that
-// trust boundary at the container mounts instead of relying on two namespaces in one decryptable file.
+// Deployment-wide provider keys (one per provider), entered in the app. Encrypted, not hashed, since the app
+// spends them; own vault and key on app-only mounts, so the proxy and backups can't recover them.
 import { createAuditLogger } from "../logger";
 import {
   PROVIDER_VAULT_FILE,
@@ -40,10 +25,8 @@ export interface ProviderKeyMeta {
 
 const store: Store = providerKeyRecords();
 
-/**
- * Production startup calls this before accepting requests, so an empty fallback can never overwrite
- * a store that existed but could not be read or decrypted. Mirrors assertSecretStoreAvailable().
- */
+// Production startup calls this before accepting requests, so an empty fallback can never overwrite
+// a store that existed but could not be read or decrypted. Mirrors assertSecretStoreAvailable().
 export function assertProviderKeyStoreAvailable(): void {
   assertProviderVaultAvailable();
 }
@@ -52,22 +35,15 @@ function save(next: Store, context: { operation: string; provider?: string }): v
   commitProviderKeys(next, context);
 }
 
-// Short enough to be useless to an attacker, long enough to tell two of the operator's own keys
-// apart. Keys shorter than this are shown whole — they cannot be real, and hiding a typo helps
-// nobody diagnose it.
+// Enough to tell keys apart, too little to use; keys shorter than this can't be real, so show them whole.
 const HINT_LENGTH = 4;
 
 function hintFor(value: string): string {
   return value.length <= HINT_LENGTH ? value : value.slice(-HINT_LENGTH);
 }
 
-/**
- * The plaintext key for a provider, or undefined when none is set.
- *
- * The ONLY way a value leaves this module. `undefined` is the normal state for a deployment whose
- * operator has not entered that provider's key yet — callers must treat it as "cannot run", not as
- * an error condition, and must never log the return value.
- */
+// The only way a key leaves this module; never log it. `undefined` means none entered yet, which
+// callers treat as "cannot run", not an error.
 export function getProviderKey(provider: string): string | undefined {
   return store[provider]?.value;
 }
@@ -104,22 +80,8 @@ export function listProviderKeyMeta(): ProviderKeyMeta[] {
   }));
 }
 
-/**
- * Delete every stored key whose provider is not in `allowed`, and report what went.
- *
- * This is what makes `<PROVIDER>_AVAILABLE=false` mean "nobody can spend on this" rather than merely
- * "hidden from the picker". Withdrawing a provider destroys its key, so a workspace still pointed at
- * it cannot keep billing the account after the operator believes they switched it off.
- *
- * DESTRUCTIVE AND NOT REVERSIBLE. Switching the flag back does not restore the key — it has to be
- * entered again. That is the trade the enforcement is worth, and the audit line is what makes it
- * explicable afterwards.
- *
- * Takes the allowed list rather than reading the environment itself: which providers exist and which
- * env var governs each is the provider registry's knowledge (lib/agent/buildModel.ts), and that
- * module pulls the LLM SDKs. An infra store must not drag those in, so the caller resolves the list.
- * It also means a provider deleted from the registry outright has its key purged on the next boot.
- */
+// Irreversibly deletes keys of withdrawn providers, so `<PROVIDER>_AVAILABLE=false` stops all spend.
+// The caller passes `allowed` because the registry (buildModel.ts) pulls in the LLM SDKs.
 export function purgeProviderKeysExcept(allowed: readonly string[]): string[] {
   const keep = new Set(allowed);
   const purged = Object.keys(store).filter((provider) => !keep.has(provider));

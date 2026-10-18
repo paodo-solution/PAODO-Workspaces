@@ -1,15 +1,5 @@
-// The list of system packages a workspace has installed, so a rebuilt container can get them back.
-//
-// Everything else the agent installs — nvm, pyenv, npm, pip — lands in $HOME and rides the durable
-// /home/dev mount. apt is the exception: it writes to /usr, /etc and /var, which nothing mounts.
-//
-// Kept as the instruction, not the artifacts. Restoring files without dpkg's database, dependency
-// closure and postinst scripts gives a broken half-install, and a captured filesystem diff would
-// also pin every rebuilt workspace to the package versions current when it was first set up —
-// re-running apt-get against a newer base image installs the newer package instead.
-//
-// AptInstallTool is the only path to a system package (uid 1000, no setuid sudo, no-new-privileges),
-// so recording at that one call site is exact by construction, with nothing to diff or reconcile.
+// Records apt packages (the only installs outside the durable $HOME) so a rebuilt container can reinstall them.
+// Names, not files, so replays get current versions; AptInstallTool is the sole path, so the list is exact.
 import { workspaceAptRecipeFile } from "./paths";
 import { atomicSaveJson, readJson } from "./jsonPersist";
 import { createLogger } from "./logger";
@@ -24,14 +14,8 @@ export function readAptRecipe(workspaceId: string): AptRecipe {
   return Array.isArray(recipe) ? recipe.filter((p) => typeof p === "string") : [];
 }
 
-/**
- * Adds packages to the workspace's recipe. Called only after apt-get reports success, so the recipe
- * never accumulates a package that failed to install and would fail again on every future rebuild.
- *
- * Deduplicated on the package NAME, so re-installing something at a new pin supersedes the old spec
- * rather than queueing two conflicting ones. A Map keeps each package at its first position while
- * still taking the latest spec, so the replay order stays stable as the recipe grows.
- */
+// Called only after apt-get succeeds, so a failing package never replays on rebuild. Deduped by name:
+// a new pin replaces the old spec but keeps its position, so replay order stays stable.
 export function recordAptPackages(workspaceId: string, packages: string[]): void {
   const byName = new Map<string, string>();
   for (const spec of [...readAptRecipe(workspaceId), ...packages]) {

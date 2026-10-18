@@ -1,11 +1,5 @@
-// The hub is the last unbounded output path of the three. `ws.send()` does not block, so when a
-// client stops reading — a backgrounded tab, a sleeping laptop — the bytes queue on this process's
-// heap, not in the kernel. execute_command broadcasts every chunk of a command's output, once per
-// connected tab, so a single verbose command could park its whole output here N times over.
-//
-// Unlike the exec and docker-client caps there is no crash cliff to point at; it degrades into an
-// OOM instead. What these tests pin is that the queue has a ceiling, that hitting it is reported
-// rather than hidden, and that a socket stuck at the ceiling is eventually let go.
+// `ws.send()` never blocks, so a tab that stops reading queues output on this heap, once per tab, until OOM.
+// Pins that the queue has a ceiling, hitting it is reported, and a socket stuck there is let go.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { WebSocket } from "ws";
 import { addConnection, removeConnection, broadcastToWorkspace, sendToWorkspace } from "./wsHub";
@@ -112,10 +106,8 @@ describe("sendToWorkspace", () => {
   });
 
   it("picks the tab that is keeping up over the one that is behind", () => {
-    // Set iteration order is insertion order, so the backgrounded tab can easily come first. Taking
-    // the first OPEN socket then meant every tool_call and tool_result_log of the run was dropped
-    // while a foreground tab sat right there draining fine. Only one socket gets the message, so
-    // which one is chosen IS the delivery.
+    // Sets iterate in insertion order, so the backgrounded tab often came first and took the run's tool events
+    // while a live tab sat idle. Only one socket receives, so the choice IS delivery.
     const [stuck, live] = withSockets("ws_two_tabs", fakeSocket(), fakeSocket());
     (stuck as { bufferedAmount: number }).bufferedAmount = 4 * 1024 * 1024;
 

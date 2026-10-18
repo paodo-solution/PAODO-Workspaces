@@ -1,6 +1,5 @@
-// The public agent SSE projection. These pin the curated wire protocol external clients depend on:
-// streamed `token` deltas as the run produces them, plus the final aggregate `response` frame kept
-// for non-streaming clients.
+// The public agent SSE protocol external clients rely on: streamed `token` deltas, plus the final aggregate
+// `response` frame for non-streaming clients.
 import { describe, it, expect, vi } from "vitest";
 import type { AgentEvent } from "@/lib/agent/runner";
 

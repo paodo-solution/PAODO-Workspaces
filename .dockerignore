@@ -24,7 +24,6 @@ data
 .claude
 cli
 db
-dev_tools
 doc
 deploy
 *.local.md

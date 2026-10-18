@@ -1,6 +1,5 @@
-// The edit-existing-file branch of file_edit writes via its own inline `tee` call, bypassing
-// writeContainerFile (which containerWrite.test.ts already covers) — so its disk-space guard needs
-// its own pin: a full disk must be refused before the `tee` that would actually write the edit.
+// The edit branch writes through its own inline `tee`, bypassing writeContainerFile, so it needs its own
+// pin: a full disk is refused before that tee runs.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import os from "os";

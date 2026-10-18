@@ -7,10 +7,8 @@ import os from "os";
 import path from "path";
 import { SKILLS_DIR, loadSkills } from "./store";
 
-// The skill list is read live from .skills/*.json on every list_agents / executeSkill
-// call — there is no cached artifact to fall back on. The failure that matters is a
-// single malformed file (agents write these themselves via file_write) taking down
-// skill discovery for the whole workspace: each bad file must be skipped, not thrown.
+// Skills are read live from .skills/*.json with no cache, and agents write them, so one malformed file must
+// be skipped, not thrown, or discovery breaks for the whole workspace.
 
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "skillstore-test-"));
 const WS_DIR = path.join(ROOT, "ws");

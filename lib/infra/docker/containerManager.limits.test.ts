@@ -1,11 +1,5 @@
-// Resource caps are applied at `docker run` and can never be added later — the workspace container
-// is stateful and is never recreated, so a container born without a cap keeps running without one
-// for its whole life. That makes these flags a create-time-only guarantee worth pinning.
-//
-// --pids-limit is the load-bearing one: Docker defaults to unlimited, and without it a fork bomb in
-// any single workspace exhausts the host's global pid_max, at which point nothing on the host can
-// fork — including the `docker exec` this app spawns for every command. One workspace would take
-// down every other workspace and the app with it.
+// Caps can only be set at `docker run` and containers are never recreated, so a cap missed at creation never applies.
+// --pids-limit matters most: one fork bomb would exhaust the host's pid_max and stop every `docker exec`.
 import { describe, it, expect } from "vitest";
 import { ContainerManager } from "./containerManager";
 import type { IDockerClient, DockerResult } from "./dockerClient";

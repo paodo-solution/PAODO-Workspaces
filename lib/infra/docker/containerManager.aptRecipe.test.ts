@@ -1,10 +1,5 @@
-// System packages are the one thing a workspace installs that the durable /home/dev mount cannot
-// save: apt writes to /usr, /etc and /var, which nothing mounts, so they die with the container's
-// writable layer. Replaying the recipe on the create path is what closes that last gap and makes
-// "destroy the container and let it come back" a lossless operation rather than a lossy one.
-//
-// It is deliberately best-effort. A workspace missing ffmpeg is degraded and the agent can install
-// it again; a workspace whose container refuses to start is dead.
+// apt writes to unmounted /usr, /etc and /var, so replaying the recipe on create makes recreating a container
+// lossless. Best-effort by design: a missing ffmpeg degrades a workspace, a failed start kills it.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -186,10 +181,8 @@ describe("apt recipe — replaying it into a rebuilt container", () => {
   });
 });
 
-// apt-get commits or aborts the whole transaction. Left as a single call, one package the repos no
-// longer carry — which happens on its own, at the next point release, with nobody doing anything
-// wrong — would take the other nine down with it and hand back a bare container. That is the exact
-// failure this branch exists to prevent, arriving through the recovery path itself.
+// apt-get is all-or-nothing, so one package dropped from the repos at a point release would sink the other
+// nine and return a bare container, the very failure this path prevents.
 describe("apt recipe — one unavailable package does not cost the workspace the rest", () => {
   it("installs everything else when one package can no longer be installed", async () => {
     const ContainerManager = await loadManager();
@@ -258,11 +251,8 @@ describe("apt recipe — a stalled replay never costs the workspace its containe
     vi.useRealTimers();
   });
 
-  /**
-   * The create path is real I/O — the seed, the image hash — so the deadline does not exist yet when
-   * ensure() is called, and advancing the clock straight away would fire nothing. setImmediate is
-   * left real so each turn lets that I/O land; only then has the replay armed its timer.
-   */
+  // Create does real I/O (seed, image hash) before arming the deadline, so advancing at once fires nothing.
+  // setImmediate stays real so each turn lets that I/O land first.
   async function reachTheStall(execs: string[][], hangOn: string) {
     for (let turn = 0; turn < 1_000; turn++) {
       if (execs.some((c) => c[0] === "apt-get" && c[1] === hangOn)) return;

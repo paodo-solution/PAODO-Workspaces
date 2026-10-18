@@ -58,14 +58,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     workspaceMcpAccess?: boolean;
   };
 
-  // The field types above are what a well-formed request claims, not what this handler has checked. Each
-  // value's type is verified by the validator that owns its rules — see validateMetadata — so one layer
-  // states every rule once and every trigger gets the same rejection. Re-checking a field here only
-  // ever covered the one field someone remembered to add.
+  // Field types are only claimed here; validateMetadata checks each one, so every trigger gets the same rejection.
 
-  // Answered before the unknown-field branch, and before any write, so a caller learns the field is
-  // real and refused here rather than being told to check its spelling. The value it carried is not
-  // echoed back, not logged, and never reaches a validator: this route declines to handle it at all.
+  // Refused before any write, without echoing or logging the value, so the caller learns the field is real.
   if ("secret" in parsed) {
     return errorResponse(
       "WORKSPACE_SECRET_FORBIDDEN",
@@ -74,10 +69,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
   }
 
-  // Reject anything not on the list rather than ignoring it. A misspelled field alongside a valid one
-  // would otherwise apply the valid half and return 200 with the typo absent from `applied` — a
-  // partial change reported as a complete one, which no caller can detect. Both rejections name the
-  // accepted fields, because a programmatic caller has no form to discover them from.
+  // Unknown fields are rejected, not ignored, so a typo can't half-apply and report success. Errors list the
+  // accepted fields.
   const unknown = Object.keys(body).filter((key) => !(UPDATABLE_FIELDS as readonly string[]).includes(key));
   if (unknown.length > 0) {
     return errorResponse(
@@ -145,9 +138,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const result = await deleteWorkspace(id, workspaceDeleteDeps());
     if (!result) return notFound(req, `workspace ${id}`);
-    // `ok` alongside `deleted`, so this receipt branches the same way every other mutation's does. A
-    // failure is `{ ok: false, code, error }`; a success that carried only `deleted: true` was one a
-    // caller had to already know the shape of to read at all.
+    // `ok` alongside `deleted`, so this receipt branches like every other mutation's.
     return NextResponse.json({ ok: true, ...result });
   } catch {
     // The deletion operation logs the exact failed cleanup stage once; do not duplicate the private

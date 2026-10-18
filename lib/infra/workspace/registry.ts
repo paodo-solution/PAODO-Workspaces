@@ -1,9 +1,5 @@
-// Registry of all workspaces. Each workspace has an isolated directory on disk. Exposed two ways:
-//   - the `WorkspaceStore` class (injectable map + persistence) for tests / isolated use
-//   - `defaultWorkspaceStore`, the production singleton, reached through getStore()
-//
-// NOTE — conversation history lives in lib/conversations/store.ts, persisted in SQLite per workspace and
-// surviving across restarts/disconnects. A workspace no longer carries any message history.
+// Registry of all workspaces: the injectable `WorkspaceStore` class, plus the production singleton
+// `defaultWorkspaceStore`. Conversation history lives in lib/conversations/store.ts.
 import path from "path";
 import { createLogger, createAuditLogger } from "../logger";
 import { atomicSaveJson, readJson } from "../jsonPersist";
@@ -48,17 +44,10 @@ export interface WorkspaceStoreOptions {
   persist?: PersistFn;
   /** Load initial records at construction. Defaults to none (tests). */
   load?: LoadFn;
-  /**
-   * Start the workspace's versioning repo on creation. Defaults to a no-op (tests). The production
-   * singleton wires this to the versioning service. Injected (rather than imported) to keep this
-   * leaf module free of the services-layer import cycle.
-   */
+  // Start the workspace's versioning repo on creation. Defaults to a no-op (tests). Injected to avoid
+  // an import cycle with the services layer.
   initRepo?: (workspaceId: string, workspaceDir: string) => Promise<void>;
-  /**
-   * Bootstrap a new workspace's on-disk directory. Defaults to the real {@link scaffoldWorkspaceDir}
-   * (production and dev). Injected so unit tests can exercise createWorkspace's uniqueness/serialization
-   * logic without touching the filesystem.
-   */
+  /** Create a new workspace's directory. Defaults to {@link scaffoldWorkspaceDir}; tests stub it. */
   scaffold?: (dir: string) => Promise<void>;
 }
 
@@ -67,10 +56,7 @@ export class WorkspaceStore implements IWorkspaceStore {
   private persistFn: PersistFn;
   private initRepoFn: (workspaceId: string, workspaceDir: string) => Promise<void>;
   private scaffoldFn: (dir: string) => Promise<void>;
-  // Serializes name-mutating operations (create + rename) so a uniqueness check and the write that
-  // relies on it can't be interleaved by a concurrent request — the check-then-act would otherwise
-  // race (two identical creates could both pass the check). Nothing else in the repo provides
-  // call-level ordering, so we chain here rather than reaching for an async-mutex dependency.
+  // Serializes create and rename so two concurrent requests can't both pass the name-uniqueness check.
   private mutationChain: Promise<unknown> = Promise.resolve();
 
   constructor(opts: WorkspaceStoreOptions = {}) {
@@ -87,10 +73,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     if (records) this.hydrate(records);
   }
 
-  // Populates the map from persisted records. The on-disk directory is keyed by the immutable id,
-  // so a legacy or malformed name can no longer poison a path — names are a display/routing concern
-  // only now, and every entry is kept (dropping one would hide a workspace whose id-keyed data is
-  // still on disk).
+  // Directories are keyed by id, so a malformed name can't affect a path. Every record is kept, since
+  // dropping one would hide a workspace whose data is still on disk.
   private hydrate(records: WorkspaceRecord[]): void {
     for (const r of records) {
       const dir = path.join(WORKSPACES_ROOT, r.id);
@@ -126,9 +110,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     this.persistFn(records);
   }
 
-  // Configuration mutations update the live object before persisting it. If the registry write
-  // fails, callers need to know which operation diverged from disk; a generic request 500 loses
-  // that distinction and the next restart will silently restore the previous value.
+  // The live object is already updated, so a failed write is logged with its operation: otherwise the next
+  // restart silently restores the previous value.
   private saveUpdate(workspaceId: string, operation: string): void {
     try {
       this.save();
@@ -148,9 +131,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     }
   }
 
-  // Runs a name-mutating operation as the sole writer at a time. The chain is kept alive regardless
-  // of how fn settles (errors are swallowed on the stored tail) so one failed mutation can't poison
-  // later ones; the caller still sees fn's real result or rejection.
+  // The stored tail swallows errors so one failed mutation can't block later ones; the caller still gets
+  // fn's real result or rejection.
   private serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
     const result = this.mutationChain.then(fn, fn);
     this.mutationChain = result.then(
@@ -160,9 +142,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     return result;
   }
 
-  // Throws WORKSPACE_NAME_CONFLICT if any *other* workspace already uses an equivalent name. Names
-  // are compared on their folded key so case- and Unicode-equivalent spellings can't coexist while
-  // agent routing is still name-based. Callers must hold the mutation lock.
+  // Compares folded keys, so case- and Unicode-equivalent names can't coexist while agents route by name.
+  // Callers must hold the mutation lock.
   private assertNameAvailable(name: string, exceptId?: string): void {
     const key = normalizeForUniqueness(name);
     for (const ws of this.workspaces.values()) {
@@ -203,14 +184,10 @@ export class WorkspaceStore implements IWorkspaceStore {
       try {
         this.save();
       } catch (err) {
-        // POST /api/workspaces owns the single detailed create failure record; rethrow here so the
-        // caller can return a 500 without duplicating the same persistence exception.
+        // POST /api/workspaces logs the create failure; rethrow without logging it twice.
         throw err;
       }
-      // New workspaces are internet-off by default (see `internetAccess: false` above) — the
-      // proxy's sparse policy store must record that immediately, not just on first explicit
-      // toggle, or the defense-in-depth layer (internetAccessPolicy.ts) reads "enabled" for a
-      // workspace the primary network layer already has fully isolated.
+      // The proxy's policy store defaults unknown ids to enabled, so record the off default right away.
       setInternetAccessPolicy(id, false);
       return workspace;
     });
@@ -222,13 +199,10 @@ export class WorkspaceStore implements IWorkspaceStore {
 
   getWorkspaceByName(name: string): Workspace | undefined {
     const all = [...this.workspaces.values()];
-    // Exact match first — the fast path, and it disambiguates any legacy pre-uniqueness duplicates
-    // hydrate() may have loaded (uniqueness is enforced on create/rename, not on load).
+    // Exact match first: it disambiguates duplicates loaded from before uniqueness was enforced.
     const exact = all.find((w) => w.name === name);
     if (exact) return exact;
-    // Fall back to the folded key so name routing matches the case/Unicode-insensitive uniqueness
-    // rule: call_agent("sales") resolves a workspace stored as "Sales". Unambiguous because at most
-    // one workspace can share a folded key once uniqueness is enforced.
+    // Then the folded key, matching the uniqueness rule: call_agent("sales") finds "Sales".
     const key = normalizeForUniqueness(name);
     return all.find((w) => normalizeForUniqueness(w.name) === key);
   }
@@ -243,9 +217,7 @@ export class WorkspaceStore implements IWorkspaceStore {
       if (!ws) return false;
       const name = validateWorkspaceName(rawName);
       this.assertNameAvailable(name, id);
-      // Metadata-only: the directory is keyed by the immutable id, so nothing moves on disk and a
-      // running agent's container mount is untouched. Conversations, versioning, and secrets are all
-      // id-keyed too, so only the display name changes.
+      // Metadata only: directories, conversations, versioning and secrets are all keyed by id.
       ws.name = name;
       this.saveUpdate(id, "rename_workspace");
       return true;
@@ -259,9 +231,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     try {
       this.save();
     } catch (err) {
-      // Put the workspace back. The in-memory map and the on-disk registry must not disagree: a
-      // workspace that vanished from the UI but reappears on restart is harder to reason about than
-      // one that never left. The caller surfaces the failure and the delete stays retryable.
+      // Put it back so memory and disk agree; one that vanished and reappeared on restart would be worse.
+      // The delete stays retryable.
       this.workspaces.set(id, ws);
       log.error(
         {
@@ -321,26 +292,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     return true;
   }
 
-  /**
-   * Clear the stored model choice of every workspace pointed at a provider outside `allowed`, and
-   * report what was cleared.
-   *
-   * The workspace half of the withdrawal purgeProviderKeysExcept starts. Switching a provider off
-   * destroys its API key, so a workspace still naming it cannot run at all — and nothing said so
-   * where the choice is made: the picker rendered the withdrawn provider as an ordinary selection
-   * (it is a stored value, not a catalog entry) and the failure only surfaced in the transcript, on
-   * send. Clearing the three fields returns the workspace to "never picked", which
-   * currentModelSelection already resolves to a provider the deployment does offer — so it runs
-   * again without anyone editing it.
-   *
-   * The withdrawn choice is NOT kept for a later re-enable. The key it depended on is gone for good,
-   * and a selection nothing in the app will honour is worse than none; the audit line is what makes
-   * the previous provider recoverable afterwards.
-   *
-   * Takes the allowed list rather than reading .env, for the reason purgeProviderKeysExcept does:
-   * which providers exist and which var governs each is the provider registry's knowledge, and that
-   * module pulls the LLM SDKs an infra store must not drag in.
-   */
+  // Resets workspaces whose provider is not in `allowed` to "never picked", so they fall back to an offered
+  // provider instead of failing on send. The audit line records what was cleared.
   clearWithdrawnLlmSelections(allowed: readonly string[]): Array<{ workspaceId: string; provider: string }> {
     const offered = new Set(allowed);
     const stranded = this.listWorkspaces().filter((ws) => ws.llmProvider && !offered.has(ws.llmProvider));
@@ -354,9 +307,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     try {
       this.save();
     } catch (err) {
-      // Same divergence saveUpdate reports, stated for the batch: the live objects are cleared but
-      // disk still names the withdrawn providers. The caller is startup, which refuses to serve on
-      // this — so the mismatch never outlives the process.
+      // Memory is cleared but disk is not; startup refuses to serve on this, so the mismatch dies with the
+      // process.
       log.error(
         {
           event: "workspace_registry_save_failed",
@@ -385,10 +337,7 @@ export class WorkspaceStore implements IWorkspaceStore {
   }
 }
 
-// ---- Default production singleton ----
-// Shared across the custom server and Next.js API route module instances (same pattern as wsHub.ts).
-// Without this, server.ts and the Next-bundled API routes each get their own Map, so a workspace
-// created via the API is invisible to the WS handler until the server restarts.
+// Production singleton, on `global` so server.ts and the Next-bundled routes share one Map (as wsHub.ts).
 const g = global as typeof global & { _workspaces?: Map<string, Workspace> };
 const freshMap = !g._workspaces;
 if (!g._workspaces) g._workspaces = new Map();

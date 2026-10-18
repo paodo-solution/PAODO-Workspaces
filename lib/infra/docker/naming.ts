@@ -1,6 +1,4 @@
-// Deterministic Docker resource names, keyed by workspace id. Shared by the container-lifecycle
-// manager and its collaborators (background tasks, proxy networking) so the `ws_`/`wsnet_` prefixes
-// live in exactly one place.
+// Docker resource names per workspace id, so the `ws_`/`wsnet_` prefixes live in one place.
 export const CONTAINER_PREFIX = "ws_";
 export const NETWORK_PREFIX = "wsnet_";
 export const containerName = (workspaceId: string): string => `${CONTAINER_PREFIX}${workspaceId}`;
