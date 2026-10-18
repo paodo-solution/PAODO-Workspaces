@@ -1,5 +1,5 @@
 // validate() authenticates every programmatic caller, so the deny paths are pinned; "no key" and "disabled"
-// are the common states. The matrix runs per kind, since one shared branch fails all three.
+// are the common states. The matrix runs per kind, since a bug in one shared branch breaks all three.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 import fs from "fs";

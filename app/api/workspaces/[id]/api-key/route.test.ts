@@ -1,5 +1,5 @@
-// The "workspace-api" kind keeps this endpoint off the MCP secret and the CLI token. The channel's axes stay
-// independent: PATCH moves only the flag, POST/DELETE only the key, so a key can outlive a closed channel.
+// The "workspace-api" kind keeps this endpoint from touching the MCP secret or CLI token. The channel's axes stay
+// independent: PATCH moves only the flag and POST/DELETE only the key, so a key can predate or outlive an open channel.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -135,8 +135,8 @@ describe("workspace API key route", () => {
     h.state = { enabled: false, hasKey: false, createdAt: null, lastUsedAt: null };
     const generated = await POST(request("POST", JSON.stringify({ operation: "generate" })), ctx());
     expect(generated.status).toBe(200);
-    // The receipt says in the same breath that nothing accepts the key yet, so an agent reading only the key
-    // field is not left with calls that fail without pointing at the closed channel.
+    // The receipt also says nothing accepts the key yet; otherwise an agent reading only the key field hands it on,
+    // every call fails, and nothing points back at the closed channel.
     expect(await generated.json()).toEqual({
       ok: true,
       workspaceApiKey: "pak_new",
@@ -156,8 +156,8 @@ describe("workspace API key route", () => {
     expect(h.setEnabled).not.toHaveBeenCalled();
   });
 
-  // Revocation refuses when rotation would. A revoke that destroyed nothing used to answer 200, so an operator
-  // clearing a leak could not tell whether this request ended it.
+  // Revocation refuses on the same condition as rotation. A revoke that destroyed nothing used to answer 200, so an
+  // operator clearing a leak could not tell whether this request ended it.
   it("refuses revocation when there is no key to destroy", async () => {
     h.state = { enabled: true, hasKey: false, createdAt: null, lastUsedAt: null };
 
@@ -172,8 +172,8 @@ describe("workspace API key route", () => {
     expect(h.revoke).not.toHaveBeenCalled();
   });
 
-  // The cost, pinned as a decision: revocation is not idempotent, so a caller retrying after a dropped response
-  // must read the channel back rather than expect a repeated 200.
+  // The cost of that refusal, pinned on purpose: revocation is not idempotent, so a caller retrying after a dropped
+  // response must read the channel back rather than expect a repeated 200.
   it("destroys the key once and refuses the repeat", async () => {
     h.state = { enabled: true, hasKey: true, createdAt: "2026-01-01T00:00:00.000Z", lastUsedAt: null };
 

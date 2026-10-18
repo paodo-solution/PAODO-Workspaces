@@ -10,8 +10,8 @@ const LOGGER_RECEIVERS = new Set(["log", "wlog", "elog", "this.log"]);
 const EVENT_NAME = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const LOG_METHODS = new Set(["trace", "debug", "info", "warn", "error", "fatal"]);
 
-// Pino owns these keys; a call-site binding appends a duplicate the reader takes instead. `hostname` once
-// hid the machine, and `level: "light"` sorted above 40, matching the deploy/README triage recipe.
+// Pino owns these keys: a call-site binding of one appends a duplicate that JSON readers take instead. A
+// `hostname` binding once replaced the machine name, and `level: "light"` sorted above 40 in the jq triage.
 const RESERVED_BINDINGS = new Set(["level", "time", "pid", "hostname", "msg", "context", "audit"]);
 
 /** Receivers that are plausibly a logger — deliberately broader than LOGGER_RECEIVERS above. */

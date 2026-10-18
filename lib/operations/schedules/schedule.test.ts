@@ -261,7 +261,7 @@ describe("schedule validation", () => {
     }
   });
 
-  // JSON only claims to match the declared types: `prompt: 5` hit `.trim()` and 500'd, and `enabled: "false"`
+  // JSON only claims to match the declared types: `prompt: 5` hit `.trim()` and became a 500, and `enabled: "false"`
   // was truthy, storing a disabled schedule as enabled with a non-boolean.
   it("refuses a wrong-typed value instead of coercing or crashing on it", () => {
     const cases: ScheduleInput[] = [

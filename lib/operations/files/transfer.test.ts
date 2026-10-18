@@ -129,8 +129,8 @@ describe("tar transfers", () => {
     await expect(collectTransfer(SOURCE, "link.txt")).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });
 
-  // Containment passes this link (it points inside), so the push landed on its target, destroying an unnamed
-  // file while reporting the link overwritten. Both directions refuse now.
+  // Containment passes this link (it points inside), so the push landed on its target, destroying a file the
+  // receipt never named while reporting the link overwritten. Both directions refuse now.
   it("refuses a destination that resolves through a symlink rather than following it", async () => {
     fs.writeFileSync(path.join(SOURCE, "link.txt"), "new");
     fs.writeFileSync(path.join(DEST, "real.txt"), "secret");

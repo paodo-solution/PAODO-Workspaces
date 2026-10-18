@@ -110,8 +110,8 @@ describe("priceRefresher", () => {
     rmSync(asDir, { recursive: true, force: true });
   });
 
-  // Worst case, since buildCatalog still resolves and the swap would drop held rates, freezing those turns'
-  // cost as undefined for good. A partial refresh must be no worse than none.
+  // An unreachable source is the worst case: buildCatalog still resolves, so the swap would drop held rates and
+  // freeze those turns' cost as undefined for good. A partial refresh must be no worse than none.
   describe("when one source is unreachable", () => {
     const scaleway = (input: number) => ({
       provider: "scaleway",

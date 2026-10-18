@@ -184,8 +184,8 @@ describe("workspace update body contract", () => {
     }
   });
 
-  // The widest-reaching mutation must be unable to produce a read-once secret as a side effect; a key comes
-  // only from the channel's own route.
+  // This PATCH is a caller's widest-reaching mutation, so it must never produce a read-once secret as a side
+  // effect; a key comes only from the channel's own route.
   it("reports an opened channel without minting a credential", async () => {
     const res = await patch({ workspaceApiAccess: true });
 

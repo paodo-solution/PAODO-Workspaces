@@ -48,8 +48,8 @@ describe("FileReadTool capture limits", () => {
   });
 
   it("resumes ON the cut line, not past it", async () => {
-    // The byte ceiling cut line 3 mid-way; resuming must point at offset 2, since 3 would skip the rest of line 3
-    // silently, the very silence this notice prevents.
+    // The byte ceiling cut line 3 mid-way, so resuming must point at offset 2: offset 3 would silently skip the
+    // rest of line 3, the silence this notice exists to prevent.
     const body = `alpha\nbeta\n${"g".repeat(400_000)}`;
     const { runner } = runnerReturning({ stdout: body });
     const out = await read(new FileReadTool(runner), { file_path: "huge.log" });

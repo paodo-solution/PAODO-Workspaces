@@ -246,7 +246,7 @@ function ScheduleModal({ schedule, onClose }: ModalProps) {
               </p>
             </div>
           </div>
-          {/* Mounted once loaded, so it doesn't animate from Disabled on every open. */}
+          {/* Mounted once loaded: CSS transitions skip the first render, so it won't slide from Disabled. */}
           {!unavailable && (
             <Switch
               checked={form.enabled}

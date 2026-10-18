@@ -1,5 +1,5 @@
-// Keepalive stops proxies dropping a stream silent through a long tool call. Pins that it emits on schedule,
-// stops on demand, and never throws after the stream is gone.
+// Keepalive stops a proxy dropping a stream that goes quiet during a long tool call. Pins that it emits on
+// schedule, stops on demand, and never throws after the stream is gone.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { startKeepalive, SSE_KEEPALIVE_MS, SSE_HEADERS } from "./sse";

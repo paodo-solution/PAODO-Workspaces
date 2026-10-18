@@ -1,5 +1,5 @@
 // Every file client must agree on the wire path space. A rejection names the right form (a model will retry
-// the same string), and a trailing slash is the same key, as the browser's selection identity.
+// the same string), and a trailing slash makes no new key, since the browser uses it as selection identity.
 
 import { describe, it, expect } from "vitest";
 import { InvalidPathError, relativeDirPath, relativeEntryPath, toRelativePath } from "./relpath";

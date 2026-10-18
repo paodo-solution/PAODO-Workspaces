@@ -1,5 +1,5 @@
-// http_get curls INSIDE the container through the proxy. Pins: URL as its own argv, never --noproxy, http
-// upgraded and other schemes refused, redirects capped and https-only. The runner is faked.
+// http_get curls INSIDE the container via the proxy. Pins: URL as its own argv; never --noproxy, which would
+// skip destinationGuard's SSRF checks; http upgraded, other schemes refused; redirects capped, https-only.
 
 import { describe, it, expect, vi } from "vitest";
 import { WebFetchTool, buildCurlArgs } from "./webFetch";

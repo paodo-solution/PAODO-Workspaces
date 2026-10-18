@@ -1,5 +1,5 @@
-// The proxy secret stops one workspace assuming another's identity: stable and workspace-specific, and
-// verification accepts only the exact value derived from that id.
+// The proxy secret stops one workspace assuming another's identity. Pins that it is stable and
+// workspace-specific, and that verification accepts only the exact value derived from that id.
 
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import forge from "node-forge";

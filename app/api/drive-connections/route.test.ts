@@ -1,4 +1,4 @@
-// Pins this route's public boundary now the CLI shares its POST and DELETE: the statuses, and that an
+// The CLI now shares this route's POST and DELETE, so its public boundary is pinned: the statuses, and that an
 // operation's refusal reaches the caller as its own code rather than an anonymous 500.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/appError";

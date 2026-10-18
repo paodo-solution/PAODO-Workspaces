@@ -403,7 +403,7 @@ export default function DashboardPage() {
                     onClick={() => setOpenSession(s)}
                     className={`border-b border-border cursor-pointer transition-colors hover:bg-bg-deep ${openSession?.sessionId === s.sessionId ? "bg-bg-tint" : ""}`}
                   >
-                    {/* Links like call_agent's; stopPropagation keeps the drawer shut. A deleted conversation shows its id. */}
+                    {/* Deep-link like call_agent's; stopPropagation skips the drawer. Deleted ones stay plain text. */}
                     <td className="px-6 py-2.5 font-mono">
                       {!s.conversationId ? (
                         <span className="text-text-3" title="No conversation (external agent run)">

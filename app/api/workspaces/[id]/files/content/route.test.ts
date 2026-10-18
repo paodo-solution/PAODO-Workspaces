@@ -185,8 +185,8 @@ describe("files/content GET — a window of lines", () => {
   });
 });
 
-// ?raw=1's Content-Type is all a streaming client has: `paodo file cat` uses it to refuse binary on a
-// terminal, which one octet-stream for both let a PNG through.
+// ?raw=1's Content-Type is all a streaming client has: `paodo file cat` uses it to refuse binary on a terminal,
+// and one octet-stream for both types is what let a PNG through.
 describe("files/content GET — what ?raw=1 says the bytes are", () => {
   const raw = (name: string) => GET(new Request(`http://x/api/files/content?path=${name}&raw=1`), ctx);
   const mediaType = async (name: string) => (await raw(name)).headers.get("content-type");
@@ -386,8 +386,8 @@ describe("files/content PATCH — move", () => {
     expect(fs.readFileSync(abs("to/same.txt"), "utf8")).toBe("destination");
   });
 
-  // Only the mkdir reservation catches this: rename(2) happily replaces an empty directory, while a non-empty
-  // one fails on its own ENOTEMPTY.
+  // Only an empty folder exercises the mkdir reservation: rename(2) replaces it happily, while a non-empty one
+  // already fails with ENOTEMPTY.
   it("returns a conflict rather than replacing an empty same-named folder", async () => {
     fs.mkdirSync(abs("empty-from/dup"), { recursive: true });
     fs.mkdirSync(abs("empty-to/dup"), { recursive: true });

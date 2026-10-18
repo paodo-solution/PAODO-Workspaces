@@ -1,5 +1,5 @@
-// Whole-segment matching, nested hits caught, exclusions grouped by rule for the summary. Also pins that
-// partitionByIgnore (flat list) and ignoreRuleFor (walk) agree, or transfers stop round-tripping.
+// Pins the ignore contract: whole-segment matching, nested hits caught, exclusions grouped by rule for the
+// summary, and partitionByIgnore (flat list) agreeing with ignoreRuleFor (walk), or transfers stop round-tripping.
 
 import { describe, it, expect } from "vitest";
 import {

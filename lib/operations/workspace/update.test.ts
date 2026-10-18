@@ -1,5 +1,5 @@
-// Composition of the update contract, with each field's rules tested where they live: nothing is written
-// until all validates, fields land in fixed order, and the report stays accurate if the workspace vanishes.
+// Composition of the update contract (each field's rules are tested where they live): nothing is written until
+// the whole request validates, fields land in fixed order, and the report stays accurate if the workspace vanishes.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { providerAvailabilityEnv, SUPPORTED_PROVIDERS } from "@/lib/agent/buildModel";
 import { updateWorkspace, type UpdateWorkspaceDeps, type UpdateWorkspaceStore } from "./update";

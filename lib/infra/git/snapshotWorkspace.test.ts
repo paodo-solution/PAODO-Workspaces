@@ -1,5 +1,5 @@
-// A burst commits once, and a caller that knows it is done can force the commit; otherwise a slow transfer
-// commits per gap and a client exiting on its last response leaves it to an unwatched timer.
+// The coalescer commits a burst once, and a caller that knows it is done can force the commit; otherwise a slow
+// transfer commits per gap, and a client exiting on its last response leaves it to an unwatched timer.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { IWorkspaceSnapshotWriter } from "../interfaces";

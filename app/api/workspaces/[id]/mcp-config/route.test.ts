@@ -1,5 +1,5 @@
 // Only credentialStore is mocked for writes, since the credential is all this endpoint writes; the
-// "workspace-mcp" kind keeps it off the agent key and the CLI token.
+// "workspace-mcp" kind keeps it from managing the agent key or the CLI token.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

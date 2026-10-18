@@ -1,5 +1,5 @@
-// Registry, proxy policy and network are one boundary, so an unconfirmed step rolls the whole change back.
-// The network is rebuilt around a running container; stopping it once destroyed everything installed.
+// Registry, proxy policy and network are one boundary, so an unconfirmed step rolls the whole change back. The
+// toggle rebuilds the network around a running container and must never stop it: that once wiped every install.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

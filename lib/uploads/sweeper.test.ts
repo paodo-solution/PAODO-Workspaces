@@ -1,5 +1,5 @@
-// Tells an orphaned temp file from one still in progress or a non-temp file. A real tree (fresh, stale,
-// non-.part, stale under .git) must lose only the one stale file.
+// Tells an orphaned temp file from one still in progress or a non-temp file: in a real tree, only the stale
+// .part is removed, not the fresh one, the non-.part file, or the stale .part under .git.
 
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import fs from "fs";
