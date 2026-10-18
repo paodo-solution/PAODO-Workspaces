@@ -1,13 +1,5 @@
-// Manages the Docker container lifecycle for each workspace.
-// One container per workspace — started eagerly when an agent session begins, stopped after
-// CONTAINER_IDLE_MS of inactivity, re-started automatically on next command.
-//
-// Container naming: ws_<workspaceId>
-// Network naming:   wsnet_<workspaceId>  (isolated per-workspace bridge — no inter-container traffic)
-// Bind mounts:      <workspaceDir> → /workspace  (host files, shared with file tools)
-//                   <homeDir>      → /home/dev   (durable agent home — see seedAgentHome)
-// Resource limits:  CONTAINER_MEMORY / CONTAINER_CPUS / CONTAINER_PIDS_LIMIT env vars
-//                   (defaults: 1g / 1.0 / 512)
+// One container per workspace (ws_<id>) on its own internal network (wsnet_<id>), with /workspace and a
+// durable /home/dev mounted from the volume. Started on demand, stopped after IDLE_TIMEOUT_MS idle.
 import { access, mkdir, writeFile } from "fs/promises";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
@@ -73,12 +65,8 @@ function dockerCleanupFailure(stage: string, result: { code: number; stderr: str
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE ?? "paodo-workspace";
 const CONTAINER_MEMORY = capacityProfile.workspaceMemoryLimit;
 const CONTAINER_CPUS = capacityProfile.workspaceCpus;
-// Max processes+threads in the container's pid cgroup. Docker's default is unlimited, which lets a
-// fork bomb (or a runaway spawn loop) in ANY workspace exhaust the host's global pid_max — at which
-// point nothing on the host can fork, including the `docker exec` this app spawns per command. The
-// memory cap is not a backstop: a forking cgroup under memory pressure thrashes the OOM killer
-// rather than stopping. Threads count too, so anything thread-heavy (JVM, browser grids, `make -j`)
-// needs this raised. Hitting the cap surfaces as "Resource temporarily unavailable" on fork.
+// Docker's unlimited default lets one fork bomb exhaust the host's pid_max. Threads count too, so
+// thread-heavy tools (JVM, `make -j`) may need it raised; hitting it reads "Resource temporarily unavailable".
 const CONTAINER_PIDS = capacityProfile.workspacePidsLimit;
 // Idle window once nothing keeps a container warm (no active run, no live task). Short and safe: a
 // run suppresses it and it re-arms only on run end, so it can never fire mid-run.
@@ -89,26 +77,22 @@ const DEFAULT_NETWORK_GRACE_MS = 20 * 60 * 1000;
 // How often to re-check liveness while a live task keeps a container warm, so a task that exits on
 // its own is noticed and the idle countdown can begin.
 const TASK_POLL_MS = 60 * 1000;
-// Where a command's over-cap output is parked so the agent can still read it (see ExecOutput).
-// Deliberately alongside /tmp/paodo-tasks: the agent is already taught to tail paths of that shape,
-// and neither is visible to the file tree, to git, or to workspace snapshots — which matters here,
-// because snapshots stage with `add --all --force` and would otherwise commit every spill file.
+// Over-cap output is parked here for the agent to read (see ExecOutput). Outside /workspace so the file
+// tree, git and snapshots (`add --all --force`) never pick up spill files.
 const EXEC_OUTPUT_DIR = "/tmp/paodo-exec";
 // Where execStreaming parks a command's session-leader pid so its group can be killed later. Split
 // into dir + prefix so the file it writes and the sweep that clears them can never drift apart.
 const EXEC_PIDFILE_DIR = "/tmp";
 const EXEC_PIDFILE_PREFIX = "paodo-exec-";
-// Docker volume name is deterministic: compose project name (fixed in docker-compose.yml as
-// "paodo_ws") + "_" + volume key ("workspaces"). server.ts refuses to start without it, so the
-// accessor throws rather than inventing a path: the only caller that can see null is a test.
+// Compose project + volume key ("paodo_ws_workspaces"). server.ts refuses to start without it, so the
+// accessor throws instead of guessing: only a test can see null.
 const WORKSPACES_VOLUME_NAME = runtimeMode.workspacesVolume;
 
 function workspacesVolume(): string {
   assertWorkspacesVolumeConfigured(WORKSPACES_VOLUME_NAME);
   return WORKSPACES_VOLUME_NAME;
 }
-// The agent's home inside the container — the `dev` user created in Dockerfile.workspace. Mounted
-// from durable storage, so npm globals, pip packages and extra node/python versions outlive the
+// Home of the `dev` user (Dockerfile.workspace), mounted durably so installed tooling outlives the
 // container. SEED_TARGET is where the same directory is attached while it is being filled.
 const AGENT_HOME = "/home/dev";
 const SEED_TARGET = "/seed";
@@ -117,17 +101,9 @@ const SEED_TARGET = "/seed";
  * workspace/secret stores are wired only by defaultContainerManager.ts. */
 export interface ContainerWorkspaceDependencies {
   internetAccessFor(workspaceId: string): boolean;
-  /**
-   * Env baked in at `docker run`: proxy routing and CA trust. Depends only on the workspace id and
-   * whether the proxy CA exists, so it never changes for a given workspace — which is what lets the
-   * container live indefinitely without its env going stale.
-   */
+  /** Env baked in at `docker run` (proxy routing, CA trust). Constant per workspace, so it never goes stale. */
   runEnvironment(workspaceId: string): { envArgs: string[]; hasProxyCA: boolean };
-  /**
-   * Secret tokens supplied fresh on every `docker exec`. Kept out of `docker run` because Docker
-   * cannot amend a container's env after creation, and this container is never recreated — so
-   * baking secrets in would freeze them at whatever the workspace had on its first ever command.
-   */
+  /** Secret tokens, sent fresh on every exec: a container's env is frozen at creation and it is never recreated. */
   execEnvironment(workspaceId: string, internetAccess: boolean, relayReady: boolean): Record<string, string>;
   installProxyCA(docker: IDockerClient, containerName: string, workspaceId: string): Promise<void>;
   /** Starts the in-container egress relay (see proxyRelay.ts); true once it listens. Never rejects. */
@@ -152,9 +128,8 @@ const isolatedWorkspaceDependencies: ContainerWorkspaceDependencies = {
 export class ContainerManager implements IContainerManager {
   private docker: IDockerClient;
   private imageManager: ImageManager;
-  // Long-lived background processes the agent launched (dev servers etc.) and the credential-proxy
-  // sidecar networking are each their own collaborator — this class owns only container/network
-  // lifecycle and exec, and delegates those two subdomains. Both share our injected docker client.
+  // Background tasks and credproxy sidecar networking are delegated; this class owns container and
+  // network lifecycle and exec.
   private background: BackgroundTaskManager;
   private proxy: ProxyNetworkManager;
   constructor(
@@ -170,15 +145,11 @@ export class ContainerManager implements IContainerManager {
   // Runs driving each workspace; > 0 means never idle. A counter (not a flag) so nested call_agent
   // and concurrent runs nest cleanly — suppressed on run start, re-armed on run end.
   private activeRuns = new Map<string, number>();
-  // Prevents concurrent docker run/start/stop calls for the same workspace. Tagged by kind so
-  // ensure() can still coalesce concurrent ensure() calls onto one shared promise (same desired
-  // outcome), while a stop() in flight is never handed out that way — its promise resolves to
-  // "stopped," not "ready," so a concurrent ensure() must wait it out and then run its own fresh
-  // pass instead of piggybacking on it. See ensure()/stop() below.
+  // Serializes run/start/stop per workspace. Concurrent ensure() calls share one promise; an in-flight
+  // "stop" is waited out instead, since it resolves to stopped, not ready.
   private startLocks = new Map<string, { kind: "ensure" | "stop"; promise: Promise<void> }>();
-  // Permanent for this process once explicit deletion begins. Workspace deletion removes secrets,
-  // graph edges and other state before the registry, so a failed/partial deletion must not let an
-  // in-flight agent recreate the container while the caller retries the cleanup.
+  // Set once deletion begins and never cleared, so an in-flight agent can't recreate the container while
+  // a partial deletion is retried.
   private removingWorkspaces = new Set<string>();
   // First time each managed network was seen empty by the sweep, so it is only reclaimed once it has
   // stayed empty across the grace window rather than the instant a workspace idles.
@@ -187,25 +158,16 @@ export class ContainerManager implements IContainerManager {
   // as for a running container first seen after an app restart.
   private relayReady = new Map<string, boolean>();
 
-  // Creates the workspace's isolated network, always --internal, or recreates it if an existing one
-  // isn't. Every workspace network is --internal regardless of internet access: the network itself
-  // never has a route out, so the credproxy sidecar is the ONLY egress path, and internet access is
-  // controlled purely by whether that sidecar is attached (see reconcileNetwork). This closes the
-  // gap where an internet-on network was an ordinary bridge with a direct route out, bypassing the
-  // proxy's SSRF guard, internet-access policy and audit log. Docker can't flip --internal on an
-  // existing network, so a non-internal one (survived from the old policy, or an unclean exit) is
-  // deleted and recreated — this doubles as the one-time migration for pre-existing workspaces.
+  // Always --internal, whatever the internet setting, so the credproxy sidecar is the only egress path.
+  // Docker can't flip --internal in place, so a non-internal network is deleted and recreated.
   private async ensureNetwork(workspaceId: string): Promise<void> {
     const name = networkName(workspaceId);
     const inspect = await this.docker.cmd("network", "inspect", name, "--format", "{{.Internal}}");
     if (inspect.code === 0) {
       if (inspect.stdout.trim() === "true") return;
       log.debug({ workspaceId }, "network is not --internal — recreating as internal");
-      // A container (or the credproxy sidecar) that reached this state without going through our own
-      // stop() (unclean exit, manual `docker stop`, daemon restart) can still hold an endpoint on
-      // this network even while stopped — network rm fails with "has active endpoints" until every
-      // endpoint is disconnected. Force both loose first; the clean case with nothing attached just
-      // no-ops on each.
+      // After an unclean exit the stopped container or the sidecar can still hold an endpoint, which makes
+      // `network rm` fail; force both off first (a no-op when nothing is attached).
       await this.docker.cmd("network", "disconnect", "-f", name, containerName(workspaceId));
       await this.proxy.detach(workspaceId);
       const rm = await this.docker.cmd("network", "rm", name);
@@ -226,17 +188,8 @@ export class ContainerManager implements IContainerManager {
     if (r.code !== 0) throw new Error(`docker network create failed: ${r.stderr}`);
   }
 
-  // Bring the workspace's network, and the container's membership of it, in line with the current
-  // policy. Run on every wake rather than only at create/start, because the container now outlives
-  // every network operation performed around it and can be left behind by one:
-  //   - applyInternetAccess rebuilds the network under a running container. If the rebuild fails
-  //     partway (create or connect), the container is left holding no network at all and nothing
-  //     else would ever rejoin it — the workspace would be silently offline until it idled out.
-  //   - a rolled-back toggle can leave the network's --internal flag disagreeing with the policy
-  //     the registry ended up persisting.
-  // ensureNetwork already no-ops when the network is already --internal, so the healthy case costs
-  // one inspect. Internet access is now decided here, by the sidecar's attachment alone: the network
-  // is always --internal, so attaching the proxy is what opens egress and detaching it is what cuts it.
+  // Runs on every wake, so a half-failed toggle heals instead of leaving the container offline. Internet
+  // access is the sidecar's attachment alone; the healthy case costs one inspect.
   private async reconcileNetwork(workspaceId: string, internetAccess: boolean): Promise<void> {
     await this.ensureNetwork(workspaceId);
     const connect = await this.docker.cmd("network", "connect", networkName(workspaceId), containerName(workspaceId));
@@ -245,9 +198,8 @@ export class ContainerManager implements IContainerManager {
     if (connect.code !== 0 && !/already (exists|connected)/i.test(connect.stderr)) {
       throw new Error(`docker network connect failed: ${connect.stderr}`);
     }
-    // On: attach the sidecar (idempotent) — a redeploy can recreate it and drop its attachment to a
-    // still-running workspace, which this reattaches. Off: detach it and CONFIRM it is gone, so a
-    // workspace the UI shows as off can never be left with a live route out through a stale sidecar.
+    // On: (re)attach the sidecar, which a redeploy may have dropped. Off: detach and CONFIRM it is gone,
+    // so a workspace shown as off never keeps a route out.
     if (internetAccess) await this.proxy.attach(workspaceId);
     else await this.proxy.ensureDetached(workspaceId);
   }
@@ -344,17 +296,8 @@ export class ContainerManager implements IContainerManager {
     ];
   }
 
-  /**
-   * Fill a workspace's durable home from the image, once, before its container first starts.
-   *
-   * The image ships ~250MB under /home/dev (nvm's Node, pyenv) that the mount would otherwise hide,
-   * leaving the workspace with no node and no python at all. A throwaway root container copies that
-   * tree in with `cp -a`, preserving uid 1000 ownership so the agent can still write it afterwards.
-   *
-   * Fatal on failure by design: a container started on an empty home is broken in a way that reads
-   * as "node is missing" rather than "setup failed", so this fails loudly at create instead. The
-   * marker written at the end is what makes that hold on the retry too — see below.
-   */
+  // Copies the image's /home/dev (nvm Node, pyenv), which the mount would hide, into the durable home once.
+  // Fatal on failure: an empty home would surface later as "node is missing" instead of "setup failed".
   private async seedAgentHome(workspaceId: string): Promise<void> {
     const homeDir = workspaceHomeDir(workspaceId);
     // Must exist before docker run either way: volume-subpath refuses to mount a missing subpath.
@@ -392,15 +335,8 @@ export class ContainerManager implements IContainerManager {
     );
   }
 
-  /**
-   * Installs the recipe, returning the packages that could not be installed.
-   *
-   * One call first, because that is the case that always works and it resolves the set together.
-   * But apt-get commits or aborts the WHOLE transaction, so a single package the repos no longer
-   * carry — an aged-out pin, a rename — would otherwise take every other package down with it and
-   * hand back a bare container. The retry costs one apt-get per package, and only when something is
-   * already wrong, to salvage everything that is still installable.
-   */
+  // Returns the packages that failed. apt-get is all-or-nothing, so if the joint install fails each
+  // package is retried alone to salvage whatever is still installable.
   private async installRecipePackages(
     name: string,
     packages: string[],
@@ -474,26 +410,8 @@ export class ContainerManager implements IContainerManager {
     }
   }
 
-  /**
-   * Reinstalls the system packages this workspace had before its container was rebuilt.
-   *
-   * Only the create path calls this: `docker start` on a stopped container keeps its writable layer,
-   * so the packages are still there. Never throws — a workspace missing ffmpeg is degraded, one that
-   * refuses to start is dead, and the agent can always run apt_install again.
-   *
-   * The deadline is what makes that last sentence true of a stall and not just of a failure. Nothing
-   * underneath it has a clock — `docker exec` has no timeout — and every command in the workspace
-   * waits on the create path, so an apt hung on an unreachable mirror would hang the workspace with
-   * it. Past APT_REPLAY_TIMEOUT_MS the container is handed over as it stands.
-   *
-   * The whole replay stops there rather than salvaging the packages the stall never reached, which
-   * is the one place this parts ways with installRecipePackages. A package that FAILS releases the
-   * dpkg lock on its way out, so the next one can still install; a package that HANGS holds it, and
-   * every retry behind it would do nothing but collect lock errors.
-   *
-   * Abandoning the exec does not stop apt inside the container either, which is why nothing is
-   * cleaned up on that path: it is still running and may yet land the install we stopped waiting for.
-   */
+  // Create path only (`docker start` keeps installed packages). Never throws: a degraded workspace beats a
+  // dead one. Stops waiting after APT_REPLAY_TIMEOUT_MS, since a hung apt holds the dpkg lock.
   private async replayAptRecipe(workspaceId: string, internetAccess: boolean): Promise<void> {
     const packages = readAptRecipe(workspaceId);
     if (packages.length === 0) return;
@@ -698,11 +616,8 @@ export class ContainerManager implements IContainerManager {
   }
 
   async ensure(workspaceId: string, workspaceDir: string): Promise<void> {
-    // Coalesce concurrent ensure() calls onto one in-flight promise. But a concurrent stop() (e.g.
-    // the internet-access toggle route) is never piggybacked on — its promise resolves to
-    // "stopped," which is the opposite of what an ensure() caller wants — so wait it out and then
-    // run our own fresh ensure. The check-then-set below has no `await` in between, so nothing else
-    // can claim the slot while we're mid-loop.
+    // Join an in-flight ensure(); wait out an in-flight stop() and run a fresh pass. No `await` between the
+    // check and the set below, so nothing else can claim the slot.
     for (;;) {
       if (this.removingWorkspaces.has(workspaceId)) {
         throw new Error(`workspace ${workspaceId} is being permanently deleted`);
@@ -715,12 +630,8 @@ export class ContainerManager implements IContainerManager {
 
     const p = (async () => {
       await this._ensureContainer(workspaceId, workspaceDir);
-      // Enforce the egress invariant on every wake: the credproxy sidecar must be attached to this
-      // workspace's network. Self-heals a dropped attachment and fails loudly if it can't, rather
-      // than letting the agent black-hole on cryptic "could not resolve proxy" DNS errors. Skipped
-      // entirely for an off workspace — verify()'s whole purpose is to *reattach* a dropped
-      // connection, which would silently undo the isolation an off workspace depends on. Fails
-      // closed (skips reattach) if the workspace record can't be found at all.
+      // With internet on, verify (and reattach) the sidecar so the agent never hits cryptic proxy DNS errors.
+      // Never for an off or unknown workspace: reattaching would undo its isolation.
       const internetAccess = this.workspaceDeps.internetAccessFor(workspaceId);
       if (internetAccess) {
         try {
@@ -757,12 +668,8 @@ export class ContainerManager implements IContainerManager {
     return p;
   }
 
-  /**
-   * Run a non-streaming command inside the workspace container via docker exec.
-   * Ensures the container is running first (idempotent, resets idle timer).
-   * cmdArgs are passed directly to execvp — no shell interpolation, so injection is impossible.
-   * stdout is NOT trimmed so callers receive exact file content (trailing newlines preserved).
-   */
+  /** Non-streaming exec after ensure(). cmdArgs go straight to execvp (no shell); stdout is left untrimmed
+   * so file content stays exact. */
   async exec(
     workspaceId: string,
     workspaceDir: string,
@@ -776,17 +683,8 @@ export class ContainerManager implements IContainerManager {
     });
   }
 
-  /**
-   * Clear exec pid files orphaned by a container stop.
-   *
-   * Only the kill path removes a pid file; a command that simply finishes leaves its own behind. A
-   * container lives for the whole life of its workspace and nothing else ever clears its /tmp, so
-   * without this those files accumulate for as long as the workspace exists.
-   *
-   * Runs ONLY on the restart path, which is what makes it safe without an age heuristic: the stop
-   * killed every process in the container, so nothing left in here can belong to a live command.
-   * `find -delete` rather than `rm -f` with a glob, so a long-neglected container cannot blow ARG_MAX.
-   */
+  // Clears pid files that finished commands leave behind. Restart path only: the stop killed every process,
+  // so none can belong to a live command. `find -delete` avoids ARG_MAX on a large backlog.
   private async sweepExecPidFiles(workspaceId: string): Promise<void> {
     const script = `find ${EXEC_PIDFILE_DIR} -maxdepth 1 -type f -name '${EXEC_PIDFILE_PREFIX}*.pid' -delete`;
     // Best effort: leftover pid files cost disk, never correctness, so a failure here must not stop
@@ -809,18 +707,12 @@ export class ContainerManager implements IContainerManager {
     await this.ensure(workspaceId, workspaceDir);
     const name = containerName(workspaceId);
     return new Promise((resolve) => {
-      // Run the command in its OWN session via setsid (so it becomes a process-group leader) and
-      // record that leader PID. Killing the negative PID later (`kill -KILL -<pid>`) takes down the
-      // command AND every child it spawned — the only reliable way to stop a runaway from outside
-      // the container, since killing the host-side `docker exec` client just orphans it onto PID 1.
-      // cmdArgs is a runnable argv (e.g. ["/bin/bash","-c",command]); `exec "$0" "$@"` re-execs it
-      // in place, so the recorded PID is exactly the process that runs the work.
+      // setsid makes the command a group leader whose pid is recorded (`exec` keeps it), so `kill -<pid>`
+      // stops it and its children; killing the host-side `docker exec` would only orphan them onto PID 1.
       const pidFile = `${EXEC_PIDFILE_DIR}/${EXEC_PIDFILE_PREFIX}${randomUUID()}.pid`;
       const launcher = `echo $$ > ${pidFile}; exec "$0" "$@"`;
-      // setsid --wait: create the new session (so the work is a killable process-group leader) but
-      // BLOCK until it finishes and propagate its exit code. Without --wait, setsid forks and the
-      // parent exits immediately, so the docker exec client closes at once — the command looks
-      // instantly "done" and its output never streams.
+      // --wait blocks until the leader exits and passes on its exit code; without it the exec returns at
+      // once and no output streams.
       let proc: ReturnType<typeof spawn>;
       try {
         proc = spawn("docker", [
@@ -847,12 +739,8 @@ export class ContainerManager implements IContainerManager {
         return;
       }
       proc.stdin!.end();
-      // Both handlers are wrapped because Node invokes them directly, off any promise chain: an
-      // exception thrown in here does NOT reach the .catch() around execStreaming, it reaches
-      // process.on("uncaughtException") in server.ts, which fatal()s the whole instance. That is
-      // precisely how an unbounded `stdout += chunk` used to take down every workspace at once.
-      // ExecOutput now caps the accumulation, so this is the backstop, not the fix — it exists so no
-      // future bug in an output handler can ever be an instance-wide outage again.
+      // Node calls these off any promise chain, so a throw would reach server.ts's uncaughtException
+      // handler and kill the whole instance; safeEmit contains it.
       proc.stdout!.on("data", (chunk: Buffer) => safeEmit(() => opts.onStdout(chunk.toString()), workspaceId));
       proc.stderr!.on("data", (chunk: Buffer) => safeEmit(() => opts.onStderr(chunk.toString()), workspaceId));
 
@@ -922,31 +810,14 @@ export class ContainerManager implements IContainerManager {
     });
   }
 
-  /**
-   * Opens a drain inside the container for output the app will not hold in memory.
-   *
-   * Deliberately a SEPARATE `docker exec` rather than a tee bolted onto execStreaming's launcher:
-   * that launcher records the pid the process-group kill depends on, and adding redirections to it
-   * to serve a logging feature would put the one reliable way of stopping a runaway command at risk.
-   * This costs an extra process, but only for commands that already blew the cap.
-   *
-   * The container is necessarily running by the time this is called — a command is mid-flight — so
-   * there is no ensure() here.
-   */
+  /** Drains over-cap output to a file through its own `docker exec`, leaving execStreaming's pid-recording
+   * launcher untouched. No ensure(): a command is already mid-flight. */
   openOutputSink(workspaceId: string, runId: string): OutputSink {
-    // runId reaches a shell command below. Today's only caller passes randomUUID(), so this cannot
-    // currently carry anything hostile — it is here so that stays true if a caller ever passes
-    // something derived from a command, a filename, or anything else the agent can influence.
+    // runId reaches a shell: sanitize it even though today's only caller passes a UUID.
     const safeId = runId.replace(/[^a-zA-Z0-9-]/g, "") || "run";
     const file = `${EXEC_OUTPUT_DIR}/${safeId}.output`;
-    // `head -c` stops reading at the ceiling and exits, which closes our stdin — the EPIPE that
-    // follows is the expected signal that the file is full, not an error. The prune keeps this
-    // directory from growing for the container's whole lifetime.
-    //
-    // The `-mmin +1` is the part that is not obvious: the prune runs while OTHER commands may be
-    // mid-spill, and deleting one of those unlinks a file the agent was just told to go read (the
-    // writer keeps filling the now-nameless inode, so the loss is silent). Age excludes any file
-    // still being written to; the count is what actually bounds the directory.
+    // `head -c` exits at the cap, so the EPIPE that follows means "full", not an error. The prune keeps the
+    // newest files; `-mmin +1` spares spills other commands are still writing.
     const script =
       `mkdir -p ${EXEC_OUTPUT_DIR}; ` +
       `ls -1t ${EXEC_OUTPUT_DIR}/*.output 2>/dev/null | tail -n +${EXEC_OUTPUT_KEEP} | ` +
@@ -995,9 +866,8 @@ export class ContainerManager implements IContainerManager {
       },
       write(chunk: Buffer) {
         if (!alive || !proc?.stdin) return;
-        // Backpressure, not byte count, is the real memory risk: an undrained pipe queues in this
-        // process's heap. Past the backlog ceiling the file is left as a prefix rather than letting
-        // that queue grow — the file is a convenience, staying alive is not.
+        // An undrained pipe queues in this heap, so past the backlog ceiling the file is left as a prefix:
+        // the file is a convenience, staying alive is not.
         if (proc.stdin.writableLength > EXEC_OUTPUT_MAX_BACKLOG) {
           stop(true);
           return;
@@ -1020,9 +890,8 @@ export class ContainerManager implements IContainerManager {
     command: string,
   ): Promise<{ taskId: string; logFile: string }> {
     await this.ensure(workspaceId, workspaceDir);
-    // A background process keeps whatever env it launched with — it is a running process, not a
-    // container. That is not a way to outlive a revoked secret: the token is opaque and inert once
-    // the proxy drops its rule, which happens the moment the secret is deleted.
+    // A task keeps the env it started with; that can't outlive a revoked secret, because the token is
+    // inert once the proxy drops its rule.
     return this.background.start(workspaceId, command, this.execEnv(workspaceId));
   }
 
@@ -1046,18 +915,8 @@ export class ContainerManager implements IContainerManager {
     return this.background.reconcile(workspaceId);
   }
 
-  /**
-   * Apply a workspace's internet-access setting to its live network, leaving the container alone.
-   *
-   * The network is always --internal, so the toggle no longer rebuilds it: reconcileNetwork attaches
-   * the credproxy sidecar (on) or detaches it (off). Both act on a RUNNING container, so it keeps its
-   * identity and everything the agent installed. Turning egress off drops open connections with the
-   * sidecar's interface, which is the intent.
-   *
-   * Confirmable by design: ensureDetached throws if the sidecar is still attached afterwards, and
-   * attach failures surface too, so the caller can roll the persisted setting back rather than
-   * reporting a boundary it never actually applied.
-   */
+  /** Applies the internet toggle to a running container by attaching or detaching the sidecar. Throws when
+   * it can't be confirmed, so the caller can roll the persisted setting back. */
   async applyInternetAccess(workspaceId: string, enabled: boolean): Promise<void> {
     // Wait out any in-flight ensure()/stop() before claiming the slot, so this can't interleave
     // with a bring-up that is halfway through wiring the old network. Mirrors stop().
@@ -1088,9 +947,8 @@ export class ContainerManager implements IContainerManager {
     }
   }
 
-  // On boot, reconnect the credproxy sidecar to every running workspace network that should have
-  // one (prod-only) — excludes internet-access-off workspaces, see ProxyNetworkManager.reattachAll.
-  // Fails closed (excluded) if the workspace record can't be found at all.
+  // On boot (prod only), reattach the sidecar to every running workspace with internet on. A workspace
+  // whose record is missing is skipped (fails closed).
   async reattachProxyNetworks(): Promise<void> {
     await this.proxy.reattachAll((workspaceId) => {
       return this.workspaceDeps.internetAccessFor(workspaceId);
@@ -1114,10 +972,8 @@ export class ContainerManager implements IContainerManager {
     }
   }
 
-  // Lazily reclaim per-workspace networks that stop() empties but no longer deletes inline (deleting
-  // the bridge churns host routing — see stop()). Removes only managed networks that have stayed
-  // empty across the grace window; a running or waking workspace still holds an endpoint, so its
-  // network reports > 0 attachments and is skipped. Failures are tolerated and retried next tick.
+  // Reclaims managed networks that stop() emptied and that stayed empty past the grace window. Failures
+  // retry on the next tick.
   async sweepManagedNetworks(graceMs = DEFAULT_NETWORK_GRACE_MS): Promise<void> {
     const ls = await this.docker.cmd(
       "network",
@@ -1291,9 +1147,8 @@ export class ContainerManager implements IContainerManager {
     }
   }
 
-  // Deletes a workspace directory from the volume by mounting the whole volume and removing the
-  // subdir as root (-u 0) — the agent runs as uid 1000 so its files are normally removable directly,
-  // but a throwaway root rm also clears legacy root-owned files from before the non-root migration.
+  // Removes a workspace dir from the volume as root, which also clears root-owned files from workspaces
+  // created before the agent ran as uid 1000.
   async deleteWorkspaceDir(workspaceDir: string): Promise<void> {
     const r = await this.docker.cmd(
       "run",
