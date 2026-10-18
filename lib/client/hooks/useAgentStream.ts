@@ -1,11 +1,5 @@
-// Drives the chat transcript for one conversation against the agent. Sending a message and
-// re-attaching to an already-running agent share one SSE-consuming core: each AgentEvent is folded
-// into the transcript, with token/reasoning deltas coalesced onto a fixed repaint interval.
-// All transcript shaping is delegated to the pure reducers in ./agentTranscript.
-//
-// Because the run is owned by the server (not this request), closing/switching only detaches this
-// viewer — the agent keeps running. hydrate() loads a conversation's saved history; attachLive()
-// reconnects to its in-flight run and watches it continue; stop() ends the run for everyone.
+// Chat transcript for one conversation: send and re-attach share one SSE core, shaped by ./agentTranscript.
+// The server owns the run, so leaving only detaches this viewer; stop() ends it for everyone.
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -32,12 +26,8 @@ interface Options {
   onTurnComplete?: () => void;
 }
 
-// How one pass over the SSE stream ended, which decides whether reconnecting is the right move:
-//   ok       — the stream closed normally after `done`
-//   aborted  — this viewer detached on purpose (tab switch / conversation change); not a failure
-//   dropped  — the connection died mid-stream. The run is server-owned and almost certainly still
-//              going, so this is recoverable and must not be reported as a failed turn.
-//   failed   — the request itself never landed; nothing is streaming and there is nothing to resume
+// How a stream pass ended: aborted = viewer left on purpose; dropped = connection died but the run likely
+// continues (reconnect, don't report failure); failed = the request never landed.
 type StreamOutcome = "ok" | "aborted" | "dropped" | "failed";
 
 // Pause before each reconnect attempt. A dropped viewer is usually a blip (proxy idle-drop, wifi
@@ -71,9 +61,7 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
   const [historyError, setHistoryError] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
-  // True only while backing off between reconnect attempts. Folded into the exposed `streaming` so
-  // the composer stays disabled during the gap: the run is still going server-side, and a message
-  // sent into that window would only earn a 409 and strand the user's bubble.
+  // Folded into `streaming` so the composer stays disabled between reconnects; a message sent then would 409.
   const [reconnecting, setReconnecting] = useState(false);
   const [pendingTools, setPendingTools] = useState(0);
   // Why the run has gone quiet, when it has. Transient state rather than a transcript entry: a
@@ -88,9 +76,8 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
   const tokenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reasoningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // A paced notice describes admission, not the provider's subsequent inference time. Once its
-  // deadline passes, return to the ordinary thinking indicator even if Mistral has not emitted its
-  // first visible token yet. A newer notice replaces the object and therefore owns a fresh timer.
+  // A paced notice covers only the admission wait: past its deadline, fall back to the thinking indicator
+  // even before the first token. A newer notice gets its own timer.
   useEffect(() => {
     if (!paced) return;
     const timer = setTimeout(
@@ -327,11 +314,8 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
     }
   }, [workspaceId, conversationId]);
 
-  // Render a conversation and, if its run is still going, watch it live. This exact order is what
-  // makes reconnecting safe: hydrate() replaces the transcript with the server's saved history
-  // (which, mid-run, is the history from *before* the run), so the broker's replay of everything
-  // since the run started rebuilds the live portion instead of duplicating what is already on
-  // screen. Used for both the initial load and every reconnect.
+  // Order matters: saved history (pre-run) first, then the broker's replay of the run, so a reconnect
+  // never duplicates what is on screen.
   const openSnapshot = useCallback(
     async (snapshot: ConversationSnapshot): Promise<StreamOutcome> => {
       hydrate(snapshot.transcript);
@@ -341,9 +325,7 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
     [hydrate, consume, conversationId],
   );
 
-  // Drive one stream to completion, rebuilding through a dropped connection rather than reporting
-  // a failure the run never had. Only a genuinely unreachable server, after every attempt, surfaces
-  // as an error.
+  // Rebuilds through dropped connections; only a server unreachable after every attempt is an error.
   const runWithRecovery = useCallback(
     async (body: object, userBubble?: string) => {
       const gen = genRef.current;

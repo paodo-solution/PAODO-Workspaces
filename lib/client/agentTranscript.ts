@@ -1,9 +1,5 @@
-// Client-side transcript reducers for the agent chat stream: they fold AgentEvents into the rendered
-// message list. No React, no DOM — useAgentStream owns the state + repaint coalescing and delegates all
-// shaping here, which keeps this layer unit-testable under the plain node vitest config.
-//
-// The Message shape and the tool display maps live in lib/transcript/ because the server also speaks
-// them (messageSerialization projects stored history into the same shape).
+// Pure reducers folding AgentEvents into the chat's message list (no React, so plain node tests work);
+// useAgentStream owns state and repaints. The Message shape lives in lib/transcript/, shared with the server.
 import type { AgentEvent } from "@/lib/agent/runner";
 import type { CallAgentMeta } from "@/lib/agent/tools/agentCall";
 import type { Message } from "@/lib/transcript/message";
@@ -56,9 +52,8 @@ export function foldTurnUsageForChat(
   };
 }
 
-// Token coalescing: replace the trailing assistant bubble with the full accumulated text, or
-// start a new one if the last message isn't an open assistant turn. Shared by the streaming
-// interval flush and the terminal flush in the hook's finally block — the single source of this rule.
+// Replaces the open trailing assistant bubble with the accumulated text, or starts one. Used by both the
+// streaming and the final flush.
 export function upsertAssistantText(messages: Message[], content: string): Message[] {
   const last = messages[messages.length - 1];
   if (last?.role === "assistant" && !last.thinking) {
@@ -96,11 +91,8 @@ function appendToolStart(messages: Message[], name: string, args: Record<string,
   return [...messages, toolMsg];
 }
 
-// Locates the open bubble an event refers to. When the event carries a tool_call id, only the
-// bubble opened by that same call matches — two parallel call_agent bubbles are then updated
-// independently instead of both events landing on the last one. Without an id (providers that
-// don't supply one) it falls back to the most recent open bubble for the tool, which is correct
-// for the one-call-at-a-time case.
+// The open bubble an event refers to: matched by tool_call id so parallel calls stay separate, else the
+// most recent open bubble for that tool (providers without ids).
 function findOpenToolIdx(messages: Message[], name: string, id?: string, unlinkedOnly = false): number {
   for (let j = messages.length - 1; j >= 0; j--) {
     const m = messages[j];
@@ -134,9 +126,8 @@ function markToolDone(messages: Message[], name: string, id?: string, link?: Cal
   return next;
 }
 
-// Attaches the callee session deep-link to the still-open bubble for this call (call_agent),
-// without flipping it to done — the spinner keeps running while the callee works, but the
-// "View session" link is already clickable. No-op if the bubble already carries the link.
+// Adds the callee session link to a still-open call_agent bubble, so "View session" works while the
+// spinner runs. No-op if already linked.
 function attachToolLink(messages: Message[], name: string, link: CallAgentMeta, id?: string): Message[] {
   const idx = findOpenToolIdx(messages, name, id, true);
   if (idx === -1 || messages[idx].calleeConversationId === link.conversationId) return messages;
@@ -145,18 +136,14 @@ function attachToolLink(messages: Message[], name: string, link: CallAgentMeta, 
   return next;
 }
 
-// Flips every still-open tool bubble to done. Used when a turn ends without a tool_result for
-// each one — e.g. the user hit escape mid-command, so the client aborts the stream and never
-// receives the matching tool_result — so no tool spinner is left running forever. Idempotent:
-// returns the same array when nothing is open.
+// Closes every open tool bubble when a turn ends without their results (e.g. the user hit escape), so no
+// spinner runs forever. Returns the same array when nothing is open.
 export function markAllToolsDone(messages: Message[]): Message[] {
   if (!messages.some((m) => m.role === "tool_start" && !m.toolDone)) return messages;
   return messages.map((m) => (m.role === "tool_start" && !m.toolDone ? { ...m, toolDone: true } : m));
 }
 
-// The stream consumer aggregates model-turn usage for a complete loop, then passes that total here
-// when the final visible assistant output closes. `turnStartIndex` places the badge immediately
-// before that output.
+// Inserts the loop's total usage badge just before its final output, at `turnStartIndex`.
 function insertUsage(
   messages: Message[],
   inputTokensTotal: number,
@@ -217,11 +204,8 @@ export function applyDiscreteEvent(
   }
 }
 
-// Losing the viewer's stream is not a failed run — the run is owned by the server and keeps going,
-// so this is a transient notice rather than an error. It has no AgentEvent behind it (the client's
-// own connection state produces it), which is why these are standalone helpers rather than another
-// case above. Appending is idempotent so repeated reconnect attempts cannot stack notices, and
-// clearing lets the caller resolve it once the real outcome is known.
+// A lost stream isn't a failed run (the server keeps it going), so it is a notice, not an error. Appending
+// is idempotent so reconnect attempts don't stack notices.
 export function appendDisconnected(messages: Message[]): Message[] {
   if (messages[messages.length - 1]?.role === "disconnected") return messages;
   return [...messages, { role: "disconnected" }];
