@@ -1,13 +1,5 @@
-// Keeps the credential-proxy sidecar attached to each per-workspace isolated network.
-//
-// In production the proxy runs in its own sidecar container (compose service `credproxy`), NOT in the
-// app. The app attaches that sidecar — never itself — to each per-workspace network, so a workspace
-// can reach only the proxy and never the app's control plane. A workspace's HTTP_PROXY targets
-// CREDENTIAL_PROXY_ALIAS (a network alias); CREDENTIAL_PROXY_CONTAINER is the container name the app
-// runs `docker network connect` against.
-//
-// The app always runs containerized alongside that sidecar, so every method here is unconditional.
-// The env-var / CA-trust side of proxy wiring lives in containerCredentials.ts.
+// Attaches the credproxy sidecar (never the app) to each workspace network, so workspaces reach only the
+// proxy. CA and env wiring live in containerCredentials.ts.
 import { createLogger } from "../logger";
 import type { IDockerClient } from "./dockerClient";
 import { CONTAINER_PREFIX, networkName, workspaceIdFromContainerName } from "./naming";
@@ -20,9 +12,7 @@ const CREDENTIAL_PROXY_CONTAINER = process.env.CREDENTIAL_PROXY_CONTAINER ?? "pa
 export class ProxyNetworkManager {
   constructor(private docker: IDockerClient) {}
 
-  // Attach the sidecar (never the app itself) to a workspace's isolated network so the workspace
-  // resolves `${CREDENTIAL_PROXY_ALIAS}` to the proxy and can reach nothing else the app hosts.
-  // Idempotent: a repeat connect ("already exists") is not an error.
+  // Attaches the sidecar so `${CREDENTIAL_PROXY_ALIAS}` resolves to the proxy. Idempotent.
   async attach(workspaceId: string): Promise<void> {
     const r = await this.docker.cmd(
       "network",
@@ -37,9 +27,7 @@ export class ProxyNetworkManager {
     }
   }
 
-  // True when the sidecar is currently an endpoint on the workspace's network, so the alias resolves
-  // inside the container. Host-side check (docker network inspect) — deliberately avoids exec'ing into
-  // the container, whose image may lack getent/nslookup.
+  // Host-side check (network inspect), since the workspace image may lack getent/nslookup.
   private async isAttached(workspaceId: string): Promise<boolean> {
     const r = await this.docker.cmd(
       "network",
@@ -52,10 +40,8 @@ export class ProxyNetworkManager {
     return r.stdout.split(/\s+/).includes(CREDENTIAL_PROXY_CONTAINER);
   }
 
-  // Guarantee the workspace can reach the credential proxy before the agent runs against it. If the
-  // sidecar isn't on the network (typically because a redeploy recreated it and dropped the
-  // attachment), reattach and re-check; if it still isn't reachable, throw with an actionable message
-  // rather than letting egress silently black-hole.
+  // Reattaches a sidecar a redeploy dropped, and throws an actionable error if it's still unreachable, rather
+  // than letting egress silently black-hole.
   async verify(workspaceId: string): Promise<void> {
     if (await this.isAttached(workspaceId)) return;
     log.warn({ workspaceId }, "credential proxy not attached to workspace network — reattaching");
@@ -80,10 +66,8 @@ export class ProxyNetworkManager {
     if (r.code !== 0) log.debug({ workspaceId, stderr: r.stderr }, "detach credential proxy (may not be attached)");
   }
 
-  // Detach the sidecar and CONFIRM it is gone — the egress half of switching internet off. Unlike
-  // detach(), a sidecar that is still an endpoint afterwards throws, so the caller can roll the
-  // persisted setting back rather than reporting a cut it never applied. A workspace left with the
-  // sidecar attached would keep a live route out while the UI says off — the one drift that fails open.
+  // Detach and CONFIRM: throws if still attached so the caller can roll back, since a stale attachment is the
+  // one drift that fails open.
   async ensureDetached(workspaceId: string): Promise<void> {
     await this.detach(workspaceId);
     if (await this.isAttached(workspaceId)) {
@@ -94,14 +78,8 @@ export class ProxyNetworkManager {
     }
   }
 
-  // On boot, reconnect the sidecar to every running workspace network that should have one. A
-  // redeploy recreates the sidecar (and the app), dropping its attachments while workspace
-  // containers keep running; without this their egress would black-hole until they are recreated.
-  // `shouldAttach` lets the caller (containerManager, which owns workspace
-  // policy) exclude internet-access-off workspaces — reattaching the sidecar to one of those would
-  // hand its network a live route back to the real internet via the sidecar's other interface, even
-  // though the workspace's own network stays --internal. This class stays free of workspaceStore
-  // itself; it only knows container/network names.
+  // On boot, reattach the sidecar to running workspaces a redeploy cut off. `shouldAttach` excludes internet-off
+  // workspaces, which the sidecar would otherwise hand a route out.
   async reattachAll(shouldAttach: (workspaceId: string) => boolean = () => true): Promise<void> {
     const r = await this.docker.cmd("ps", "--filter", `name=^${CONTAINER_PREFIX}`, "--format", "{{.Names}}");
     if (r.code !== 0) {

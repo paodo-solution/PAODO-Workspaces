@@ -1,27 +1,5 @@
-// Agent tool that fetches a URL and returns its content as plain text.
-// Strips scripts, styles, and HTML tags from HTML responses. Enforces HTTPS and caps output at 20 000 characters.
-// Higher than the general tool-result cap (10k) because web pages are dense and need more room to be useful.
-//
-// The fetch runs INSIDE the workspace container (curl via ExecRunner), not in the app process. That
-// is deliberate and load-bearing: in the app's network namespace 127.0.0.1 is the platform server
-// itself, socket-proxy:2375 is a Docker API grant, and 169.254.169.254 is host IAM credentials — so
-// an app-side fetch of an agent-supplied URL is a privilege escalation that has to be talked back
-// down by an allow/deny guard. In-container it is simply the reachability the agent already has via
-// execute_command, enforced by the network namespace rather than by parsing strings. It also means
-// an internet-access-off workspace (whose network is created --internal) cannot fetch at all, the
-// same network-layer boundary apt_install gets — not merely an unbound tool.
-//
-// Traffic transits the credential proxy (HTTP_PROXY is set in the container by
-// containerCredentials.ts), which applies destinationGuard's SSRF checks and audit logging to every
-// hop. Never pass --noproxy here: the proxy is what makes that guarantee hold, since HTTP_PROXY is
-// env-var convention rather than iptables. The one documented exception is the container's own
-// loopback — containerCredentials.ts sets no_proxy=localhost,127.0.0.1,0.0.0.0,::1 so a workspace
-// can reach its own dev server — which goes direct and unaudited. That is deliberate and not a
-// widening: it is the container's own loopback, which execute_command already reaches, and no_proxy
-// matches on the host string, so a hostname that merely *resolves* to 127.0.0.1 still transits the
-// proxy and is still guarded. A consequence of routing through it is that http_get is
-// on the credential path — a fetch to a domain with a configured secret rule gets the real value
-// substituted in (exact-host only, HTTPS only, responses redacted; see credentialProxy.ts).
+// http_get: fetches a URL as plain text (HTTPS only, 20k chars), via curl inside the container so it has only
+// the agent's own reach. Traffic goes through the credential proxy (SSRF guard, audit, secret injection).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -30,16 +8,12 @@ import type { ExecRunner } from "../interfaces";
 
 const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_SECONDS = 15;
-// Bounds a hostile or oversized response. Hard cap for responses that declare a length (curl also
-// aborts in-flight transfers past it); a chunked response with no declared length is bounded by
-// --max-time instead. Downstream we keep at most MAX_CHARS of text anyway.
+// Hard cap for responses with a declared length; chunked ones are bounded by --max-time.
 const READ_CAP_BYTES = 8 * 1024 * 1024;
 const MAX_CHARS = 20_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; ShellCopilot/1.0)";
 
-// curl writes these three fields to stderr (via %{stderr}) so stdout stays a clean body — no
-// delimiter that a response could collide with. Tab-separated because none of the three can contain
-// a tab: an HTTP status code, a Content-Type, and a URL.
+// curl writes these to stderr so stdout is a clean body; tabs because none of the fields can contain one.
 const WRITE_OUT = "%{stderr}%{http_code}\t%{content_type}\t%{url_effective}";
 
 const schema = z.object({
@@ -47,12 +21,8 @@ const schema = z.object({
   prompt: z.string().optional().describe("What to extract or focus on from the page"),
 });
 
-// Upgrade http → https and refuse every other scheme. Pure string work (no DNS, no connection): this
-// is not an SSRF control — the proxy owns that — it keeps the request off cleartext, which also
-// matters because the credential proxy only ever substitutes secrets on HTTPS. Scheme match is
-// case-insensitive: URL lowercases the protocol, so a literal-prefix test would send "HTTP://x" to
-// the refusal branch instead of upgrading it, contradicting this tool's own description.
-// Covers the entry URL only — redirect hops are held to https by --proto-redir in buildCurlArgs.
+// Upgrades http to https (case-insensitively) and refuses other schemes. Not an SSRF control (the proxy is).
+// Redirect hops are held to https by --proto-redir.
 function normalizeUrl(rawUrl: string): string {
   const upgraded = /^http:\/\//i.test(rawUrl) ? rawUrl.replace(/^http:\/\//i, "https://") : rawUrl;
   let parsed: URL;
@@ -76,12 +46,7 @@ export function buildCurlArgs(url: string): string[] {
     "-L",
     "--max-redirs",
     String(MAX_REDIRECTS),
-    // normalizeUrl only sees the entry URL; -L would otherwise happily follow a 302 into cleartext.
-    // These hold every hop to https, extending normalizeUrl's no-cleartext rule across the chain
-    // (the app-side guard this replaced re-validated each Location itself). curl refuses the hop
-    // rather than upgrading it — an upgrade is not expressible here, and refusing is the safer end
-    // of that trade. Secrets are never at risk on such a hop (the proxy substitutes on HTTPS only),
-    // so this is about not putting the request itself on the wire in the clear.
+    // Keep every redirect hop on https: curl refuses a cleartext hop rather than upgrading it.
     "--proto",
     "=https",
     "--proto-redir",
@@ -109,10 +74,8 @@ interface FetchOutcome {
   body: string;
 }
 
-// curl's -w block is written last, so it is the final tab-delimited line on stderr; anything before
-// it is curl's own diagnostics (-sS keeps real errors). Split rather than parsing the whole blob:
-// curl still emits -w on failure (as `000\t\t`), so the two must not contaminate each other — the
-// error message would otherwise carry metadata junk, and a stray warning would break the parse.
+// curl's -w line comes last on stderr, even on failure (`000\t\t`); split it off so diagnostics and
+// metadata don't contaminate each other.
 function splitStderr(stderr: string): { message: string; metaLine: string | null } {
   const lines = stderr.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {

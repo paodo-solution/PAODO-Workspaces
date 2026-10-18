@@ -104,19 +104,14 @@ export function validateMetadata(
   }
 
   if (input.model !== undefined) {
-    // A present field that cannot be read as a value is a caller error, not an omission — two ways over:
-    // blank, which resolution treats as "not supplied" and would quietly substitute a default for a
-    // value the caller did try to set; and non-string, which has no trim() at all and would leave this
-    // layer as a TypeError, reaching the caller as an opaque 500 rather than a named rejection. Both are
-    // checked before resolution so these keep naming the accepted values rather than the substitute.
+    // A present but blank or non-string field is a caller error, not an omission; checked before resolution so
+    // the error names the accepted values, not a default.
     const unusable = (value: unknown): boolean => value !== undefined && (typeof value !== "string" || !value.trim());
     if (unusable(input.model.provider)) {
       throw new WorkspaceUpdateError(`llmProvider must be one of: ${SUPPORTED_PROVIDERS.join(", ")}`);
     }
     if (unusable(input.model.model)) throw new WorkspaceUpdateError("llmModel required");
-    // Type only, unlike the two above: a blank effort stays an omission here, resolved to the provider's
-    // default, because that is what it already meant. Only the legality of a named level is this
-    // function's business, and that check needs the resolved provider — it waits below.
+    // Type only: a blank effort still means "provider default". Its legality needs the provider, checked below.
     if (input.model.reasoningEffort !== undefined && typeof input.model.reasoningEffort !== "string") {
       throw new WorkspaceUpdateError("reasoningEffort must be a string", { field: "reasoningEffort" });
     }
@@ -125,21 +120,13 @@ export function validateMetadata(
     // means the same thing here as it does in the UI; see lib/models/selection.ts.
     const selection = resolveModelSelection(input.model, current, vocabularyFor);
 
-    // Both rejections name the accepted values. The valid effort levels differ per provider, so a
-    // caller cannot know them ahead of the provider choice — carrying them in the error is the only
-    // place the answer is both correct and available without a second lookup.
+    // Effort levels differ per provider, so the error carries the accepted values.
     if (!SUPPORTED_PROVIDERS.includes(selection.provider)) {
       throw new WorkspaceUpdateError(`llmProvider must be one of: ${SUPPORTED_PROVIDERS.join(", ")}`);
     }
 
-    // Supported is not the same as offered, and only the second one can run: a switched-off provider
-    // has no key (startup destroyed it) and no catalog entry, so storing it buys a workspace that
-    // fails on its next message. Startup clears the workspaces already in that state; this is what
-    // stops the next caller putting one back. The picker cannot express the choice — it only lists
-    // the catalog — but the REST route, the CLI and the MCP adapters all validate through here.
-    // Separate message from the unsupported case above, for the same reason the key form separates
-    // them (lib/operations/settings/providerKeys.ts): "must be one of" sent to someone who
-    // deliberately switched openai off hides the setting they wrote.
+    // Supported isn't offered: a switched-off provider has no key, so storing it would fail on the next message.
+    // Own message, so it doesn't hide the setting the caller wrote.
     const offered = availableProviders();
     if (!offered.includes(selection.provider)) {
       throw new WorkspaceUpdateError(
@@ -155,10 +142,7 @@ export function validateMetadata(
     // resolution supplies a model in every other case.
     if (!selection.model) throw new WorkspaceUpdateError("llmModel required");
 
-    // The pair has to be coherent, not merely well-formed: a model belongs to exactly one provider, and
-    // storing someone else's — or a typo — buys a selection that only fails later, when the run reaches
-    // the provider. The picker cannot express an incoherent pair (its model list is the selected
-    // provider's catalog), so this is what gives a programmatic caller the same guarantee.
+    // The model must belong to the provider; the picker can't express a mismatch, so API callers get the same check.
     const models = vocabularyFor(selection.provider).models;
     if (!models.includes(selection.model)) {
       throw new WorkspaceUpdateError(`llmModel for ${selection.provider} must be one of: ${models.join(", ")}`);
