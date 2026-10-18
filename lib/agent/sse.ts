@@ -13,10 +13,8 @@ export const SSE_KEEPALIVE_MS = 15_000;
 
 const KEEPALIVE_FRAME = ": ping\n\n";
 
-/**
- * Emit a comment frame every SSE_KEEPALIVE_MS so the connection survives silent stretches.
- * Returns the stop function; callers must invoke it before closing the stream.
- */
+// Emit a comment frame every SSE_KEEPALIVE_MS so the connection survives silent stretches.
+// Returns the stop function; callers must invoke it before closing the stream.
 export function startKeepalive(
   controller: ReadableStreamDefaultController<Uint8Array>,
   encoder: TextEncoder,

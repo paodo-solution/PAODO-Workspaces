@@ -134,15 +134,8 @@ async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
   await pipeline(createReadStream(item.hostPath), target);
 }
 
-/**
- * A Node stream suitable for Response(Readable.toWeb(...)).
- *
- * tar-stream's pack is a streamx stream, not a node:stream Readable, and it carries no
- * readableHighWaterMark. Handing it straight to Readable.toWeb throws ERR_MISSING_OPTION — which made
- * every pull answer INTERNAL_ERROR while the archive itself was being built perfectly. Wrapping it in a
- * real Readable here keeps that trap in one place and makes the signature honest, rather than leaving
- * each caller to discover it.
- */
+// Wrapped in a real Readable: tar-stream's streamx pack lacks readableHighWaterMark, so Readable.toWeb
+// throws ERR_MISSING_OPTION on it.
 export function packTransfer(items: TransferItem[]): Readable {
   const pack = tar.pack();
   void (async () => {
@@ -314,11 +307,8 @@ function targetPath(sourceType: "file" | "directory", dest: string, relPath: str
   return relPath === "" ? dest : path.posix.join(dest, relPath);
 }
 
-/**
- * Stage and validate the complete body, preflight all destination type conflicts, then merge. A
- * runtime filesystem failure during the final merge carries the successfully applied subset so the
- * route can snapshot and report it rather than presenting a partial write as an opaque failure.
- */
+// Stages and validates the whole body, preflights conflicts, then merges. A failed merge carries the
+// applied subset so the route can snapshot and report it.
 export async function putTransfer(
   rootDir: string,
   destValue: unknown,

@@ -1,6 +1,5 @@
-// End-to-end against real sqlite and real tar in a temp root. The case that matters is the
-// write-ahead log: almost all of a live database sits there, so a plain file copy produces an
-// archive that opens cleanly and is nearly empty.
+// Real sqlite and tar. The case that matters is the WAL: a live database lives mostly there, so a plain copy
+// yields an archive that opens cleanly and is nearly empty.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "child_process";
 import Database from "better-sqlite3";

@@ -32,15 +32,8 @@ export function validateInternetAccess(value: unknown): boolean {
   return value;
 }
 
-/**
- * Sets the workspace's egress and brings the proxy and the running container in line with it.
- *
- * `previous` is the value to restore if the proxy rejects the change: the registry and the proxy policy
- * are one security boundary and must never be left disagreeing, so a failure there rolls the registry
- * back and raises rather than reporting success on a half-applied boundary. The network rebuild is
- * part of that same success contract: if it cannot be confirmed, restore the previous policy and
- * store value and report failure.
- */
+// Registry, proxy policy and network are one boundary: if the proxy or the network rebuild fails, all
+// roll back to `previous` and it throws.
 export async function setInternetAccess(
   id: string,
   enabled: boolean,

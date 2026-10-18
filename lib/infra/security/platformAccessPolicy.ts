@@ -1,13 +1,8 @@
 // Routes the one instance-wide CLI key may call; any method/path not listed is UI-only. Absent on purpose:
 // settings/cli-access (a leaked key must not renew itself) and settings/provider-keys (see /api/models).
 
-/**
- * A rule for a route under one workspace: `/api/workspaces/<id>/<suffix>`, or the workspace itself
- * when `suffix` is omitted. Most of this policy is that shape, and hand-writing the regex each time
- * is how a rule ends up matching more (or less) than its author read it as — an unescaped dot or a
- * missing `$` is invisible in review and silent at runtime. The id segment matches one path segment
- * and nothing else, so a rule can never span into a sub-resource it did not name.
- */
+// `/api/workspaces/<id>/<suffix>`, or the workspace itself. Generated rather than hand-written, since an
+// unescaped dot or missing `$` silently widens a rule.
 function workspaceRule(method: string, suffix?: string) {
   return resourceRule("workspaces", method, suffix);
 }
@@ -24,17 +19,12 @@ function resourceRule(collection: string, method: string, suffix?: string) {
   return { method, pathname: new RegExp(`^/api/${collection}/[^/]+${tail}$`) };
 }
 
-/**
- * The version of the surface below, sent as `X-Paodo-Contract` on every API response so a client built
- * for another one can say so instead of misreading a reply. Raise it when a rule here is removed or a
- * listed route changes what it accepts or answers incompatibly; adding a rule or a field does not count.
- */
+// Sent as `X-Paodo-Contract` so a mismatched client can say so. Raise it when a rule is removed or a
+// route changes incompatibly; adding a rule or field does not count.
 export const PLATFORM_CONTRACT_VERSION = 1;
 
-/**
- * The credential channels a workspace exposes: the word a caller names one by, and its route segment.
- * The rules below are generated from it and the contract publishes it, so a channel exists in one place.
- */
+// The credential channels a workspace exposes: the word a caller names one by, and its route segment.
+// The rules below are generated from it and the contract publishes it, so a channel exists in one place.
 export const CREDENTIAL_CHANNELS = { api: "api-key", mcp: "mcp-config" } as const;
 
 const RULES: ReadonlyArray<{
@@ -73,12 +63,8 @@ const RULES: ReadonlyArray<{
   workspaceRule("GET", "conversations/{id}/sessions/{id}"),
   workspaceRule("GET", "conversations/{id}/sessions/{id}/calls"),
   workspaceRule("GET", "conversations/{id}/sessions/{id}/calls/{id}"),
-  /**
-   * Drive metadata, then a drive's files — the same five methods a workspace's files get above, and
-   * for the same commands. Neither collection gets the browser's upload/download transports or the
-   * editor's save and move: a drive is reachable by every workspace connected to it, so widening its
-   * file surface past what the CLI actually calls widens it for all of them at once.
-   */
+  // Drives get the same file methods as workspaces and no more: a drive is shared by every connected
+  // workspace, so widening its surface widens it for all of them.
   { method: "GET", pathname: /^\/api\/drives$/ },
   { method: "POST", pathname: /^\/api\/drives$/ },
   driveRule("GET"),
@@ -89,20 +75,8 @@ const RULES: ReadonlyArray<{
   driveRule("DELETE", "files/content"),
   driveRule("GET", "files/transfer"),
   driveRule("PUT", "files/transfer"),
-  /**
-   * Both connection graphs: read whole, written one edge at a time. Reading is what makes the rest of
-   * this policy usable — a drive is addressed by name only from a workspace connected to it, and an
-   * edge of either kind is removed by an id only a listing publishes.
-   *
-   * PUT on /api/workspace-graph is deliberately absent, which is why the write here is a sub-resource
-   * rather than that. It replaces the document whole — edges and the editor's node positions together
-   * — so a caller with no canvas to send would erase a layout on its way to adding one edge. POST and
-   * DELETE on /edges touch edges alone and carry the stored positions through.
-   *
-   * GET /api/workspace-graph answers with those positions beside the edges. That is canvas layout,
-   * meaningless outside the editor rather than sensitive, and it is served whole because the route is
-   * the UI's: filtering a response per caller would make it two routes wearing one path.
-   */
+  // Graphs are read whole and written one edge at a time. PUT /api/workspace-graph is absent: it
+  // replaces node positions too, so a canvas-less caller would erase the layout.
   { method: "GET", pathname: /^\/api\/drive-connections$/ },
   { method: "POST", pathname: /^\/api\/drive-connections$/ },
   { method: "DELETE", pathname: /^\/api\/drive-connections$/ },

@@ -36,12 +36,8 @@ export function requireDirPath(value: unknown, field = "path"): string {
   }
 }
 
-/**
- * Resolve a validated relative path to the absolute host path to act on. Throws rather than returning
- * null: by this point the path has passed the lexical check, so a failure here means a symlink
- * pointing out of the tree — which the caller may not distinguish from a legitimate path, since the
- * file tree lists such a symlink as an ordinary row.
- */
+// Throws instead of returning null: past the lexical check, failure means a symlink out of the tree,
+// which the file tree shows as an ordinary row.
 export async function resolveHostPath(rootDir: string, relPath: string, field = "path"): Promise<string> {
   const resolved = await resolveContained(rootDir, relPath);
   if (resolved === null) {

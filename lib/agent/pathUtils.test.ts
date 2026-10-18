@@ -6,11 +6,8 @@ import os from "os";
 import path from "path";
 import { normalizeRelpath, normalizeDirPath, resolveWorkspacePath, containWorkspacePath } from "./pathUtils";
 
-// The single most important invariant in this app: the agent can never
-// address a path outside its own workspace. normalizeRelpath/normalizeDirPath
-// are the chokepoint that enforces it — every file tool routes through here.
-// These tests assert BEHAVIOR (input -> allowed-or-rejected), so they survive
-// any reimplementation of the guard's internals.
+// The agent can never address a path outside its workspace; every file tool routes through these. Tests
+// assert behaviour (allowed or rejected), so they survive any reimplementation.
 
 describe("normalizeRelpath — containment guard", () => {
   it("allows ordinary relative paths", () => {

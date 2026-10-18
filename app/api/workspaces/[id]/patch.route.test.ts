@@ -1,10 +1,5 @@
-// Route-level coverage for the workspace update body contract.
-//
-// The invariant under test is that a field PATCH does not recognize is a rejection, never a silent
-// drop. Ignoring one is worse than any error message: `{name, internet_acces}` would rename the
-// workspace, discard the misspelled field, and answer 200 with the typo absent from `applied` — a
-// partial change reported as a complete one, which no caller can detect. Both rejections name the
-// accepted fields, since a programmatic caller has no form to discover them from.
+// An unrecognised PATCH field is a rejection, never a silent drop: `{name, internet_acces}` would otherwise
+// rename and answer 200 as if complete. Rejections list the accepted fields for programmatic callers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { providerAvailabilityEnv, SUPPORTED_PROVIDERS } from "@/lib/agent/buildModel";
 
@@ -131,17 +126,8 @@ describe("workspace update body contract", () => {
     expect(h.renames).toEqual([]);
   });
 
-  /**
-   * A wrong-typed value is a caller error and must answer like one. Each of these used to reach the
-   * caller as 500 INTERNAL_ERROR "failed to update workspace": the validators trusted their declared
-   * string types, so `.trim()` on a number raised a TypeError, which is not an AppError and so fell
-   * through to the unexpected-failure branch. `description` was the sole exception, guarded by hand in
-   * this route — which is what made the gap easy to miss, since the one field anyone thought to check
-   * was the one that behaved.
-   *
-   * Status and code are both asserted: a 400 whose body says INTERNAL_ERROR would still tell a
-   * programmatic caller its request was fine and the server broke.
-   */
+  // A wrong-typed value is a 400, asserted by status and code. These used to 500, as `.trim()` on a number
+  // threw a non-AppError; only `description` was guarded, which hid the gap.
   it("rejects a wrong-typed value as a caller error rather than a server failure", async () => {
     const cases: Array<[string, unknown]> = [
       ["name", { name: 123 }],
@@ -165,14 +151,8 @@ describe("workspace update body contract", () => {
     expect({ renames: h.renames, descriptions: h.descriptions }).toEqual({ renames: [], descriptions: [] });
   });
 
-  /**
-   * A secret is not a setting. It carries a plaintext value and its own domain scope, and it has
-   * endpoints that list and delete it — none of which the settings PATCH can express. The refusal is
-   * asserted on three axes because each one is a distinct way a caller could be misled: a code of its
-   * own (not the typo branch, which would have a caller retry with a different spelling), a message
-   * naming where secrets do live, and an accepted-fields list that never advertises it in the first
-   * place.
-   */
+  // A secret is not a setting: it gets its own code (not the typo branch), a message naming the secrets
+  // endpoint, and never appears in the accepted-fields list.
   it("refuses a secret with its own code and sends the caller to the endpoint that stores one", async () => {
     const res = await patch({ secret: { name: "TOKEN", value: "s3cr3t", domains: ["api.example.com"] } });
 
@@ -204,9 +184,8 @@ describe("workspace update body contract", () => {
     }
   });
 
-  // The generic workspace PATCH is the widest-reaching mutation a programmatic caller has, so it is
-  // the one that most needs to be incapable of producing a read-once secret as a side effect. A key
-  // comes only from an explicit call to the channel's own route.
+  // The widest-reaching mutation must be unable to produce a read-once secret as a side effect; a key comes
+  // only from the channel's own route.
   it("reports an opened channel without minting a credential", async () => {
     const res = await patch({ workspaceApiAccess: true });
 

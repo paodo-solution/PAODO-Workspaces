@@ -40,10 +40,8 @@ export function run(cmd: string, args: string[]): Promise<CommandResult> {
   });
 }
 
-/**
- * ENOENT is the only absence this tool may infer. A permission error on a home owned by uid 1000
- * would otherwise read as "nothing to back up" and drop the largest member from a passing archive.
- */
+// ENOENT is the only absence this tool may infer. A permission error on a home owned by uid 1000
+// would otherwise read as "nothing to back up" and drop the largest member from a passing archive.
 export async function exists(target: string): Promise<boolean> {
   try {
     await access(target);
@@ -83,10 +81,8 @@ export function archiveStamp(at: Date): string {
     .replace(/-\d{3}Z$/, "Z");
 }
 
-/**
- * Which build produced the archive. The env var is what a deployed container has; the git call is
- * the dev fallback, since the image ships no .git.
- */
+// Which build produced the archive. The env var is what a deployed container has; the git call is
+// the dev fallback, since the image ships no .git.
 export function paodoCommit(): string | null {
   if (process.env.PAODO_COMMIT?.trim()) return process.env.PAODO_COMMIT.trim();
   try {
@@ -99,10 +95,8 @@ export function paodoCommit(): string | null {
   }
 }
 
-/**
- * Names the deployment this backup belongs to. Deliberately fatal when unset: an unlabelled archive
- * is one you cannot tell apart from a laptop's at the moment you most need to.
- */
+// Names the deployment this backup belongs to. Deliberately fatal when unset: an unlabelled archive
+// is one you cannot tell apart from a laptop's at the moment you most need to.
 export function deploymentName(): string {
   const name = process.env.PAODO_DEPLOYMENT?.trim();
   if (!name) {
@@ -123,11 +117,8 @@ export function archiveSource(capturedAt: Date): ArchiveSource {
 /** Every suffix these commands write. A destination ending in one was meant as a file, not a folder. */
 const ARCHIVE_SUFFIXES = [".tar.gz", ".tar"];
 
-/**
- * Resolves the destination. A path ending in `suffix` is the archive itself; anything else is a
- * directory (existing or not) that gets a generated filename. A wrong archive suffix is an error.
- * Never overwrites, so a failed backup can't clobber a good one.
- */
+// A path ending in `suffix` is the archive itself, anything else a directory given a generated name.
+// A wrong suffix is an error, and it never overwrites, so a failed backup can't clobber a good one.
 export async function resolveDestination(dest: string, suffix: string, fileName: () => string): Promise<string> {
   const resolved = path.resolve(dest);
   const named = ARCHIVE_SUFFIXES.find((candidate) => resolved.endsWith(candidate));
@@ -181,10 +172,8 @@ export async function withExtractedArchive<T>(archivePath: string, fn: (stageDir
   }
 }
 
-/**
- * Removes a tree that may hold read-only dirs (Go's module cache is 0555, git objects 0444): a dir
- * with no write bit blocks unlinking its children even for the owner, so make it writable first.
- */
+// Removes a tree that may hold read-only dirs (Go's module cache is 0555, git objects 0444): a dir
+// with no write bit blocks unlinking its children even for the owner, so make it writable first.
 export async function removeTree(target: string): Promise<void> {
   if (!(await exists(target))) return;
   await run("chmod", ["-R", "u+w", target]);
@@ -197,11 +186,8 @@ export interface VerifyResult {
   problems: string[];
 }
 
-/**
- * Sizes and hashes one member straight off tar's stdout. Streamed rather than extracted because a
- * multi-gigabyte home would otherwise need that much scratch disk on a host already short of it,
- * and buffering it would blow the capture ceiling `run` exists to enforce.
- */
+// Sizes and hashes one member off tar's stdout: extracting a multi-gigabyte home needs scratch disk the
+// host may lack, and buffering it would blow `run`'s capture ceiling.
 function measureMember(archivePath: string, member: string): Promise<{ bytes: number; sha256: string } | null> {
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256");
@@ -224,10 +210,8 @@ function measureMember(archivePath: string, member: string): Promise<{ bytes: nu
   });
 }
 
-/**
- * Reads the manifest out of an archive and checks every member against its recorded hash. Restore
- * lands in a later branch; until then this is what makes a backup trustworthy rather than assumed.
- */
+// Reads the manifest out of an archive and checks every member against its recorded hash. Restore
+// lands in a later branch; until then this is what makes a backup trustworthy rather than assumed.
 export async function verifyArchive(archivePath: string): Promise<VerifyResult> {
   const resolved = path.resolve(archivePath);
   const read = await run("tar", ["-xOf", resolved, MANIFEST_MEMBER]);

@@ -1,9 +1,5 @@
-// Route-level coverage for MCP configuration validation and persistence boundaries.
-//
-// credentialStore is the only thing mocked for writes, because the credential is the only thing this
-// endpoint writes; the store and skillStore are stubbed purely as read sources for the exposed set.
-// Asserting the credential kind is part of the point — "workspace-mcp" is what keeps this endpoint
-// from managing the workspace's agent key or the instance-wide CLI token.
+// Only credentialStore is mocked for writes, since the credential is all this endpoint writes; the
+// "workspace-mcp" kind keeps it off the agent key and the CLI token.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

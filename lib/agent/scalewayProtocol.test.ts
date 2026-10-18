@@ -14,11 +14,8 @@ describe("scalewayEffort", () => {
     expect(scalewayEffort("glm-5.3", "low")).toBe("low");
   });
 
-  /**
-   * The bug this closes: Scaleway validates reasoning_effort against vLLM's whole union, so "low" on
-   * a model that only knows none|medium is accepted, silently treated as its default, and billed as
-   * reasoning. Sending the default outright makes the request say what actually happens.
-   */
+  // Scaleway validates reasoning_effort against vLLM's whole union, so "low" on a none|medium model is
+  // silently its default and billed as reasoning. Sending the default makes the request honest.
   it("replaces a level the model does not document with that model's own default", () => {
     expect(scalewayEffort("qwen3.6-35b-a3b", "low")).toBe("medium");
     expect(scalewayEffort("qwen3.6-35b-a3b", "high")).toBe("medium");
@@ -64,10 +61,8 @@ describe("renameScalewayReasoning", () => {
   });
 });
 
-/**
- * These drive a real ChatOpenAI so an SDK upgrade that renames or drops the protected conversion
- * hooks fails here rather than by silently dropping every Scaleway model's reasoning again.
- */
+// These drive a real ChatOpenAI so an SDK upgrade that renames or drops the protected conversion
+// hooks fails here rather than by silently dropping every Scaleway model's reasoning again.
 describe("createScalewayChatModel", () => {
   function sseResponse(events: object[]): Response {
     const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";

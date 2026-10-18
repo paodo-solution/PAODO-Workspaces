@@ -15,15 +15,15 @@ export interface GraphEdge {
   target: string; // callee workspace ID
 }
 
-/** A node's cell on the editor lattice. Integers, not pixels: the canvas is the only thing that
- *  knows how large a cell is, so nothing outside it has to reason in geometry to place a node. */
+// A node's cell on the editor lattice. Integers, not pixels: the canvas is the only thing that
+// knows how large a cell is, so nothing outside it has to reason in geometry to place a node.
 export interface CellPosition {
   col: number;
   row: number;
 }
 
-/** Graphs saved before the lattice hold raw pixels. The editor reads either shape and the next
- *  save rewrites the file in cells, so this union narrows on its own over time. */
+// Graphs saved before the lattice hold raw pixels. The editor reads either shape and the next
+// save rewrites the file in cells, so this union narrows on its own over time.
 export type NodePosition = CellPosition | { x: number; y: number };
 
 export interface GraphFile {
@@ -84,8 +84,8 @@ function refuseCycle(edges: GraphEdge[]): void {
   }
 }
 
-/** Answers with the graph as stored — the edges in the order they were sent, under the ids they were
- *  given — so the caller that drew them can adopt those ids rather than resend its own next time. */
+// Answers with the graph as stored — the edges in the order they were sent, under the ids they were
+// given — so the caller that drew them can adopt those ids rather than resend its own next time.
 export function saveGraph(edges: GraphEdge[], positions: Record<string, NodePosition>): GraphFile {
   refuseCycle(edges);
   state.graph = { edges: minted(edges), positions };
@@ -93,14 +93,8 @@ export function saveGraph(edges: GraphEdge[], positions: Record<string, NodePosi
   return state.graph;
 }
 
-/**
- * One edge, added without the caller holding an opinion about layout: `positions` is carried through
- * from what is already stored, so a client that has no canvas cannot erase one. Nothing awaits between
- * that read and the write, so the editor's own save cannot interleave with it.
- *
- * An already-connected pair answers with the edge it already has. A second parallel edge would say
- * nothing the first does not, and would leave the caller two ids for one capability.
- */
+// Keeps stored positions, so a canvas-less client can't erase the layout; no await, so no racing save.
+// An existing pair returns its edge rather than adding a duplicate.
 export function addCallEdge(source: string, target: string): GraphEdge {
   const existing = state.graph.edges.find((e) => e.source === source && e.target === target);
   if (existing) return existing;

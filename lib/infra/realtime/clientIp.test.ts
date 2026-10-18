@@ -9,9 +9,8 @@ describe("getClientIp", () => {
   });
 
   it("ignores forwarding headers no hop sanitizes", () => {
-    // Both are stripped at the edge and never re-set, so a value here was chosen by the caller.
-    // Trusting one writes an attacker-controlled address into the audit trail and hands them a way
-    // around the per-IP rate limits.
+    // The edge strips both and never re-sets them, so a value here is caller-chosen; trusting it would forge the
+    // audit trail and dodge the per-IP rate limits.
     expect(getClientIp(req({ "x-real-ip": "203.0.113.99", "x-forwarded-for": "203.0.113.99" }))).toBe("unknown");
   });
 

@@ -1,15 +1,5 @@
-/**
- * Client-side lifecycle for one minted credential: load state, open/close the channel, generate or
- * rotate (revealing the plaintext once), revoke. Every credential endpoint answers the same four
- * verbs — see lib/api/credentialRoutes.ts — so the API-key block, the MCP block and the CLI access
- * modal all drive their UI from this one hook instead of each reimplementing the same fetch dance.
- *
- * `generate` and `rotate` are separate calls rather than one "mint whichever applies", because the
- * server distinguishes them: it refuses to generate over an existing credential and refuses to rotate
- * a missing one. That is what stops a click meant to create a key from silently replacing one another
- * operator is still using — but it means the caller can be wrong about which applies, so a 409 here
- * is treated as stale state and resolved by re-reading the server rather than shown as a dead end.
- */
+// One credential's lifecycle for every key panel (credentialRoutes.ts). Generate and rotate stay
+// separate so a click never replaces a live key; a 409 means stale state and triggers a resync.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -33,26 +23,13 @@ interface Labels {
 
 interface CredentialOptions {
   load?: boolean;
-  /**
-   * Which field of the shared workspace update receipt carries this channel's confirmed on/off state.
-   * Workspace toggles answer with that receipt rather than a client-shaped echo; the instance-wide CLI
-   * channel does not, and omits this.
-   */
+  /** Receipt field holding the confirmed on/off state; omitted by the CLI channel, which has none. */
   accessField?: "workspaceApiAccess" | "workspaceMcpAccess";
-  /**
-   * Which field of the mint response (generate/rotate) carries the plaintext. Each workspace channel
-   * names its own — `workspaceApiKey`, `workspaceMcpKey` — matching the workspace projection's own
-   * vocabulary; the instance-wide CLI channel has no workspace field to borrow a name from and keeps
-   * the credential routes' default of `plain`.
-   */
+  /** Mint-response field holding the plaintext, e.g. `workspaceApiKey`; the CLI channel uses `plain`. */
   keyField?: string;
 }
 
-/**
- * `TExtra` is whatever else the endpoint's GET returns alongside the credential state — the public
- * base URL, the available skills — exposed as `extra` so each caller keeps its own payload without
- * this hook knowing about any of them.
- */
+/** `TExtra` is the rest of the GET payload (base URL, skills), exposed as `extra`. */
 export function useCredential<TExtra extends object = Record<string, never>>(
   endpoint: string,
   { feature }: Labels,
@@ -60,9 +37,8 @@ export function useCredential<TExtra extends object = Record<string, never>>(
 ) {
   const [enabled, setEnabled] = useState(false);
   const [hasKey, setHasKey] = useState(false);
-  /* Named for what it is rather than "key": this is the transient plaintext, alive only between a
-     mint and the operator dismissing it, whereas hasKey is the durable fact that one exists. It also
-     keeps every component boundary clear of `key`, which React reserves for list identity. */
+  // The transient plaintext, alive only until dismissed (hasKey is the durable fact). Not named `key`,
+  // which React reserves.
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [extra, setExtra] = useState<TExtra | null>(null);
   const [busy, setBusy] = useState(false);
@@ -123,12 +99,8 @@ export function useCredential<TExtra extends object = Record<string, never>>(
     }
   }, [enabled, endpoint, feature, accessField]);
 
-  /**
-   * Re-reads the channel after a conflict. A 409 means the credential existed or was missing contrary
-   * to what this client last saw — another tab, the CLI or another operator moved it. Adopting the
-   * server's state turns that into a corrected panel, where the button that does apply is the one now
-   * on screen, instead of a button that keeps failing.
-   */
+  // After a 409 (someone else changed the key), adopts the server's state so the panel shows the button
+  // that now applies.
   const resync = useCallback(async () => {
     try {
       const response = await fetch(endpoint);

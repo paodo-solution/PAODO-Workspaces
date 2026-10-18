@@ -1,8 +1,5 @@
-// Egress invariant: after ensure(), the credproxy sidecar must be attached to the workspace network
-// (otherwise the workspace can't resolve `credproxy` and all agent egress black-holes). These tests
-// drive the ensure() wrapper with a stubbed _ensureContainer so they exercise verifyProxyAttached in
-// isolation — covering the healthy, self-heal, and loud-failure paths regardless of how the container
-// was brought up (create / resume-stopped / reattach-running).
+// After ensure() the sidecar must be on the workspace network, or all egress black-holes. A stubbed
+// _ensureContainer isolates verifyProxyAttached's healthy, self-heal and loud-failure paths.
 import { describe, it, expect } from "vitest";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 import type { ContainerWorkspaceDependencies } from "./containerManager";
@@ -77,9 +74,8 @@ describe("ContainerManager proxy attachment invariant", () => {
   });
 });
 
-// ensure() and stop() must never run concurrently for the same workspace — a toggle's stop() racing
-// an agent tool call's ensure() must not let the two interleave (e.g. stop() tearing the network down
-// mid-reattach, or ensure() reattaching the sidecar right after stop() detached it).
+// ensure() and stop() never interleave per workspace: a toggle's stop() must not tear the network down
+// mid-reattach, nor ensure() reattach right after stop() detached.
 describe("ContainerManager ensure()/stop() mutual exclusion", () => {
   // A docker mock where a chosen command (matched by its first arg) doesn't resolve until the test
   // explicitly releases it — lets us pin one operation "in flight" while starting a second.

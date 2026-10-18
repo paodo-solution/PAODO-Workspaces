@@ -1,14 +1,5 @@
-// The workspace container is stateful and must never be destroyed automatically.
-//
-// Its writable layer holds every apt package installed since creation. The rest of what the agent
-// installs — pip/npm modules, nvm/pyenv runtimes — now sits on the durable /home/dev mount and would
-// survive a rebuild, but the apt half would not. A container that has drifted from its image is
-// working as intended, so nothing short of an explicit workspace deletion may `docker rm` it.
-//
-// This regressed once already: an internet-access toggle changed a credential fingerprint, the
-// fingerprint mismatch triggered a rebuild, and a workspace silently lost its installed packages
-// mid-session. These tests pin the invariants that prevent that, all of which are about what
-// commands are NOT issued.
+// The container holds every apt package, so only an explicit workspace delete may `docker rm` it. A toggle
+// once triggered a fingerprint rebuild that wiped packages mid-session; these pin which commands are NOT run.
 import { describe, it, expect } from "vitest";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 import type { ContainerWorkspaceDependencies } from "./containerManager";
@@ -30,10 +21,8 @@ const workspaceDeps: ContainerWorkspaceDependencies = {
   ensureProxyRelay: async () => false,
 };
 
-/**
- * Docker mock reporting an EXISTING container whose image label deliberately disagrees with the
- * current Dockerfile hash — the exact condition that used to trigger a rebuild.
- */
+// Docker mock reporting an EXISTING container whose image label deliberately disagrees with the
+// current Dockerfile hash — the exact condition that used to trigger a rebuild.
 function makeDocker(status: "running" | "stopped") {
   const calls: string[][] = [];
   const execCalls: { args: string[]; opts?: Record<string, unknown> }[] = [];
@@ -65,11 +54,8 @@ function makeDocker(status: "running" | "stopped") {
 const issued = (calls: string[][], verb: string) => calls.filter((c) => c[0] === verb);
 const networkVerbs = (calls: string[][]) => calls.filter((c) => c[0] === "network").map((c) => c[1]);
 
-/**
- * Docker mock that actually MODELS the workspace network, so a rebuild can be observed failing and
- * the next wake can be observed repairing it. The container is always running and is never modelled
- * as removable — losing it is the one outcome these tests exist to rule out.
- */
+// Models the network so a failed rebuild and the next wake's repair are observable. The container is never
+// removable: losing it is the outcome these tests rule out.
 function makeNetworkDocker(opts: { internal: boolean; failNextCreate?: boolean }) {
   let net: { internal: boolean } | null = { internal: opts.internal };
   let failCreate = opts.failNextCreate ?? false;
@@ -111,10 +97,8 @@ function makeNetworkDocker(opts: { internal: boolean; failNextCreate?: boolean }
   return { docker, calls, network: () => net };
 }
 
-/**
- * The container outlives every network operation performed around it, so it can be left behind by
- * one. These pin that the next wake repairs the network rather than the container.
- */
+// The container outlives every network operation performed around it, so it can be left behind by
+// one. These pin that the next wake repairs the network rather than the container.
 describe("a wake reconciles the network the container is on", () => {
   it("rejoins a container stranded by a network rebuild that failed partway", async () => {
     const { docker, calls, network } = makeNetworkDocker({ internal: false, failNextCreate: true });
@@ -209,9 +193,8 @@ describe("secrets reach the container per command, not at creation", () => {
     expect(call.opts?.env).toEqual(SECRET_ENV);
   });
 
-  // apt reaches the credential proxy through the CONTAINER's env (buildRunEnv), which every exec
-  // inherits — so the per-command secret env, which carries nothing but the workspace's tokens,
-  // would be pure over-grant on the one exec that runs as root.
+  // apt reaches the proxy through the container env every exec inherits, so the per-command secret env would
+  // be pure over-grant on the one root exec.
   it("withholds secret env from the root exec path", async () => {
     const { docker, execCalls } = makeDocker("running");
     const mgr = new ContainerManager(docker, workspaceDeps);
@@ -252,10 +235,8 @@ describe("secrets reach the container per command, not at creation", () => {
   });
 });
 
-// The network is always --internal now, so switching internet access on a live container no longer
-// rebuilds the network — it attaches the credproxy sidecar (on) or detaches it (off). The container
-// is never touched. This mock models an already-internal network plus the sidecar's attachment, so a
-// detach that is observed (or not) can be asserted.
+// The network is always --internal, so toggling only attaches or detaches the sidecar and never touches the
+// container. Models the sidecar's attachment so a detach can be asserted.
 function makeToggleDocker(opts: { sidecarAttached: boolean; detachSticks?: boolean }) {
   const detachSticks = opts.detachSticks ?? true;
   let attached = opts.sidecarAttached;

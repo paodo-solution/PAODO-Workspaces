@@ -1,7 +1,5 @@
-// End-to-end against real git in a temp dir. Validates the invariants the fakes can't: that the
-// external git-dir keeps the workspace tree free of `.git`, that force-add-all captures files a
-// user `.gitignore` would normally exclude, and that baseline→result→restore actually move bytes
-// on disk. Gated as *.integration.test.ts (run via `npm run test:integration`); needs a real git.
+// Real git: the external git-dir keeps `.git` out of the tree, force-add-all captures gitignored files, and
+// baseline→result→restore really moves bytes. Run via `npm run test:integration`.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";

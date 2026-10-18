@@ -17,14 +17,8 @@ export class ProviderKeyError extends AppError {
   }
 }
 
-/**
- * One provider's key status. The ONLY shape this layer returns, and it carries no key.
- *
- * `hint` is present only when a key is set. It is the last few characters — enough to tell two of the
- * operator's own keys apart when they are re-checking which account is being billed, and useless to
- * anyone else. It is why this shape is not exposed to the instance CLI token, which sees only the
- * plain `hasKey` boolean published in the model catalog.
- */
+// The only shape this layer returns, never the key. `hint` (last few chars, set only with a key) is
+// why the CLI token sees just the catalog's `hasKey`.
 export interface ProviderKeyStatus {
   provider: string;
   hasKey: boolean;
@@ -47,12 +41,7 @@ function assertAvailable(provider: string): void {
   );
 }
 
-/**
- * Every provider this deployment offers, each with its key status — including the ones with no key.
- *
- * Listing unkeyed providers is the point: the form has to show a row for a provider precisely when
- * there is nothing stored for it, or there would be nowhere to add the first key.
- */
+/** Every offered provider, unkeyed ones included, so the form has a row to add the first key. */
 export function listProviderKeys(): ProviderKeyStatus[] {
   const meta = new Map(listProviderKeyMeta().map((entry) => [entry.provider, entry]));
   return availableProviders().map((provider) => {
@@ -63,15 +52,8 @@ export function listProviderKeys(): ProviderKeyStatus[] {
   });
 }
 
-/**
- * Store a provider's key, replacing any previous one.
- *
- * The only check is that something non-blank was submitted. There is deliberately no format check:
- * vendors change their key prefixes and lengths without warning, and a validator that is confident
- * about the shape is a validator that one day rejects a key which works perfectly well — locking the
- * operator out of their own deployment for a cosmetic reason. Whether a key is good is a question
- * only the provider can answer, and it answers it on the next run (PROVIDER_KEY_INVALID).
- */
+// Replaces any previous key. Only non-blank is checked: vendors change key formats without warning, and
+// the next run reports a bad key (PROVIDER_KEY_INVALID).
 export function storeProviderKey(provider: string, apiKey: unknown): ProviderKeyStatus {
   assertAvailable(provider);
   if (typeof apiKey !== "string" || !apiKey.trim()) {
@@ -84,10 +66,8 @@ export function storeProviderKey(provider: string, apiKey: unknown): ProviderKey
   return { provider, hasKey: true, createdAt: entry?.createdAt, hint: entry?.hint };
 }
 
-/**
- * Remove a provider's key. Idempotent: removing one that is not there is a success with `removed`
- * false, not an error — the caller's intent (no key for this provider) already holds.
- */
+// Remove a provider's key. Idempotent: removing one that is not there is a success with `removed`
+// false, not an error — the caller's intent (no key for this provider) already holds.
 export function removeProviderKey(provider: string): { provider: string; removed: boolean } {
   assertAvailable(provider);
   return { provider, removed: deleteProviderKey(provider) };

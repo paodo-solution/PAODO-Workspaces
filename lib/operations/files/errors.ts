@@ -9,12 +9,8 @@ interface Classification {
   message: (relPath: string) => string;
 }
 
-/**
- * Only errnos a real call path reaches. A first version mapped sixteen, including EDQUOT, EFBIG, ELOOP,
- * EMFILE and EBUSY — added because they sat next to these in the errno list, which is the wrong reason
- * to put something in a vocabulary the codebase promises never to redefine. An unmapped errno is not a
- * gap: it becomes a logged 500, which is the honest answer for a failure nobody has reasoned about yet.
- */
+// Only errnos a real call path reaches; this vocabulary is never redefined, so don't pad it. Anything
+// unmapped becomes a logged 500.
 const BY_ERRNO: Record<string, Classification> = {
   // read, stat and unlink of something that is not there.
   ENOENT: { code: "NOT_FOUND", message: (p) => `${p} does not exist` },
@@ -32,13 +28,8 @@ const BY_ERRNO: Record<string, Classification> = {
   ENOSPC: { code: "STORAGE_EXHAUSTED", message: () => "Not enough free disk space" },
 };
 
-/**
- * The AppError for a filesystem failure, or `null` when the errno has no public meaning — in which
- * case the caller must log it with a literal event and answer an opaque 500.
- *
- * `relPath` is the workspace-relative path the caller named, so the message says what the client asked
- * about rather than where it happens to live on the host.
- */
+// Null for an errno with no public meaning: the caller logs it and answers 500. Messages use `relPath`,
+// never the host path.
 export function fileSystemAppError(err: unknown, relPath: string): AppError | null {
   const code = (err as NodeJS.ErrnoException | null)?.code;
   if (typeof code !== "string") return null;
@@ -47,10 +38,8 @@ export function fileSystemAppError(err: unknown, relPath: string): AppError | nu
   return new AppError(classification.code, classification.message(relPath), { field: "path" });
 }
 
-/**
- * Run a filesystem operation, translating any errno it raises. Use this rather than a bare fs call so
- * a new operation cannot accidentally reintroduce the raw-errno-out-the-door behaviour.
- */
+// Run a filesystem operation, translating any errno it raises. Use this rather than a bare fs call so
+// a new operation cannot accidentally reintroduce the raw-errno-out-the-door behaviour.
 export async function fileSystemCall<T>(relPath: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();

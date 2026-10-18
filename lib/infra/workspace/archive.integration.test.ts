@@ -1,6 +1,5 @@
-// End-to-end against real git and real tar in a temp root. Validates what fakes cannot: that the
-// archive opens with stock tooling, that the manifest leads the tar, and that the home is captured
-// whole — every file, matching how the versioning repo captures the workspace tree.
+// Real git and tar: the archive opens with stock tooling, the manifest leads the tar, and the home is
+// captured whole, as versioning captures the tree.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
 import fs from "fs";

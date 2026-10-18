@@ -36,10 +36,8 @@ export interface IDockerClient {
   build(buildArgs: string[], dockerfile: Buffer): Promise<void>;
 }
 
-/**
- * Expand an env map into `-e NAME=value` argv pairs for `docker exec`.
- * Exported because execStreaming builds its own argv rather than going through exec().
- */
+// Expand an env map into `-e NAME=value` argv pairs for `docker exec`.
+// Exported because execStreaming builds its own argv rather than going through exec().
 export function envArgs(env: Record<string, string> | undefined): string[] {
   if (!env) return [];
   return Object.entries(env).flatMap(([name, value]) => ["-e", `${name}=${value}`]);
@@ -85,15 +83,8 @@ export class DockerClient implements IDockerClient {
     return this._spawn(args, { trimStdout: true });
   }
 
-  /**
-   * docker exec inside a running container.
-   * - asRoot=true  → -u 0, in a fixed allowlisted env (ROOT_ENV, ROOT_INHERITED and `env`), cwd /
-   * - cwd          → -w flag (default /workspace, or / as root)
-   * - trimStdout   → default false so file reads preserve trailing newlines;
-   *                  pass true for commands where stdout is a short scalar (e.g. apt-get).
-   * - env          → -e pairs; this is how workspace secrets reach the container, since the
-   *                  container itself is long-lived and its creation-time env cannot be amended.
-   */
+  // asRoot runs as uid 0 in an allowlisted env; trimStdout stays off so file reads keep trailing newlines.
+  // `env` is how secrets reach the container: its creation-time env can't be amended.
   exec(
     containerName: string,
     cmdArgs: string[],

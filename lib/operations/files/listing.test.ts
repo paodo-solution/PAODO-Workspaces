@@ -1,6 +1,5 @@
-// A listing scoped to a path is the one file operation where answering *nothing* is plausible enough to
-// be dangerous: an empty tree is what an empty directory looks like, so a path the caller got wrong has
-// to fail instead. These pin that, and pin that the paths handed back stay usable as arguments.
+// A scoped listing could plausibly answer nothing, so a wrong path must fail rather than look like an empty
+// dir, and the returned paths must stay usable as arguments.
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -101,9 +100,8 @@ describe("listEntries", () => {
     ]);
   });
 
-  // What a caller needs before it reads a file: how long it is, in the unit `cat --offset`/`--limit`
-  // count. Off by default, because the file panel makes most of these requests and a line count costs
-  // a read per entry.
+  // A file's length in the lines `cat --offset/--limit` count. Off by default, since the file panel makes most
+  // requests and counting costs a read per entry.
   describe("measure", () => {
     it("adds nothing at all unless it is asked for", async () => {
       const [file] = await listEntries(WS, "src/main.ts");
@@ -182,9 +180,8 @@ describe("listEntries", () => {
       expect(src.files).toBe(3); // main.ts, lib/util.ts and the buried one, none of them listed
     });
 
-    // The count describes the tree the caller is looking at. A number that included what the listing
-    // hides would describe a directory they cannot navigate — and would report the same node_modules the
-    // listing exists to keep out of the way.
+    // The count describes the visible tree; including hidden entries would report the very node_modules the
+    // listing keeps out of the way.
     it("counts only what the ignore contract lets the listing show", async () => {
       fs.mkdirSync(abs("src/node_modules/dep"), { recursive: true });
       fs.writeFileSync(abs("src/node_modules/dep/index.js"), "dep\n");
@@ -228,9 +225,8 @@ describe("listEntries", () => {
       ]);
     });
   });
-  // Breadth, the half of a listing maxDepth does not bound. The ceiling has to stop the scan rather
-  // than trim its result, and it has to be visible: a prefix presented as a whole directory is the one
-  // answer a caller cannot tell from a complete one.
+  // Breadth, which maxDepth does not bound. The ceiling must stop the scan, not trim the result, and say so: a
+  // prefix shown as a whole is indistinguishable from complete.
   describe("the entry ceiling", () => {
     const wide = (count: number) => {
       fs.mkdirSync(abs("wide"), { recursive: true });

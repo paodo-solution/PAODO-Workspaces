@@ -32,10 +32,8 @@ export const NO_USAGE: ModelUsage = {
   outputTokensReasoning: 0,
 };
 
-/**
- * Normalize one provider's token accounting. Providers agree on the totals and disagree on cache
- * attribution, so the normalized field is preferred and the two raw spellings are read after it.
- */
+// Normalize one provider's token accounting. Providers agree on the totals and disagree on cache
+// attribution, so the normalized field is preferred and the two raw spellings are read after it.
 export function usageTokens(chunk: AIMessageChunk | null): ModelUsage {
   return {
     inputTokensTotal: chunk?.usage_metadata?.input_tokens ?? 0,
@@ -64,17 +62,13 @@ export interface PacedNotice {
 export interface ModelCall {
   stage: ModelCallStage;
   signal?: AbortSignal;
-  /**
-   * Told when this call is about to wait on a rate limit, before it sleeps. The call is suspended at
-   * this point and cannot yield, so the caller is handed the news instead of discovering it later.
-   */
+  // Told when this call is about to wait on a rate limit, before it sleeps. The call is suspended at
+  // this point and cannot yield, so the caller is handed the news instead of discovering it later.
   onPaced?: (notice: PacedNotice) => void;
 }
 
-/**
- * A streaming call in progress. `accumulated` and `usage` are functions because they are only final
- * once `chunks` is drained — reading early reports what is known rather than faking a finished call.
- */
+// A streaming call in progress. `accumulated` and `usage` are functions because they are only final
+// once `chunks` is drained — reading early reports what is known rather than faking a finished call.
 export interface ModelStream {
   chunks: AsyncGenerator<AIMessageChunk>;
   accumulated(): AIMessageChunk | null;
@@ -107,10 +101,8 @@ export interface ModelCallRecord {
   waitedMs: number;
 }
 
-/**
- * Notified once per completed call — the seam for usage persistence, concurrency accounting, and the
- * pacing this gateway exists to enable. Must not throw; a throwing observer is a bug worth surfacing.
- */
+// Notified once per completed call — the seam for usage persistence, concurrency accounting, and the
+// pacing this gateway exists to enable. Must not throw; a throwing observer is a bug worth surfacing.
 export type ModelCallObserver = (record: ModelCallRecord) => void;
 
 const logCall: ModelCallObserver = (record) => {
@@ -148,13 +140,8 @@ export interface ModelGatewayOptions {
   pacer?: ProviderPacer;
 }
 
-/**
- * Runs one provider call, free to rewrite the messages or to wrap the call itself.
- *
- * It wraps the call rather than only mapping messages because not every vendor's requirement can be
- * expressed as a message: DeepSeek's reasoning_content is dropped by LangChain's converter, so it is
- * restored further down, inside a scope that has to stay open until the request is actually sent.
- */
+// Wraps the whole call, not just the messages: DeepSeek's reasoning is restored at fetch, inside a
+// scope that must stay open until the request is sent.
 type OutboundAdapter = <T>(messages: BaseMessage[], send: (messages: BaseMessage[]) => Promise<T>) => Promise<T>;
 
 // One entry per provider that cannot accept canonical history verbatim. Adding a provider here is the
@@ -183,17 +170,8 @@ export function createModelGateway(chat: BindableChatModel, options: ModelGatewa
   const sendOutbound = <T>(messages: BaseMessage[], send: (messages: BaseMessage[]) => Promise<T>): Promise<T> =>
     adapt ? adapt(messages, send) : send(messages);
 
-  /**
-   * Run one logical call: wait for the provider's quota, try it, and on a refusal that reached no
-   * consumer, wait longer and try again.
-   *
-   * Retrying is safe only because nothing has been emitted yet. LangChain's `Runnable.stream` pulls
-   * the first chunk inside its own setup, so a 429 rejects here rather than mid-iteration; a failure
-   * after the first chunk surfaces to the consumer instead and is never retried.
-   *
-   * One record per logical call, not per attempt — `attempts` and `waitedMs` carry what the retries
-   * cost, so the observer contract stays one-in one-out.
-   */
+  // Waits for quota and retries refusals, safe only because a 429 rejects before the first chunk is
+  // emitted. Records one entry per logical call, with `attempts` and `waitedMs` covering the retries.
   const perform = async <T>(call: ModelCall, run: () => Promise<T>): Promise<Attempt<T>> => {
     const startedAt = Date.now();
     const budget = new RetryBudget();

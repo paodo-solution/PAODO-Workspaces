@@ -1,8 +1,5 @@
-/**
- * What happens once a /ws handshake has passed upgradeGate.ts: the socket joins its workspace, the
- * first one in starts the file watcher, and the last one out stops it after a grace period.
- * server.ts supplies the real dependencies; see requestGate.ts.
- */
+// After upgradeGate.ts: the socket joins its workspace, the first one in starts the file watcher, and
+// the last one out stops it after a grace period. Dependencies are injected as in requestGate.ts.
 import type { IncomingMessage } from "http";
 import type { WebSocket } from "ws";
 import type { createLogger } from "../logger";

@@ -163,13 +163,8 @@ describe("workspace metadata validation", () => {
     expect(() => validateMetadata({ model: { provider: "   " } })).toThrow("llmProvider must be one of: ");
   });
 
-  /**
-   * The declared input types bind in-process callers; a JSON body only claims to match them. Every
-   * string-shaped field is therefore checked at runtime too, because the alternative is not a lenient
-   * accept — it is `.trim()` raising a TypeError, which is not an AppError, so it escapes this layer
-   * as an opaque 500 instead of the named rejection every other bad value gets. Asserted as
-   * WorkspaceUpdateError rather than by message, since the code is what decides that status.
-   */
+  // JSON only claims to match the declared types, so string fields are checked at runtime; otherwise `.trim()`
+  // throws a non-AppError 500. Asserted as WorkspaceUpdateError, whose code sets the status.
   it("refuses a wrong-typed value on every string-shaped field", () => {
     const cases: WorkspaceMetadataInput[] = [
       { name: 123 as never },
@@ -238,11 +233,8 @@ describe("workspace metadata validation", () => {
     );
   });
 
-  /**
-   * The message names the MODEL because on Scaleway the level belongs to the model: qwen3.6 accepts
-   * none|medium while the flash model beside it accepts none|low|high|max. Naming the provider would
-   * list levels that are wrong for the model the caller actually chose.
-   */
+  // The message names the MODEL: on Scaleway qwen3.6 accepts none|medium while its flash sibling accepts
+  // none|low|high|max, so provider-level lists would be wrong.
   it("rejects a Scaleway effort its sibling model accepts but this one does not", () => {
     const scaleway = { provider: "scaleway", model: "qwen3.6-35b-a3b", reasoningEffort: "high" };
     expect(() => validateMetadata({ model: scaleway }, CURRENT)).toThrow(

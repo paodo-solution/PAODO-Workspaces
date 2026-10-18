@@ -87,8 +87,7 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
               }}
               disabled={working}
             />
-            {/* h-[30px] is the box's own height — 16px line + 12px padding + 2px border — so the button
-                ends level with it. btn-sm's 26px is sized for the taller .input it usually sits beside. */}
+            {/* h-[30px] matches this box (16px line + 12px padding + 2px border); btn-sm suits the taller .input. */}
             <button
               className="btn btn-sm h-[30px]"
               onClick={() => void submit(entry.provider)}

@@ -1,7 +1,5 @@
-// WorkspaceVersioning drives git purely through IGitClient, so a recording fake lets us pin the
-// exact commands issued without spawning real git. These tests guard the separation invariants
-// (force-add-all, external git-dir, identity flags), the run-number/skip-empty logic, and the
-// per-workspace serialization.
+// A recording IGitClient fake pins the exact commands: force-add-all, external git-dir, identity flags,
+// run numbering and empty skips, and per-workspace serialization.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -27,9 +25,8 @@ class FakeGit implements IGitClient {
   calls: Call[] = [];
   private rules: { match: (joined: string) => boolean; result: Partial<GitResult> }[];
   constructor(rules: { match: (joined: string) => boolean; result: Partial<GitResult> }[] = []) {
-    // Default: HEAD resolves (repo already initialized) so _initRepo is a no-op and commits
-    // resolve their sha. Tests that want an uninitialized repo override with code:1. User rules
-    // take precedence (first match wins).
+    // By default HEAD resolves, so _initRepo is a no-op; override with code:1 for an uninitialized repo. User
+    // rules come first (first match wins).
     this.rules = [...rules, { match: (j) => j.includes("rev-parse --verify HEAD"), result: { stdout: "HEADSHA" } }];
   }
   run(args: string[]): Promise<GitResult> {

@@ -44,8 +44,8 @@ export interface WorkspaceStoreOptions {
   persist?: PersistFn;
   /** Load initial records at construction. Defaults to none (tests). */
   load?: LoadFn;
-  /** Start the workspace's versioning repo on creation. Defaults to a no-op (tests). Injected to avoid
-   * an import cycle with the services layer. */
+  // Start the workspace's versioning repo on creation. Defaults to a no-op (tests). Injected to avoid
+  // an import cycle with the services layer.
   initRepo?: (workspaceId: string, workspaceDir: string) => Promise<void>;
   /** Create a new workspace's directory. Defaults to {@link scaffoldWorkspaceDir}; tests stub it. */
   scaffold?: (dir: string) => Promise<void>;
@@ -292,8 +292,8 @@ export class WorkspaceStore implements IWorkspaceStore {
     return true;
   }
 
-  /** Resets workspaces whose provider is not in `allowed` to "never picked", so they fall back to an offered
-   * provider instead of failing on send. The audit line records what was cleared. */
+  // Resets workspaces whose provider is not in `allowed` to "never picked", so they fall back to an offered
+  // provider instead of failing on send. The audit line records what was cleared.
   clearWithdrawnLlmSelections(allowed: readonly string[]): Array<{ workspaceId: string; provider: string }> {
     const offered = new Set(allowed);
     const stranded = this.listWorkspaces().filter((ws) => ws.llmProvider && !offered.has(ws.llmProvider));

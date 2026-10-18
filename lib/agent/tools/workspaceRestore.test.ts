@@ -1,6 +1,5 @@
-// WorkspaceRestoreTool is signal-only: _call validates the target shape and returns an ack; the
-// runner performs the actual restore (covered in runner.test.ts). These tests pin the explicit
-// restore ack and the early sha-format guard.
+// Signal-only: _call validates the target and acks, the runner restores (runner.test.ts). Pins the ack and
+// the early sha-format guard.
 
 import { describe, it, expect } from "vitest";
 import { WorkspaceRestoreTool } from "./workspaceRestore";

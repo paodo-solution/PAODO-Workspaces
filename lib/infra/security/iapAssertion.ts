@@ -1,20 +1,9 @@
-/**
- * Verification of the signed identity assertion an identity-aware proxy puts on each request it has
- * authenticated. Provider-agnostic: it takes a JWKS URL, an issuer and an audience, so Cloudflare
- * Access, Pomerium, oauth2-proxy and anything else emitting a JWS behave identically here.
- *
- * The proxy is never trusted on its say-so. Any client that reached the origin directly could set
- * the same header, so without a signature check one misrouted hostname becomes an unauthenticated
- * admin session. This module is what makes the header worth reading at all.
- */
+// Verifies an identity-aware proxy's signed assertion (any JWS provider: JWKS URL, issuer, audience).
+// Never trust the header unsigned: a client reaching the origin directly could set it.
 import { createPublicKey, verify as verifySignature, type KeyObject } from "crypto";
 
-/**
- * Accepted JWS algorithms. The set is closed deliberately: `alg` is attacker-controlled — it lives
- * in the token's own header — so honouring whatever it names is exactly how "none" and
- * HMAC-with-the-public-key confusion get in. `keyType` is checked too, so an RS* header cannot be
- * verified against an EC key or the reverse.
- */
+// Closed set: `alg` is attacker-controlled, and honouring it lets in "none" and HMAC key confusion.
+// `keyType` stops an RS* header verifying against an EC key, or the reverse.
 const ALGORITHMS: Record<string, { hash: string; keyType: string; options?: { dsaEncoding: "ieee-p1363" } }> = {
   RS256: { hash: "sha256", keyType: "rsa" },
   RS384: { hash: "sha384", keyType: "rsa" },
@@ -74,11 +63,8 @@ export class JwksCache {
     this.lastAttempt = Date.now();
   }
 
-  /**
-   * Cached lookup. A miss schedules a refresh and fails this request rather than awaiting one: an
-   * unknown `kid` is precisely what an attacker sends to turn each request into an outbound fetch,
-   * and the rate limit bounds that to one per window. Genuine key rotation costs one failed request.
-   */
+  // A miss fails this request and schedules a rate-limited refresh, so unknown `kid`s can't trigger a
+  // fetch per request. Real key rotation costs one failed request.
   find(kid: string): KeyObject | undefined {
     const key = this.keys.get(kid);
     if (key) return key;
@@ -129,14 +115,8 @@ function withinValidity(claims: Record<string, unknown>, now: number, skewMs: nu
   return nbf * 1000 - skewMs <= now;
 }
 
-/**
- * True only when the token is a well-formed JWS signed by a currently published key, issued by the
- * configured provider, addressed to this instance and inside its validity window. Every other
- * shape — including a missing `exp` and an unknown `kid` — is false, so callers fail closed.
- *
- * The audience check is what isolates one deployment from another behind a shared provider: without
- * it, a token minted for any application of the same issuer authenticates here.
- */
+// True only for a valid signature, issuer, audience and validity window; anything else (no `exp`,
+// unknown `kid`) fails closed. The audience check isolates apps sharing one provider.
 export function verifyAssertion(token: string, policy: AssertionPolicy, now = Date.now()): boolean {
   const parts = token.split(".");
   if (parts.length !== 3) return false;

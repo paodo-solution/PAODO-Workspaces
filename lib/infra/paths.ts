@@ -31,10 +31,8 @@ export const workspaceHomeDir = (workspaceId: string, root: string = WORKSPACES_
 export const workspaceHomeSeededMarker = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   `${workspaceHomeDir(workspaceId, root)}.seeded`;
 
-/**
- * System packages this workspace installed, replayed into a rebuilt container. A sibling of the
- * home for the same reason as the marker: durable, but not writable by the agent it describes.
- */
+// System packages this workspace installed, replayed into a rebuilt container. A sibling of the
+// home for the same reason as the marker: durable, but not writable by the agent it describes.
 export const workspaceAptRecipeFile = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   `${workspaceHomeDir(workspaceId, root)}.apt.json`;
 

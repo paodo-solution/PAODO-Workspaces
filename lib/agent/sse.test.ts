@@ -1,7 +1,5 @@
-// The SSE keepalive exists so a stream that goes silent for minutes (a long tool call emits
-// nothing between tool_start and tool_result) is not dropped as idle by a proxy. These pin the
-// three properties that matter: it emits on schedule, it stops on demand, and it never throws
-// after the stream is gone.
+// Keepalive stops proxies dropping a stream silent through a long tool call. Pins that it emits on schedule,
+// stops on demand, and never throws after the stream is gone.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { startKeepalive, SSE_KEEPALIVE_MS, SSE_HEADERS } from "./sse";

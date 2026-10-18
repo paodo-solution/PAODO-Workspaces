@@ -3,11 +3,8 @@
 import fs from "fs/promises";
 import path from "path";
 
-/**
- * Resolve `requestedPath` against `rootDir`, returning the resolved real path, or `null` if it would
- * escape `rootDir` — via `..`, an absolute path, or a symlink anywhere along the way (including
- * `rootDir` itself). `rootDir` must already exist; `requestedPath` need not.
- */
+// The real path, or null if it escapes `rootDir` via `..`, an absolute path or any symlink. `rootDir`
+// must exist; `requestedPath` need not.
 export async function resolveContained(rootDir: string, requestedPath: string): Promise<string | null> {
   const root = await fs.realpath(rootDir);
   const target = path.normalize(path.resolve(root, requestedPath));

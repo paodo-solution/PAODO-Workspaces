@@ -15,16 +15,13 @@ const connections = g._wsConnections;
 // is never cleaned up on disconnect, and must not be a reason a closed connection stays reachable.
 const lagging = new WeakMap<WebSocket, { dropped: number; overSince: number }>();
 
-/**
- * Send unless the socket is already too far behind, in which case drop the message instead of
- * queueing it. Every write to a client goes through here — a bound that some paths skip is not a
- * bound, since one unbounded caller is all it takes.
- */
 /** Whether this socket is currently draining fast enough to be given more. */
 function keepingUp(ws: WebSocket): boolean {
   return ws.readyState === 1 /* OPEN */ && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES;
 }
 
+// Drops rather than queues once the socket is too far behind. Every client write must go through
+// here: one unbounded caller defeats the bound.
 function sendBounded(ws: WebSocket, data: string): void {
   const state = lagging.get(ws);
 
@@ -75,15 +72,8 @@ export function broadcastToWorkspace(workspaceId: string, data: string): void {
   }
 }
 
-/**
- * Send to ONE connection for this workspace (the agent runner's notify seam).
- * Returns false when there is nobody connected — a run continues with no one watching.
- *
- * Prefers a socket that is keeping up rather than the first open one in iteration order. With two
- * tabs open, that order could put a backgrounded tab first, and the ceiling then turned every
- * tool_call and tool_result_log of the run into a drop while a foreground tab sat there draining
- * fine. The bound has to cost the tab that is behind, not the one that is watching.
- */
+// Sends to one connection, preferring one that keeps up so a backgrounded tab can't cause drops for the
+// tab being watched. Returns false when nobody is connected.
 export function sendToWorkspace(workspaceId: string, data: string): boolean {
   const sockets = connections.get(workspaceId);
   if (!sockets) return false;

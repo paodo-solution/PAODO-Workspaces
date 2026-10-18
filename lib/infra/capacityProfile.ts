@@ -18,10 +18,8 @@ const configured = (value: string | undefined, fallback: string): string => valu
 
 type CapacityEnvironment = Record<string, string | undefined>;
 
-/**
- * The small, host-dependent resource profile used for experiments and production guardrails.
- * Agent concurrency is owned by executionCapacity; this profile describes Docker resource walls.
- */
+// The small, host-dependent resource profile used for experiments and production guardrails.
+// Agent concurrency is owned by executionCapacity; this profile describes Docker resource walls.
 export function readCapacityProfile(env: CapacityEnvironment = process.env): CapacityProfile {
   return {
     appMemoryLimit: configured(env.APP_MEMORY_LIMIT, DEFAULT_APP_MEMORY_LIMIT),

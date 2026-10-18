@@ -8,11 +8,8 @@ import type { FileBackend } from "@/lib/files/backend";
 import { MAX_DRIVE_LISTING_ENTRIES } from "@/lib/infra/limits";
 import { listEntries } from "@/lib/operations/files/listing";
 
-/**
- * `?depth=`, in levels below the directory listed: a positive integer for that many, "full" for all of
- * them, absent for the file panel's own rendering budget (lib/files/tree.ts). An unreadable depth is
- * refused, not defaulted: answering with a different tree than asked would be silently wrong.
- */
+// A positive integer, "full", or absent for the panel default. Anything else is refused, not defaulted,
+// to avoid silently answering with a different tree.
 function requestedDepth(value: string | null): number | undefined {
   if (value === null) return undefined;
   if (value === "full") return Infinity;
@@ -25,15 +22,8 @@ function requestedDepth(value: string | null): number | undefined {
   return levels;
 }
 
-/**
- * `?limit=`, the most entries any one directory may contribute: a positive integer, "max", or absent for no
- * ceiling at all — which is what the file panel asks for, and what every caller got before this
- * existed.
- *
- * Refused rather than rounded, for the reason `?depth=` is: a listing is what a caller decides what to
- * read or delete from next, and quietly answering with a different set than the one asked for leaves
- * nothing in the response to say so.
- */
+// Per-directory entry cap: a positive integer, "max", or absent for none (the panel's choice). Invalid
+// values are refused, as with `?depth=`.
 function requestedLimit(value: string | null): number | undefined {
   if (value === null) return undefined;
   // The app's own ceiling, for a caller that wants a bounded listing without restating the bound.

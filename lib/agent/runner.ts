@@ -39,11 +39,8 @@ import { DEFAULT_MAX_ITERATIONS } from "@/lib/workspace/limits";
 
 const log = createLogger("agent");
 
-/**
- * Why a run ended without an answer. Every code names a cause the model cannot work around, so
- * consumers (chat, API stream, skill callers, the usage dashboard) can explain the stop instead of
- * showing a raw provider string — or, worse, an empty conversation.
- */
+// Why a run ended without an answer, so every consumer can explain the stop instead of showing a raw
+// provider string or an empty conversation.
 export type AgentErrorCode =
   | "TIMEOUT"
   | "CANCELLED"
@@ -105,16 +102,10 @@ export type RunAgentOptions = {
   containers?: IContainerManager;
   /** Workspace store — defaults to the production singleton. Inject for testing. */
   store?: IWorkspaceLookup;
-  /**
-   * Workspace git versioning. When provided, the run is bracketed by a baseline snapshot (start)
-   * and a single result commit (end). Omitted in tests that don't care about versioning — every
-   * git call is guarded, so an absent service simply skips all snapshotting.
-   */
+  /** Brackets the run with a baseline and a result commit; when absent, snapshotting is skipped. */
   versioning?: IAgentWorkspaceVersioning;
-  /**
-   * Post-dispatch signal handlers — one per signal-tool name. Defaults to the map returned by
-   * buildAgentTools. Inject for testing to exercise runner dispatch without a full buildTools call.
-   */
+  // Post-dispatch signal handlers — one per signal-tool name. Defaults to the map returned by
+  // buildAgentTools. Inject for testing to exercise runner dispatch without a full buildTools call.
   signalHandlers?: Record<string, PostDispatchFn>;
 };
 

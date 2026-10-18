@@ -6,8 +6,8 @@ import type { CellPosition, NodePosition } from "@/lib/agent/graph";
 export const CELL_WIDTH = 320;
 export const CELL_HEIGHT = 200;
 
-/** React Flow's `snapGrid`. A node's top-left snaps to a cell corner, which is what turns a cell
- *  from a drawing on the background into an actual slot. */
+// React Flow's `snapGrid`. A node's top-left snaps to a cell corner, which is what turns a cell
+// from a drawing on the background into an actual slot.
 export const SNAP_GRID: [number, number] = [CELL_WIDTH, CELL_HEIGHT];
 
 /** Cells per row before the allocator wraps to the next one. */
@@ -34,8 +34,8 @@ export function readStoredPosition(stored: NodePosition | undefined): CellPositi
 
 const cellKey = ({ col, row }: CellPosition) => `${col},${row}`;
 
-/** The one answer to "is this spot taken". On a lattice that is a set lookup rather than an
- *  intersection test against every other card, which is what makes the scans below cheap. */
+// The one answer to "is this spot taken". On a lattice that is a set lookup rather than an
+// intersection test against every other card, which is what makes the scans below cheap.
 function occupancy(cells: Iterable<CellPosition>) {
   const taken = new Set([...cells].map(cellKey));
   return {
@@ -49,17 +49,16 @@ interface PlacedNode {
   position: PixelPosition;
 }
 
-/** The first cell a moving node would land on that some other node already holds, if any. Moving
- *  nodes are excluded, so a drop back where the drag started never reads as a collision and a
- *  multi-node drag never collides with itself. */
+// The first target cell another node holds, if any. Moving nodes are excluded, so a drag never
+// collides with itself or its own start.
 export function findTakenCell(moving: PlacedNode[], all: PlacedNode[]): CellPosition | undefined {
   const movingIds = new Set(moving.map((node) => node.id));
   const taken = occupancy(all.filter((node) => !movingIds.has(node.id)).map((node) => toCell(node.position)));
   return moving.map((node) => toCell(node.position)).find((cell) => taken.has(cell));
 }
 
-/** Hands out cells to nodes nobody has placed yet, skipping every cell already taken, so a workspace
- *  or drive arriving from outside the editor lands somewhere empty instead of on a placed node. */
+// Hands out cells to nodes nobody has placed yet, skipping every cell already taken, so a workspace
+// or drive arriving from outside the editor lands somewhere empty instead of on a placed node.
 export function createCellAllocator(taken: Iterable<CellPosition>) {
   const occupied = occupancy(taken);
   let next = 0;

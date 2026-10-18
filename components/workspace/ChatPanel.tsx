@@ -73,6 +73,7 @@ const MessageRow = memo(function MessageRow({ m }: { m: Message }) {
           <b>{toolLabel(m.toolName ?? "")}</b>
           {m.toolSummary && <span className="text-text-3"> {m.toolSummary}</span>}
         </div>
+        {/* Same 8-char id the callee's conversation switcher shows, so the link matches. */}
         {m.calleeConversationId && m.calleeWorkspaceId && (
           <a
             href={`/workspace/${m.calleeWorkspaceId}?conversation=${m.calleeConversationId}`}
@@ -80,8 +81,6 @@ const MessageRow = memo(function MessageRow({ m }: { m: Message }) {
             rel="noopener noreferrer"
             className="font-mono text-[12px] leading-[1.4] text-primary hover:underline px-0.5 self-start"
           >
-            {/* Show the same short id the callee's conversation switcher displays
-                (its title is id.slice(0, 8)), so the link matches what you see there. */}
             ↳ View conversation {m.calleeConversationId.slice(0, 8)}
             {m.calleeWorkspaceName ? ` with agent ${m.calleeWorkspaceName}` : ""} ↗
           </a>
@@ -306,8 +305,7 @@ export default function ChatPanel({
           <MessageRow key={i} m={m} />
         ))}
 
-        {/* A throttled model holds the turn for minutes, so the dots would read as a hang. The paced
-            row carries its own spinner, so the run still looks alive while it names the culprit. */}
+        {/* The paced row has its own spinner, so a throttled turn looks alive instead of hung. */}
         {streaming &&
           pendingTools === 0 &&
           (paced ? (

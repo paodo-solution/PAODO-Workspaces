@@ -1,6 +1,5 @@
-// This route was the browser's alone until the CLI was granted its POST and DELETE, so its public
-// boundary is pinned here: the statuses, and that a refusal from the operation reaches the caller as
-// its own code rather than as a 500 that says nothing about which end was wrong.
+// Pins this route's public boundary now the CLI shares its POST and DELETE: the statuses, and that an
+// operation's refusal reaches the caller as its own code rather than an anonymous 500.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/appError";
 

@@ -1,10 +1,7 @@
 import type { Migration } from "./index";
 
-/**
- * Gives every stored tool call an id. Calls live as a JSON list on their turn and were written
- * without one, so they could only be told apart by position; new turns get the id at write time.
- * Content only: no table or column changes. A call that already has an id keeps it.
- */
+// Backfills ids on stored tool calls, which could only be told apart by position. Content only; an
+// existing id is kept.
 export const toolCallIds: Migration = {
   version: 2,
   name: "tool-call-ids",

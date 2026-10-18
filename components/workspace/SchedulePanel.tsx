@@ -246,9 +246,7 @@ function ScheduleModal({ schedule, onClose }: ModalProps) {
               </p>
             </div>
           </div>
-          {/* Rendered only once the schedule has loaded: seeded from emptyForm it would paint Disabled
-              and then animate to the loaded state on every open. Mounting it in its final state skips
-              that slide (CSS transitions don't fire on the first render). */}
+          {/* Mounted once loaded, so it doesn't animate from Disabled on every open. */}
           {!unavailable && (
             <Switch
               checked={form.enabled}

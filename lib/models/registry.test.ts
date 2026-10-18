@@ -138,11 +138,8 @@ describe("models catalog", () => {
     expect(modelReasoningEfforts("openai", model)).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 
-  /**
-   * Scaleway's gateway validates reasoning_effort against vLLM's whole union for every model, so an
-   * unsupported level does not fail — it collapses to the model's default. Nothing but its record
-   * stops the picker offering "low" and "high" on a model where both silently mean "medium".
-   */
+  // Scaleway validates reasoning_effort against vLLM's whole union, so unsupported levels silently become the
+  // default; only the record stops the picker offering them.
   it.each([
     ["deepseek-v4-flash-0731", ["none", "low", "high", "max"]],
     ["deepseek-v4.1-flash", ["none", "low", "high", "max"]],
@@ -174,11 +171,8 @@ describe("models catalog", () => {
     }
   });
 
-  /**
-   * Reselling is the trap here: Scaleway serves DeepSeek's weights, so the app offers the same model
-   * twice — once direct, once via Paris. Same weights, different vendor, different price, different
-   * currency. One shared catalog key would bill one route at the other's rate, invisibly.
-   */
+  // Scaleway resells DeepSeek's weights: same model, different vendor, price and currency. A shared catalog
+  // key would bill one route at the other's rate.
   it("prices a resold model separately from the same model bought direct", () => {
     const direct = getRate("deepseek-v4-flash");
     const viaScaleway = getRate("deepseek-v4-flash-0731");

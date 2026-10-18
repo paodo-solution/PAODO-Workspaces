@@ -1,14 +1,5 @@
-/**
- * Manages the workspace file tree and bulk operations on the current selection. The tree loads
- * lazily through useFileTree: root first, then directories as they expand. Refreshes retain and
- * update loaded descendants. It also provides download (zips the selected paths) and delete actions.
- * Delete collapses the selection to root paths (skipping descendants of an already-selected
- * folder), issues the DELETEs in parallel, aggregates any failures into a transient deleteError
- * (auto-cleared after 2s), and notifies the parent of deleted paths so dependent views can update.
- * Internal tree drag-and-drop also comes through here: handleMoveMany sends the whole dragged batch
- * as one contained PATCH, reports conflicts, and returns the authoritative new path of each item
- * the server moved.
- */
+// The lazily loaded file tree plus bulk download, delete and drag-move on the selection. Deletes run in
+// parallel with a transient error; a drag sends the batch as one PATCH.
 import { useRef } from "react";
 import { useFileTree } from "./useFileTree";
 export type { TreeNode } from "../fileTreeResource";
@@ -121,15 +112,8 @@ export function useFileOperations({
     refreshTree();
   };
 
-  /**
-   * Move a batch of items into one directory with a single request, and refresh the loaded tree once.
-   *
-   * Resolves to the per-item results the server actually performed, plus the error that stopped the
-   * batch if one did — a partial move reports both. Resolves to null only when the request itself
-   * could not be made sense of. `unchanged` is the server's own verdict that the item was already
-   * in the destination: never re-derive it by comparing paths, since the tree's paths and the
-   * server's realpaths need not be identical.
-   */
+  // One request, one refresh. Returns per-item results plus any stopping error (null if unparseable).
+  // Trust the server's `unchanged`; tree paths and realpaths can differ.
   const handleMoveMany = async (
     sourcePaths: string[],
     destinationDirectory: string | null,

@@ -27,10 +27,8 @@ export const emptyLoopTokenUsage = (): LoopTokenUsage => ({
   outputTokensTotal: 0,
 });
 
-/**
- * Accumulate persisted model-turn usage for one agent loop. Only a terminal turn with visible
- * prose produces a chat event; tool-selection turns remain execution-dashboard detail.
- */
+// Accumulate persisted model-turn usage for one agent loop. Only a terminal turn with visible
+// prose produces a chat event; tool-selection turns remain execution-dashboard detail.
 export function foldTurnUsageForChat(
   totals: LoopTokenUsage,
   event: TurnUsageEvent,

@@ -28,12 +28,8 @@ export function pathWithDescendants(node: TreeNode): string[] {
   return [node.path, ...flattenTree(node.children ?? []).map((n) => n.path)];
 }
 
-/**
- * The paths a shift+click should add: every visible row between the anchor and the clicked row,
- * inclusive, each carrying its subtree. Clicking above the anchor is the same range as clicking
- * below it. Falls back to the clicked row alone when the anchor is no longer on screen — collapsing
- * its folder can take it away between the two clicks.
- */
+// Shift+click: every visible row from anchor to target inclusive, in either direction. Just the target
+// if the anchor has scrolled or collapsed out of view.
 export function selectionRange(visibleRows: TreeNode[], anchorPath: string | null, targetPath: string): string[] {
   const targetIndex = visibleRows.findIndex((n) => n.path === targetPath);
   if (targetIndex === -1) return [];

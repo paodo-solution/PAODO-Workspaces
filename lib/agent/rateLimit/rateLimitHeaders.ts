@@ -1,10 +1,5 @@
-/**
- * What each vendor tells us about its own ceilings, normalized to one shape. Three spellings of the
- * same idea, confirmed by direct probe against live keys — see the table in each VENDORS entry.
- *
- * Read from the fetch override installed in buildModel.ts, because LangChain does not surface
- * response headers on a streaming call.
- */
+// Normalizes each vendor's rate-limit headers (probed against live keys; see VENDORS). Read in
+// buildModel.ts's fetch override, since LangChain hides headers on streaming calls.
 
 /** One provider's rate-limit state at the instant a response came back. Fields absent when unreported. */
 export interface RateLimitSnapshot {
@@ -115,13 +110,8 @@ function retryAfter(headers: Headers, now: number): number | undefined {
   return Number.isFinite(date) ? date : undefined;
 }
 
-/**
- * The rate-limit state a response reports, or null when it reports none.
- *
- * Null is the honest answer for DeepSeek and Moonshot, and for most 4xx — a refused request usually
- * carries no rate-limit headers, so a 429 teaches us little here beyond `retry-after`, and the rest
- * is handled by the pacer's own backstop.
- */
+// Null when the response reports nothing, as with DeepSeek, Moonshot and most 4xx; the pacer's own
+// backstop covers those.
 export function parseRateLimitHeaders(headers: Headers, now: number = Date.now()): RateLimitSnapshot | null {
   const retry = retryAfter(headers, now);
   for (const vendor of VENDORS) {

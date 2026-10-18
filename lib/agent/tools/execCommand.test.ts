@@ -1,10 +1,5 @@
-// ExecCommandTool must surface a non-zero exit code as an explicit "Error:" line so both the
-// agent and the usage dashboard (via runner.classifyToolStatus) can tell the command failed —
-// the combined stdout/stderr alone hides exit status. Code 0 stays plain output.
-//
-// checkFreeSpace is mocked (not exercised against a real filesystem) so every test below controls
-// disk state deterministically — most tests just need it to stay out of the way (ok: true), and the
-// dedicated disk-space-guard tests flip it to simulate a full disk.
+// A non-zero exit becomes an explicit "Error:" line so the agent and classifyToolStatus see the failure.
+// checkFreeSpace is mocked so each test controls disk state; the disk-guard tests simulate a full disk.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ExecCommandTool } from "./execCommand";
 import type { StreamingExecFn, BackgroundExecFn, OutputSinkFn } from "../interfaces";
@@ -27,9 +22,8 @@ function fakeExec(out: { stdout?: string; stderr?: string; code: number | null }
   };
 }
 
-// A streamExec stub that mimics a long-running process: it never resolves on its own, only when
-// its abort signal fires (as the real container kill would). sawAbort() reports whether the kill
-// was propagated down to this layer.
+// Mimics a long-running process: resolves only when its abort signal fires, like a real container kill.
+// sawAbort() reports whether the kill reached this layer.
 function hangingExec(): { exec: StreamingExecFn; sawAbort: () => boolean } {
   let signal: AbortSignal | undefined;
   const exec: StreamingExecFn = (_cmd, { signal: s }) =>
@@ -197,9 +191,8 @@ describe("ExecCommandTool user abort (escape)", () => {
 });
 
 describe("ExecCommandTool silence heartbeat", () => {
-  // The "still running" line is reassurance, not information. It must appear quickly (so a slow
-  // command doesn't look hung) but then back off, or a quiet multi-minute build buries the terminal
-  // in identical lines.
+  // "Still running" must appear quickly so a slow command doesn't look hung, then back off so a quiet build
+  // doesn't bury the terminal.
   it("emits every 5s for the first 30s of silence, then every 30s", async () => {
     vi.useFakeTimers();
     try {
@@ -325,11 +318,8 @@ describe("ExecCommandTool disk-space guard", () => {
   });
 });
 
-// Output volume used to be an unbounded liability: `stdout += chunk` had no ceiling, and past V8's
-// max string length the += threw from inside a stream handler — off any promise chain, so it reached
-// server.ts's uncaughtException guard and exited the process, taking every workspace with it. These
-// tests pin the two properties that replaced it: the tool result stays small no matter what a command
-// prints, and nothing is lost when it does.
+// Unbounded `stdout +=` once threw past V8's max string length from a stream handler, crashing the process.
+// Pins the replacement: the result stays small whatever is printed, and nothing is lost.
 describe("ExecCommandTool output limits", () => {
   it("returns modest output whole, with no file involved", async () => {
     const sink = fakeSink();
@@ -388,9 +378,8 @@ describe("ExecCommandTool output limits", () => {
 
     const result = await tool.invoke({ command: "npm run build" });
 
-    // The saved file holds the command's own output — but this guidance is OURS, generated from the
-    // stderr signature, so if overflow drops it the agent cannot recover it by reading the file. It
-    // would instead be told to go read a 600KB log to find out why the container is broken.
+    // This guidance is ours, derived from stderr, so the saved output file cannot restore it; dropping it on
+    // overflow would send the agent to read a 600KB log instead.
     expect(result).toContain("Output too large");
     expect(result).toContain("no matching entries in passwd file");
     expect(result).toContain("[setup]");

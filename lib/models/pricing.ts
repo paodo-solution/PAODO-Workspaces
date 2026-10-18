@@ -37,11 +37,7 @@ const holder = globalSingleton<Holder>("modelPricingCatalog", () => ({
   entries: seed as Record<string, CatalogEntry>,
 }));
 
-/**
- * Replace the live rate table. Called by ./priceRefresher.ts after a successful fetch, and by tests.
- * Swapped wholesale rather than merged: a merge would keep a rate whose model upstream has dropped,
- * which is the stale-rate failure this is meant to end.
- */
+// Swapped wholesale, not merged: a merge would keep rates for models upstream has dropped.
 export function setCatalog(entries: Record<string, CatalogEntry>): void {
   holder.entries = entries;
 }
@@ -81,10 +77,8 @@ function lookup(modelId: string): CatalogEntry | undefined {
   return own(modelId) ?? own(modelId.split("/").pop() ?? modelId);
 }
 
-/**
- * A model's rates. `promptTokens` is one request's whole prompt, cache reads and writes included;
- * given, it selects the long-prompt rate card where the model has one and the prompt is past it.
- */
+// A model's rates. `promptTokens` is one request's whole prompt, cache reads and writes included;
+// given, it selects the long-prompt rate card where the model has one and the prompt is past it.
 export function getRate(modelId: string | undefined, promptTokens = 0): Rate | undefined {
   if (!modelId) return undefined;
   const entry = lookup(modelId);
@@ -107,12 +101,8 @@ export function getRate(modelId: string | undefined, promptTokens = 0): Rate | u
   };
 }
 
-/**
- * The currency a model's cost is denominated in, or undefined when the model isn't priced.
- *
- * Frozen alongside the cost itself (lib/usage/record.ts) rather than looked up at read time: the
- * catalog is swapped on a timer, so a later refresh must not restate an old turn's currency.
- */
+// Undefined for an unpriced model. Frozen with the cost at write time, so a later refresh can't
+// restate an old turn's currency.
 export function getCurrency(modelId: string | undefined): Currency | undefined {
   return getRate(modelId)?.currency;
 }

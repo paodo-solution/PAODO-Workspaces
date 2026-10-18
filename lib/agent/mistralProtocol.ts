@@ -18,15 +18,8 @@ function mistralReasoningConfig(effort: ReasoningEffort): {
   return { modelKwargs: { reasoning_effort: effort === THINKING_OFF_EFFORT ? "none" : "high" } };
 }
 
-/**
- * Mistral-only request fields. The caller supplies a provider-neutral conversation scope; this is
- * the boundary that turns it into Mistral's prompt_cache_key. Keeping the key stable lets each
- * ReAct turn reuse the unchanged prefix from the previous turn.
- *
- * The key rides the typed `promptCacheKey` field, NOT modelKwargs: ChatOpenAI writes
- * `prompt_cache_key` from that field AFTER spreading modelKwargs, so a key placed in modelKwargs is
- * overwritten with undefined and dropped from the body — cached silently, never actually sent.
- */
+// Maps the conversation scope to a stable prompt_cache_key so each turn reuses the prefix. Must use
+// `promptCacheKey`: ChatOpenAI overwrites a modelKwargs key with undefined.
 export function mistralRequestConfig(
   effort: ReasoningEffort,
   cacheScopeId?: string,
@@ -37,16 +30,8 @@ export function mistralRequestConfig(
   };
 }
 
-/**
- * Flatten one streamed Mistral delta into the shape ChatOpenAI's completions path accepts.
- *
- * Mistral streams reasoning as content blocks (`content: [{ type: "thinking", ... }]`). That path
- * yields only deltas whose content is a string: anything else is logged as
- * "[WARNING]: Received non-string content from OpenAI" and skipped, taking the tokens with it.
- *
- * So the prose stays in `content` and the thinking moves to `reasoning_content` — the field the turn
- * reader already reads for reasoning providers — leaving nothing for that check to discard.
- */
+// ChatOpenAI drops deltas whose content isn't a string, losing Mistral's thinking blocks. So prose stays
+// in `content` and thinking moves to `reasoning_content`.
 export function flattenMistralDelta(delta: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(delta.content)) return delta;
   const text: string[] = [];
@@ -76,23 +61,13 @@ class MistralCompletions extends ChatOpenAICompletions {
   }
 }
 
-/**
- * A ChatOpenAI whose streaming half understands Mistral's content blocks.
- *
- * ChatOpenAI delegates every completions call to the instance it is handed, so injecting the
- * subclass adapts the inbound wire format without a second client or a forked call path.
- */
+// A ChatOpenAI whose completions delegate understands Mistral's content blocks, with no forked call path.
 export function createMistralChatModel(fields: ChatOpenAIFields): ChatOpenAI {
   return new ChatOpenAI({ ...fields, completions: new MistralCompletions(fields) });
 }
 
-/**
- * The stored reasoning as Mistral's content blocks, or nothing for a turn that did not reason.
- *
- * Built here rather than at capture time so the runner stores one provider-neutral string
- * (reasoningReplay.ts) instead of this vendor's shape. Text comes straight off the message, which is
- * why nothing but the reasoning has to be carried across turns.
- */
+// Stored reasoning as Mistral content blocks, built here so the runner keeps one provider-neutral
+// string (reasoningReplay.ts).
 function replayContent(message: AIMessage): MistralReplayContent | undefined {
   // Non-string content is already blocks. Rebuilding from it would drop everything the "" fallback
   // could not represent, so such a message goes out exactly as the caller wrote it.
@@ -100,10 +75,8 @@ function replayContent(message: AIMessage): MistralReplayContent | undefined {
   return mistralReplayContent(replayReasoning(message), message.content);
 }
 
-/**
- * Clone only the assistant turns that reasoned, restoring their thinking as Mistral's content blocks.
- * The caller's array and messages are never mutated; every other provider receives those originals.
- */
+// Clone only the assistant turns that reasoned, restoring their thinking as Mistral's content blocks.
+// The caller's array and messages are never mutated; every other provider receives those originals.
 export function prepareMistralMessages(messages: BaseMessage[]): BaseMessage[] {
   return messages.map((message) => {
     if (!(message instanceof AIMessage)) return message;

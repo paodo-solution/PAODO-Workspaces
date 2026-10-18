@@ -14,8 +14,8 @@ export interface FileTreeSnapshot {
   dirErrors: Set<string>;
 }
 
-/** Levels fetched per request, mirroring the panel's old single-shot budget so expanding within the
- *  loaded depth is instant; deeper folders still fetch lazily. */
+// Levels fetched per request, mirroring the panel's old single-shot budget so expanding within the
+// loaded depth is instant; deeper folders still fetch lazily.
 const TREE_FETCH_DEPTH = 5;
 
 /** One cache per file API. Root refreshes reattach cached descendants instead of losing them. */
@@ -23,8 +23,8 @@ export class FileTreeResource {
   private levels = new Map<string, TreeNode[]>();
   private requests = new Map<string, AbortController>();
   private errors = new Set<string>();
-  /** Paths actually fetched, as opposed to levels absorbed from a parent's deep read — the set a
-   *  refresh re-reads, since a deep read already re-covers everything beneath it. */
+  // Paths actually fetched, as opposed to levels absorbed from a parent's deep read — the set a
+  // refresh re-reads, since a deep read already re-covers everything beneath it.
   private roots = new Set<string>();
   private listeners = new Set<() => void>();
   private snapshot: FileTreeSnapshot = {
@@ -66,9 +66,8 @@ export class FileTreeResource {
     this.listeners.forEach((listener) => listener());
   }
 
-  /** Cache a deep read: the fetched root, then every directory it listed above the depth cut, so those
-   *  render and re-expand without a second request. A directory at the cut has empty children we cannot
-   *  tell from a truly empty one, so it is left unregistered to fetch on expand. */
+  // Caches every directory above the depth cut so it re-expands without a request. Those at the cut
+  // look empty either way, so they stay unregistered and fetch on expand.
   private absorb(root: string, tree: TreeNode[], maxDepth: number) {
     this.levels.set(root, tree);
     const register = (nodes: TreeNode[], depth: number) => {

@@ -47,11 +47,8 @@ function optionalHandle(value: unknown, field: string): string | undefined {
   return value;
 }
 
-/**
- * Connect a drive to a workspace, or move an existing link's handles. Reconnecting the same pair is
- * deliberately not an error — the store keeps one link per pair and updates its handles — so the
- * graph editor can save a moved edge without first deleting it.
- */
+// Reconnecting a pair just updates its handles, so the graph editor can save a moved edge without
+// deleting it first.
 export function connectDriveToWorkspace(
   input: ConnectDriveInput,
   deps: DriveConnectionDeps = defaultDeps(),
@@ -71,11 +68,8 @@ export function connectDriveToWorkspace(
   return deps.connect(driveId, workspaceId, { sourceHandle, targetHandle });
 }
 
-/**
- * Remove one connection. An unknown id reports `deleted: false` rather than raising: the caller
- * asked for a state this leaves established, and the graph editor prunes links it believes are
- * stale, which races with a drive deletion that already dropped them.
- */
+// An unknown id gives `deleted: false`, not an error: the graph editor's pruning races drive deletions
+// that already dropped the link.
 export function disconnectDriveFromWorkspace(
   input: DisconnectDriveInput,
   deps: DriveConnectionDeps = defaultDeps(),

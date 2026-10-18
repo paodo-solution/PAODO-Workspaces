@@ -170,11 +170,8 @@ export function createConversation(workspaceId: string, opts?: { title?: string 
   return meta;
 }
 
-/**
- * Live message history for a conversation, loaded lazily from SQLite and cached. The returned array
- * is the very array the runner appends to — callers must not replace it, only mutate in place.
- * Returns null if the conversation does not exist.
- */
+// The cached live array the runner appends to: mutate in place, never replace. Null if the
+// conversation doesn't exist.
 export function getMessages(workspaceId: string, convId: string): BaseMessage[] | null {
   const s = ensureLoaded(workspaceId);
   if (!s.metas.some((m) => m.id === convId)) return null;
@@ -203,14 +200,8 @@ export function getMessages(workspaceId: string, convId: string): BaseMessage[] 
   return msgs;
 }
 
-/**
- * The last-persisted history for a conversation, read fresh from SQLite and NOT cached.
- * Unlike getMessages, this never reflects an in-flight run: the runner mutates the live in-memory
- * array (appending the user turn at run start), but persist() only snapshots to disk at run end.
- * Callers rendering the "persisted transcript" of a possibly-running conversation must use this so
- * the in-flight user turn isn't double-counted against the client's live `userInput` echo.
- * Returns null if the conversation does not exist.
- */
+// Fresh from SQLite, uncached, so an in-flight run's user turn isn't double-counted against the
+// client's live echo. Null if the conversation doesn't exist.
 export function getPersistedMessages(workspaceId: string, convId: string): BaseMessage[] | null {
   const s = ensureLoaded(workspaceId);
   if (!s.metas.some((m) => m.id === convId)) return null;

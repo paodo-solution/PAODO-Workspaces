@@ -51,14 +51,8 @@ export interface InternetAccessRecord {
   internetAccess?: boolean;
 }
 
-/**
- * Rebuild the mirror from the registry. The app calls this at startup, before the sidecar can read
- * the file, because the two records are one security boundary and only the registry survives losing
- * the .proxy-ca volume or a restore from backup. A missing entry here reads as ENABLED, so a mirror
- * that is absent or behind silently reopens a workspace the UI still shows as off — the one drift
- * direction that fails open. Throws if the rebuilt file cannot be written or read back intact;
- * startup treats that as fatal rather than serving egress the registry says is off.
- */
+// Rebuilds the mirror from the registry at startup: a missing entry reads as enabled, so a stale mirror
+// fails open. Throws if the file can't be written and read back, which startup treats as fatal.
 export function reconcileInternetAccessPolicy(workspaces: InternetAccessRecord[]): void {
   const off = new Set(workspaces.filter((w) => w.internetAccess === false).map((w) => w.id));
   const restored = [...off].filter((id) => store[id] !== false);

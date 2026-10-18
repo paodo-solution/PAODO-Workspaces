@@ -1,7 +1,5 @@
-// End-to-end check of the proxy's request-forwarding path (not just the pure substitution helpers).
-// Exercised over the plain-HTTP proxy path, which shares forwardRequestBody with the HTTPS MITM path
-// but needs no TLS/CA harness. Focus: an `Expect: 100-continue` client must get an interim 100 and
-// still have its body delivered upstream — previously it would hang forever.
+// End-to-end forwarding over plain HTTP, which shares forwardRequestBody with the MITM path without needing
+// TLS. Focus: `Expect: 100-continue` gets an interim 100 and its body delivered, not a hang.
 
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import * as net from "net";
@@ -14,10 +12,8 @@ import { tmpdir } from "os";
 import path from "path";
 import forge from "node-forge";
 
-// credentialProxy.ts now reads the internet-access policy store, which persists to a file under
-// WORKSPACES_ROOT — redirect it to a throwaway temp dir before that import chain runs, so this
-// suite's setInternetAccessPolicy calls below never touch the real ./data. Mirrors
-// credentialStore.test.ts.
+// credentialProxy.ts persists the internet-access policy under WORKSPACES_ROOT, so redirect it to a temp dir
+// before the imports run (as credentialStore.test.ts does).
 vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
@@ -29,9 +25,8 @@ import { CredentialProxy } from "./credentialProxy";
 import { ensureCA, deriveProxySecret } from "./proxyCA";
 import { setInternetAccessPolicy } from "./internetAccessPolicy";
 
-// The proxy now requires a verified workspace identity on every connection (not just for
-// domain-scoped injection), so every test below needs the HMAC key that backs verifyProxySecret —
-// set it up once, up front, before any describe block's tests run.
+// Every connection now needs a verified workspace identity, so set the HMAC key behind verifyProxySecret once,
+// before any test runs.
 beforeAll(() => {
   ensureCA(mkdtempSync(path.join(tmpdir(), "proxy-server-test-ca-")));
 });
@@ -188,11 +183,8 @@ describe("CredentialProxy SSRF guard", () => {
   });
 });
 
-// The internet-access policy check runs immediately after auth resolution, ahead of both the CONNECT
-// and plain-HTTP paths, and ahead of any domain-rule logic — a workspace can be refused here even
-// when it has a configured secret rule for the exact host it's trying to reach. This is the
-// application-layer backstop behind the real boundary (the workspace's Docker network being
-// --internal, containerManager.ts) — these tests only cover this layer in isolation.
+// The internet-access check runs right after auth, before CONNECT, plain HTTP and domain rules, so a secret
+// rule cannot bypass it. It backs up the real boundary (the --internal network); tested alone here.
 describe("CredentialProxy internet-access policy", () => {
   const WS = "ws-net-off";
 
@@ -278,9 +270,8 @@ describe("CredentialProxy internet-access policy", () => {
   });
 
   it("refuses an unauthenticated connection outright (no Proxy-Authorization header)", async () => {
-    // Was the actual bypass: an absent header used to skip the off-check entirely (it's keyed on
-    // auth.wsId, and auth is null with no header) and still get a plain tunnel through. Now any
-    // connection without a verified identity is refused before the off-check is even reached.
+    // The original bypass: with no header, auth was null and the off-check (keyed on auth.wsId) was skipped. Now
+    // an unverified connection is refused before that check.
     const stub = net.createServer((sock) => sock.write("HELLO"));
     cleanups.push(() => stub.close());
     const stubPort = await listeningPort(stub);
@@ -299,10 +290,8 @@ describe("CredentialProxy internet-access policy", () => {
   });
 
   it("refuses a connection that claims another workspace's id with a wrong/guessed secret (spoofed identity)", async () => {
-    // The other half of the bypass: isInternetAccessEnabled defaults to true for any id never
-    // toggled off, so claiming an unrelated (or made-up) wsId used to sail past the off-check even
-    // though the secret was never verified. Now the identity itself must verify before anything else
-    // runs, so a wrong secret is refused regardless of whose id it claims.
+    // The other half: an id never toggled off defaults to enabled, so a claimed wsId with an unverified secret
+    // once passed. Now the identity must verify first, whoever it claims to be.
     const stub = net.createServer((sock) => sock.write("HELLO"));
     cleanups.push(() => stub.close());
     const stubPort = await listeningPort(stub);
@@ -321,10 +310,8 @@ describe("CredentialProxy internet-access policy", () => {
   });
 });
 
-// Full MITM loop: CONNECT with valid proxy auth → TLS terminated by the proxy → token substituted
-// into the upstream request → upstream response REDACTED (real value → token) before the client
-// sees it. This is the leak-resistance core: even an upstream that echoes the credential back
-// (API error messages) must never expose plaintext to the container.
+// Full MITM loop: token substituted upstream, response redacted back before the client sees it, so even an
+// upstream echoing the credential never exposes plaintext to the container.
 describe("CredentialProxy MITM response redaction", () => {
   const WS = "ws-mitm";
   const TOKEN = "__pxy_ws-mitm_API_KEY__";
@@ -337,9 +324,8 @@ describe("CredentialProxy MITM response redaction", () => {
     // deriveProxySecret/verifyProxySecret and the MITM's signDomainCert need an initialized CA.
     ensureCA(mkdtempSync(path.join(tmpdir(), "proxy-mitm-test-")));
 
-    // Self-signed cert with an IP SAN for the loopback HTTPS stub. signDomainCert only emits DNS
-    // SANs, and the proxy re-originates with rejectUnauthorized:true — Node requires an IP SAN to
-    // verify a cert for "127.0.0.1", so the stub brings its own chain, injected via upstreamCa.
+    // Node needs an IP SAN to verify "127.0.0.1" and signDomainCert emits only DNS SANs, so the stub brings its
+    // own self-signed chain via upstreamCa.
     const keys = forge.pki.rsa.generateKeyPair(2048);
     const cert = forge.pki.createCertificate();
     cert.publicKey = keys.publicKey;
@@ -426,9 +412,8 @@ describe("CredentialProxy MITM response redaction", () => {
     expect(response).toContain(`Invalid API key provided: ${TOKEN}.`);
   });
 
-  // Regression: substitution is base64-aware for `Authorization: Basic`, so the real value never
-  // appears literally on the wire — a redaction pass that only scanned for it handed the envelope
-  // back intact, and one decode recovered the credential. This is git/gh's exact auth shape.
+  // Basic auth is substituted inside base64, so redacting only the literal value returned the envelope intact,
+  // one decode from the credential. This is git/gh's auth shape.
   it("redacts the Basic base64 envelope it emitted, not just the literal value", async () => {
     let upstreamAuth = "";
     const stubPort = await startHttpsStub((req, res) => {

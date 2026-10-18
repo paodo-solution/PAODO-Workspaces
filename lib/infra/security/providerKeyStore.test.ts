@@ -1,7 +1,5 @@
-// The provider key store holds the only copy of what the deployment spends money with, so these
-// pin the two properties that matter beyond "it round-trips": a value never leaves except through
-// getProviderKey, and a store that exists but cannot be read must never be silently replaced by an
-// empty one — the next save would destroy every key the operator had.
+// The only copy of the keys the deployment spends with. Values leave only via getProviderKey, and an
+// unreadable store is never replaced by an empty one, which the next save would make permanent.
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { readFileSync, writeFileSync, rmSync, existsSync } from "fs";
 
@@ -120,9 +118,8 @@ describe("purgeProviderKeysExcept", () => {
   });
 });
 
-// Loading happens once at module import, so these reload the module against a file planted first.
-// The global holder has to be cleared too — it is what makes the store survive module reloads in
-// production, and it would otherwise make the re-import skip the load entirely.
+// Loading happens once at import, so reload against a planted file. The global holder must be cleared too,
+// or the re-import skips the load.
 async function reload() {
   delete (global as Record<string, unknown>)._providerKeyVaultState;
   vi.resetModules();

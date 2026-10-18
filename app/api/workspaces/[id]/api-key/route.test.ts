@@ -1,10 +1,5 @@
-// Route-level coverage for the workspace agent API key. The credential kind is part of what is being
-// asserted: "workspace-api" is what keeps this endpoint from touching the workspace's MCP secret or
-// the instance-wide CLI token.
-//
-// The behaviour worth pinning here is that the channel's two axes stay independent: PATCH moves only
-// the on/off flag and never produces a key, while POST and DELETE act only on the key and never
-// consult the flag — so a key can be issued before the channel opens and destroyed after it closes.
+// The "workspace-api" kind keeps this endpoint off the MCP secret and the CLI token. The channel's axes stay
+// independent: PATCH moves only the flag, POST/DELETE only the key, so a key can outlive a closed channel.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -76,9 +71,8 @@ describe("workspace API key route", () => {
     expect(await invalid.json()).toMatchObject({ ok: false, code: "INVALID_REQUEST" });
   });
 
-  // Opening the channel used to mint its first key and hand back the plaintext. It no longer does:
-  // a caller that flips this flag — the UI, the CLI, a script — can no longer be handed a
-  // read-once secret it was not expecting and will never see again.
+  // Opening the channel used to mint a key and return the plaintext; no caller flipping the flag should be
+  // handed a read-once secret it did not ask for.
   it("opens the channel without minting a key", async () => {
     const res = await PATCH(request("PATCH", JSON.stringify({ enabled: true })), ctx());
     expect(await res.json()).toEqual({
@@ -135,16 +129,14 @@ describe("workspace API key route", () => {
     expect(h.mint).toHaveBeenCalledTimes(2);
   });
 
-  // The two orders that a channel-enabled precondition used to make impossible. Both matter: issuing
-  // first means the channel is never live while the key is in transit to whoever needs it, and
-  // revoking a leaked key must never require reopening the channel it leaked from.
+  // Issuing first keeps the channel closed while the key is in transit, and revoking a leaked key must never
+  // require reopening the channel it leaked from.
   it("issues and destroys a key while the channel is closed", async () => {
     h.state = { enabled: false, hasKey: false, createdAt: null, lastUsedAt: null };
     const generated = await POST(request("POST", JSON.stringify({ operation: "generate" })), ctx());
     expect(generated.status).toBe(200);
-    // The key is real, and the receipt says in the same breath that nothing will accept it yet. This
-    // is the case the CLI's `key generate` exists to stop being silent: an agent that reads only
-    // the key field hands the key on, every call fails, and nothing points back at the closed channel.
+    // The receipt says in the same breath that nothing accepts the key yet, so an agent reading only the key
+    // field is not left with calls that fail without pointing at the closed channel.
     expect(await generated.json()).toEqual({
       ok: true,
       workspaceApiKey: "pak_new",
@@ -164,9 +156,8 @@ describe("workspace API key route", () => {
     expect(h.setEnabled).not.toHaveBeenCalled();
   });
 
-  // Revocation refuses on the same condition rotation does. A revoke that destroyed nothing used to
-  // answer 200, indistinguishable from one that destroyed a live key — an operator clearing a leak
-  // could not tell from the response whether this request is what ended it.
+  // Revocation refuses when rotation would. A revoke that destroyed nothing used to answer 200, so an operator
+  // clearing a leak could not tell whether this request ended it.
   it("refuses revocation when there is no key to destroy", async () => {
     h.state = { enabled: true, hasKey: false, createdAt: null, lastUsedAt: null };
 
@@ -181,9 +172,8 @@ describe("workspace API key route", () => {
     expect(h.revoke).not.toHaveBeenCalled();
   });
 
-  // The cost of that refusal, pinned so it is a decision rather than a surprise: revocation is no
-  // longer idempotent, so a caller retrying after a dropped response has to read the channel back
-  // instead of trusting a repeated 200.
+  // The cost, pinned as a decision: revocation is not idempotent, so a caller retrying after a dropped response
+  // must read the channel back rather than expect a repeated 200.
   it("destroys the key once and refuses the repeat", async () => {
     h.state = { enabled: true, hasKey: true, createdAt: "2026-01-01T00:00:00.000Z", lastUsedAt: null };
 
@@ -201,12 +191,8 @@ describe("workspace API key route", () => {
     expect(h.revoke).toHaveBeenCalledTimes(1);
   });
 
-  // Revoking the last key leaves the channel open and keyless. The receipt has to say so: reading only
-  // `ok: true`, an operator who has just retired a channel walks away believing they closed it, and the
-  // workspace goes on reporting workspaceApiAccess: true with nothing behind it.
-  //
-  // It says so in the workspace projection's words, not the credential store's. `revoke` answering
-  // `enabled` while `get` answers `workspaceApiAccess` made one channel look like two things.
+  // Revoking the last key leaves the channel open and keyless, and the receipt says so in the workspace
+  // projection's words (workspaceApiAccess), so `ok: true` alone is not mistaken for a closed channel.
   it("reports the open, keyless channel it leaves behind", async () => {
     h.state = { enabled: true, hasKey: true, createdAt: "2026-01-01T00:00:00.000Z", lastUsedAt: null };
 

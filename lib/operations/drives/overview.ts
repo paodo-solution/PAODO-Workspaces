@@ -5,8 +5,8 @@ import { driveConnectionCounts, type DriveConnectionCounts } from "../connection
 import type { Drive } from "@/lib/drives/store";
 
 export type DriveOverview = Drive & {
-  /** How many workspaces reach this drive, not which: the connection listing owns the detail and the
-   *  id a link is removed by. Present at zero, so nothing is connected is stated rather than inferred. */
+  // How many workspaces reach this drive, not which: the connection listing owns the detail and the
+  // id a link is removed by. Present at zero, so nothing is connected is stated rather than inferred.
   connections: DriveConnectionCounts;
 };
 

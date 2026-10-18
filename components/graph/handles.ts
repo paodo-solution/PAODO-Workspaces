@@ -6,9 +6,8 @@ export const WORKSPACE_BOTTOM_HANDLE = "workspace-source-bottom";
 
 const WORKSPACE_INCOMING_HANDLES = new Set<string>([WORKSPACE_TOP_HANDLE, WORKSPACE_BOTTOM_HANDLE]);
 
-/** Map an incoming link's handle onto one the workspace node actually renders. Links saved before
- *  the bottom handle became a source still carry the old id, and a loose-mode drag can hand back
- *  anything at all; both resolve to the top handle unless they name a known one. */
+// Maps an incoming handle to one the node renders. Old saved ids and loose-mode drags fall back to the
+// top handle unless they name a known one.
 export function normalizeWorkspaceIncomingHandle(handle?: string | null): string {
   if (handle === "workspace-target-bottom") return WORKSPACE_BOTTOM_HANDLE;
   return handle && WORKSPACE_INCOMING_HANDLES.has(handle) ? handle : WORKSPACE_TOP_HANDLE;

@@ -1,6 +1,5 @@
-// checkFreeSpace is the only thing standing between a large upload and a full disk, so the math
-// (bavail * bsize vs needed + reserved) is pinned directly against a mocked fs.statfs rather than
-// relying on the real filesystem's free space, which the test can't control.
+// checkFreeSpace guards against a full disk, so its math (bavail * bsize vs needed + reserved) is pinned
+// against a mocked fs.statfs rather than real free space.
 
 import { describe, it, expect, vi } from "vitest";
 

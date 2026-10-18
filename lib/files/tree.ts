@@ -11,37 +11,13 @@ export interface TreeNode {
   /** Workspace-relative, POSIX-separated — the one path space the file API speaks (./relpath.ts). */
   path: string;
   children?: TreeNode[];
-  /**
-   * How many lines the content route would find in this file, so a caller can choose an `?offset=` and
-   * `?limit=` before reading rather than by overshooting and reading again.
-   *
-   * Present only when the caller asked to measure the listing, and then only for a file that is text —
-   * an image or an archive has no lines to count. See listEntries.
-   */
+  /** Line count for a text file, so a caller can pick `?offset=`/`?limit=`. Only when measuring. */
   lines?: number;
-  /**
-   * Every file at any depth under this directory, counted through the same ignore contract that decides
-   * what the listing shows — so it counts what a caller could go on to read or transfer, and a
-   * `node_modules` is as absent from the number as it is from the tree.
-   *
-   * Recursive rather than a count of direct children, because the question it answers is whether a
-   * directory is worth descending into, and a folder holding three subfolders and fourteen thousand
-   * files is exactly the one a direct count would call small. Directories are not counted: they are the
-   * structure, not the content, so `0` means there is nothing here to read however many folders deep it
-   * goes.
-   *
-   * Present only when the caller asked to count, and only on directories. See listEntries.
-   */
+  // Files at any depth, after the ignore rules, so it shows whether a directory is worth descending.
+  // Directories aren't counted; only present when counting.
   files?: number;
-  /**
-   * This directory's own listing stopped at the caller's `maxEntries` ceiling, so `children` is a
-   * prefix of what is really here — and an arbitrary one, since the cut happens in filesystem order
-   * before anything sorts.
-   *
-   * Present only when it is true, and only on a directory that was actually cut. A listing that was
-   * whole says nothing, for the reason the tree route stopped serving `truncated` on every response:
-   * a flag that is almost always false is one a reader learns to skip.
-   */
+  // Set only on a directory cut at `maxEntries`: `children` is then an arbitrary prefix in filesystem
+  // order. Omitted otherwise, since an always-false flag gets ignored.
   truncated?: boolean;
 }
 
@@ -51,44 +27,22 @@ export const FILE_PANEL_MAX_DEPTH = 5;
 export interface BuildTreeOptions {
   /** Levels to descend before stopping. Infinity walks the whole tree. */
   maxDepth?: number;
-  /**
-   * The most entries to return for any one directory. Defaults to Infinity — the file panel renders
-   * whatever is there, as it always has, and a ceiling it did not ask for would silently shorten a
-   * tree the user is looking at.
-   *
-   * A client that navigates passes one, because breadth is the half of a listing `maxDepth` does not
-   * bound: one level of a directory holding a million files is a bounded depth and an unbounded
-   * answer. See readListingEntries for why the ceiling stops the scan and not just the output.
-   */
+  // Per-directory entry cap, bounding breadth as `maxDepth` bounds depth. Defaults to Infinity so the
+  // file panel is never silently shortened.
   maxEntries?: number;
-  /**
-   * The wire path of `rootDir` itself, for a walk that starts somewhere below the workspace root.
-   * Every node's `path` is built from it, so listing one subdirectory names its entries exactly as
-   * listing the whole workspace would — which is what keeps those paths valid arguments to the other
-   * file routes, with no rejoining for the caller to get wrong. Defaults to "", the root.
-   */
+  // The wire path of `rootDir` (default ""), so a subdirectory's paths match a whole-workspace listing
+  // and work with the other file routes.
   basePath?: string;
-  /**
-   * Give every directory a `files` count of everything underneath it.
-   *
-   * Opt-in for the reason `measure` is: it costs a readdir per directory in the whole subtree, which a
-   * shallow listing does not otherwise pay — a one-level `ls` of the root has to descend all of it to
-   * answer. A listing walked to full depth gets the counts for nothing, since the walk has already been
-   * everywhere the count would go.
-   */
+  // Adds a recursive `files` count per directory. Opt-in: a shallow listing must walk the whole subtree
+  // to compute it.
   countFiles?: boolean;
 }
 
 /** A finished tree, and whether any directory in it was cut short by the entry ceiling. */
 export interface BuiltTree {
   nodes: TreeNode[];
-  /**
-   * Some directory in this tree hit `maxEntries`. Aggregated up the walk rather than left only on the
-   * node it happened to, because the directory that was cut may be the root — which has no node to
-   * carry a flag — and because a caller that must not present a prefix as the whole answer should not
-   * have to search the tree to find out that it is one. The node still carries its own flag, so the
-   * caller can find where.
-   */
+  // Some directory hit `maxEntries`. Aggregated here since the root has no node to carry the flag, and
+  // a caller shouldn't have to search for it.
   truncated: boolean;
 }
 
@@ -116,15 +70,8 @@ interface WalkResult {
   truncated: boolean;
 }
 
-/**
- * `relPath` is carried down the recursion rather than derived per node with path.relative: the walker
- * already knows where it is, and building the wire path from the segments it descended through is both
- * cheaper and impossible to get subtly wrong on a root that is itself a symlink.
- *
- * The file count comes back up the same recursion rather than from a second pass over the finished tree,
- * because the tree stops at `maxDepth` and the count does not: below the cut there are no nodes left to
- * add up. That is also the only place the count costs anything extra — see countFilesUnder.
- */
+// `relPath` is built from descended segments, which is safe even on a symlinked root. Counts come back
+// up the recursion, since below `maxDepth` there are no nodes to sum.
 async function walk(
   dirPath: string,
   relPath: string,
@@ -183,14 +130,8 @@ async function walk(
   };
 }
 
-/**
- * Every file under `dirPath`, counted without building nodes for any of it — what the count needs below
- * the depth the tree stopped at.
- *
- * Through the same reader the walk uses, so the number is of the same tree the caller is looking at: a
- * count that included what the listing hides would describe a directory the caller cannot navigate. An
- * unreadable directory contributes nothing, the same empty answer the walk gives it above.
- */
+// Counts files below `maxDepth` without building nodes, through the same ignore rules as the listing.
+// An unreadable directory counts as zero.
 async function countFilesUnder(dirPath: string, sem: Semaphore): Promise<number> {
   let entries;
   try {

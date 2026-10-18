@@ -20,26 +20,14 @@ export const REGENERATED_DIR_NAMES: readonly string[] = [
   ".gradle", // Gradle's own cache dir — the project's own gradlew wrapper fetches Gradle itself
 ];
 
-/**
- * The agent's own repository inside the workspace, if it ran `git init` there. Ours is elsewhere
- * (<root>/.versioning/<id>, see workspaceVersioning.ts), so this is never our snapshot history.
- *
- * It does not travel, and that is the deliberate answer to "does .git travel": the file tree has
- * always hidden it, so today you can upload a .git you then cannot see — and a transfer that carried
- * it would move an object store file-by-file, where a half-applied push leaves a corrupt repo rather
- * than a merely incomplete tree. A workspace's history is reachable through the snapshot/restore
- * operations instead. Flipping this is one line, and both directions change together.
- */
+// The agent's own repo, not our snapshots (.versioning). Never transferred: a half-applied object
+// store is a corrupt repo. Flipping it changes both directions.
 export const VCS_DIR_NAMES: readonly string[] = [".git"];
 
 /** The effective directory-name contract. Matched on whole path segments only. */
 export const IGNORED_DIR_NAMES: readonly string[] = [...REGENERATED_DIR_NAMES, ...VCS_DIR_NAMES];
 
-/**
- * File suffixes excluded wherever they appear. Only ever compiled output whose source sits beside
- * it; the directory rules above already cover the common case (`__pycache__`), so this exists for
- * the strays that older Python versions leave next to their `.py`.
- */
+/** Compiled strays older Pythons leave beside their `.py`, outside `__pycache__`. */
 export const IGNORED_FILE_SUFFIXES: readonly string[] = [".pyc", ".pyo"];
 
 /** The contract as one value — what a "serve the effective contract" endpoint would return. */
@@ -53,14 +41,8 @@ export const IGNORE_CONTRACT: IgnoreContract = {
   fileSuffixes: IGNORED_FILE_SUFFIXES,
 };
 
-/**
- * Whether a single directory entry is excluded, given its own name and whether it is a directory.
- * This is the primitive a directory walker applies as it descends; `partitionByIgnore` below is the
- * same contract applied to a flat list of already-known relative paths.
- *
- * Returns the matched rule rather than a bare boolean so callers can say *which* rule excluded an
- * entry — that is what lets the upload summary read "node_modules excluded (14,200 files)".
- */
+// The per-entry check a walker applies. Returns the matched rule, not a boolean, so the upload summary
+// can say "node_modules excluded (14,200 files)".
 export function ignoreRuleFor(
   name: string,
   isDirectory: boolean,
@@ -76,13 +58,8 @@ export interface IgnorePartition<T> {
   excluded: Map<string, T[]>;
 }
 
-/**
- * Split `entries` into what a transfer should send and what it should leave out, based on
- * `entry.path`. Directory rules match whole path segments only — so "my-node_modules-notes.txt" is
- * never mistaken for the node_modules directory — and only against segments that really are
- * directories here (the last segment is the file itself). The file-suffix rules apply to that last
- * segment.
- */
+// The same contract over a flat path list. Directory rules match whole non-final segments; suffix
+// rules match only the final one.
 export function partitionByIgnore<T extends { path: string }>(
   entries: T[],
   contract: IgnoreContract = IGNORE_CONTRACT,

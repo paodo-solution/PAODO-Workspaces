@@ -112,10 +112,8 @@ async function installRelay(docker: IDockerClient, containerName: string, worksp
   }
 }
 
-/**
- * Starts the workspace's egress relay, installing it first when `canInstall` (the install needs
- * internet). Resolves true once the relay is listening; never rejects.
- */
+// Starts the workspace's egress relay, installing it first when `canInstall` (the install needs
+// internet). Resolves true once the relay is listening; never rejects.
 export async function ensureProxyRelay(
   docker: IDockerClient,
   containerName: string,

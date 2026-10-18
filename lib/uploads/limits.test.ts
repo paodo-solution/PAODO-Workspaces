@@ -1,8 +1,5 @@
-// formatBytes renders the sizes in the 413 response and in the UI's "nothing was uploaded" message,
-// which is the whole point of that message: a user who is told a file is "over the limit" without
-// legible numbers has learned nothing. The invariants worth holding are that a size never renders as
-// a useless "0", that it picks the largest unit that keeps the value at or above 1, and that the
-// limit itself reads as a round number rather than "1024 MB".
+// formatBytes makes the 413 and "nothing was uploaded" messages legible: never a bare "0", the largest unit
+// keeping the value ≥ 1, and the limit as a round number, not "1024 MB".
 
 import { describe, it, expect } from "vitest";
 import { MAX_UPLOAD_BYTES, formatBytes } from "./limits";

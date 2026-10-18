@@ -14,14 +14,8 @@ export function readAptRecipe(workspaceId: string): AptRecipe {
   return Array.isArray(recipe) ? recipe.filter((p) => typeof p === "string") : [];
 }
 
-/**
- * Adds packages to the workspace's recipe. Called only after apt-get reports success, so the recipe
- * never accumulates a package that failed to install and would fail again on every future rebuild.
- *
- * Deduplicated on the package NAME, so re-installing something at a new pin supersedes the old spec
- * rather than queueing two conflicting ones. A Map keeps each package at its first position while
- * still taking the latest spec, so the replay order stays stable as the recipe grows.
- */
+// Called only after apt-get succeeds, so a failing package never replays on rebuild. Deduped by name:
+// a new pin replaces the old spec but keeps its position, so replay order stays stable.
 export function recordAptPackages(workspaceId: string, packages: string[]): void {
   const byName = new Map<string, string>();
   for (const spec of [...readAptRecipe(workspaceId), ...packages]) {

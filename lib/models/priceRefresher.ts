@@ -35,11 +35,8 @@ function persist(catalog: Catalog): void {
   renameSync(tmp, CACHE_FILE);
 }
 
-/**
- * Adopt the last successfully fetched catalog, if there is one. Synchronous and called before the
- * server listens, so no request can be priced from the stale seed while the first fetch is in
- * flight. A missing or unreadable cache is normal (first boot) and simply leaves the seed in place.
- */
+// Loads the last fetched catalog synchronously before the server listens, so nothing is priced from
+// the stale seed. A missing cache (first boot) keeps the seed.
 function loadCached(): boolean {
   let raw: string;
   try {
@@ -64,20 +61,8 @@ function loadCached(): boolean {
   }
 }
 
-/**
- * Put back the rates a source that could not deliver a complete response would have supplied.
- *
- * `setCatalog` is otherwise wholesale, and must stay that way: merging by default would keep a rate
- * for a model upstream has dropped, which is the stale-rate failure this whole file exists to end.
- * This is the one exception, kept narrow enough that it cannot cause that. It only fills keys the new
- * catalog does NOT have (a fresh rate always wins), only from the sources that actually failed, and
- * only for models still offered — so it can never resurrect a retired model, and it stops happening
- * the moment the source answers again.
- *
- * Without it, a transient outage is worse than a total one: `buildCatalog` still returns, the tick
- * counts as success, and the wholesale swap DELETES rates the process was already holding. Every turn
- * on those models then freezes cost `undefined` (lib/usage/record.ts), which no later refresh repairs.
- */
+// Keeps a failed source's old rates for still-offered models the new catalog lacks; otherwise the
+// wholesale swap would drop them and freeze those turns' cost as undefined.
 function carryForward(catalog: Catalog, failedSources: readonly VendoredEntry["source"][]): string[] {
   const offered = new Set(offeredModelIds());
   const carried: string[] = [];

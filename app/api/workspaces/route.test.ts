@@ -1,8 +1,5 @@
-// POST /api/workspaces is the only create path; these tests pin its HTTP contract for the name
-// policy: a duplicate name is a 409 and a malformed name a 400, each with a machine-readable `code`,
-// so the UI can surface the reason instead of silently swallowing a generic 500. The store itself is
-// faked — its uniqueness/validation logic is covered in workspaceStore.uniqueness.test.ts; here we
-// only assert the route maps a thrown WorkspaceNameError to the right status via guards.ts.
+// POST /api/workspaces is the only create path: a duplicate name is a 409 and a malformed one a 400, each
+// with a `code`. The store is faked; its own rules live in workspaceStore.uniqueness.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WorkspaceNameError } from "@/lib/workspace/name";
 

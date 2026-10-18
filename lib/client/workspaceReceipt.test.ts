@@ -1,7 +1,5 @@
-// The browser half of the receipt is what every optimistic block trusts to decide whether the server
-// confirmed its assumption. What matters is the degrade path: a response that carries no usable
-// values must read as "nothing confirmed" so callers fall back to what they rendered, never as a
-// throw that leaves the UI mid-save.
+// Optimistic blocks trust this to know what the server confirmed. A response with no usable values must
+// read as "nothing confirmed", never throw and leave the UI mid-save.
 import { describe, expect, it } from "vitest";
 import { confirmedValues } from "./workspaceReceipt";
 

@@ -63,12 +63,8 @@ A workspace with no declared skills is not callable. If the workspace is not con
     return (await this.runCall(input)).result;
   }
 
-  /**
-   * Returns UI-only metadata alongside the model-facing string: the callee's persisted
-   * conversation id so the runner can attach a deep-link to the callee's session.
-   * `onLink` fires as soon as the callee conversation is created — before the call finishes —
-   * so the runner surfaces the link mid-run rather than only at completion.
-   */
+  // Also returns the callee's conversation id for the UI deep-link. `onLink` fires as soon as that
+  // conversation exists, so the link shows mid-run.
   readonly callWithMeta = (
     input: z.infer<typeof schema>,
     onLink?: (meta: CallAgentMeta) => void,

@@ -1,7 +1,5 @@
-// The UI-administrator endpoint for the CLI/platform credential. Runs against the real
-// credentialStore rather than a vi.mock so the shared credential handlers, the store, and this
-// route's wire shape are all exercised together — a hand-written mock of the store would be free to
-// drift from it and keep passing.
+// UI-admin endpoint for the CLI credential, run against the real credentialStore so the shared handlers,
+// the store and this route's wire shape are exercised together; a store mock could drift and keep passing.
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";

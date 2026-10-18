@@ -1,11 +1,5 @@
-/**
- * Agent tool: copy a file or a whole folder from the local workspace into a shared drive so other
- * agents can use it. Workspace bytes are read host-side and written into the drive host-side (drives
- * are never mounted into a container). A drive is a plain live filesystem: one file per path, newest
- * wins. A folder is copied file by file, structure preserved; each file is bounded individually, so a
- * whole directory costs no more heap than its largest file. Uploading over an existing path overwrites
- * it and the result SIGNALS the overwrite. Reads/writes raw bytes, so binary files stay intact.
- */
+// Copies a workspace file or folder into a drive, host-side as raw bytes, one bounded file at a time.
+// Drives are plain filesystems, so an existing path is overwritten and the result says so.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

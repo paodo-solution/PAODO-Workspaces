@@ -53,11 +53,8 @@ function endOf(id: string, field: "from" | "to", deps: ConnectionDeps): Connecti
   throw new AppError("NOT_FOUND", `no workspace or drive has the id ${id}`, { field });
 }
 
-/**
- * Connect two things, whichever two they are. A drive and a workspace make a drive link, in either
- * order; two workspaces make an agent call, the first calling the second. Both are idempotent: an
- * already-connected pair answers with the connection it has.
- */
+// A drive and a workspace (either order) make a drive link; two workspaces make the first call the
+// second. Idempotent: a connected pair returns its connection.
 export function connect(input: ConnectInput, deps: ConnectionDeps = defaultDeps()): Connection {
   const from = requireNonEmptyString(input.from, "from");
   const to = requireNonEmptyString(input.to, "to");
@@ -83,10 +80,8 @@ export function connect(input: ConnectInput, deps: ConnectionDeps = defaultDeps(
   return { kind: "link", id: link.id, drive: end(drive), workspace: end(workspace) };
 }
 
-/**
- * Remove one connection of either kind; the id says which graph holds it. `deleted: false` means
- * nothing is connected under that id now, which both graphs answer for an id already removed.
- */
+// Remove one connection of either kind; the id says which graph holds it. `deleted: false` means
+// nothing is connected under that id now, which both graphs answer for an id already removed.
 export function disconnect(connectionIdValue: unknown, deps: ConnectionDeps = defaultDeps()): { deleted: boolean } {
   const connectionId = requireNonEmptyString(connectionIdValue, "connectionId");
   const kind = connectionKind(connectionId);

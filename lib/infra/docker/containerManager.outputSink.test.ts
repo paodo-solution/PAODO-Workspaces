@@ -1,12 +1,5 @@
-// Two guarantees about how command output leaves the container, both of them load-bearing.
-//
-// 1. A throw inside an output handler must not escape. Node invokes those handlers directly, so an
-//    exception there is NOT caught by the promise chain around execStreaming — it lands on
-//    server.ts's process-level uncaughtException guard, which fatal()s and exits. That is how an
-//    unbounded `stdout += chunk` used to turn one workspace's noisy command into an instance-wide
-//    outage. ExecOutput now caps the accumulation; this is the backstop behind it.
-// 2. The overflow sink writes inside the container, capped and self-pruning, because the agent's
-//    shell can only read paths that exist in there.
+// An output-handler throw must not escape: it bypasses the promise chain and kills the process (ExecOutput
+// caps first, this is the backstop). The overflow sink writes inside the container, capped and self-pruning.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
@@ -97,10 +90,8 @@ describe("openOutputSink", () => {
     const { args } = openSink();
     const script = args[args.length - 1];
 
-    // These containers are never auto-recreated, so nothing else would ever clear this directory.
-    // Per-file cap × files kept is the number that matters: it is the most this feature can occupy
-    // in a container's writable layer, which the workspace disk check cannot see and nothing but
-    // destroying the container reclaims. 5 × 20MB.
+    // Nothing else clears this dir in a never-recreated container, and the disk check cannot see it, so cap ×
+    // files kept (5 × 20MB) is the most it can ever occupy.
     expect(script).toContain("tail -n +5");
     expect(script).toContain("rm -f");
     // ...but never a file still being written: the prune runs while other commands may be mid-spill,

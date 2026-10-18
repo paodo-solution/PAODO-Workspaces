@@ -261,12 +261,8 @@ describe("schedule validation", () => {
     }
   });
 
-  /**
-   * The declared input types bind in-process callers; a JSON body only claims to match them. Without
-   * these guards `prompt: 5` reached `.trim()` as a number and left this layer as a TypeError — an
-   * opaque 500 rather than the named rejection every other bad value gets — and `enabled: "false"`
-   * was truthy, so it stored a disabled schedule as enabled and put a non-boolean in the file besides.
-   */
+  // JSON only claims to match the declared types: `prompt: 5` hit `.trim()` and 500'd, and `enabled: "false"`
+  // was truthy, storing a disabled schedule as enabled with a non-boolean.
   it("refuses a wrong-typed value instead of coercing or crashing on it", () => {
     const cases: ScheduleInput[] = [
       { ...VALID, prompt: 5 as never },

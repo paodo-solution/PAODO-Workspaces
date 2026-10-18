@@ -7,9 +7,8 @@ import tar from "tar-stream";
 import { AppError } from "@/lib/errors/appError";
 import { collectTransfer, packTransfer, putTransfer } from "./transfer";
 
-// Small enough to trigger from a handful of entries. The real ceilings are sized to admit a large
-// source tree, which is not a thing to build inside a unit test.
-// High enough that the ordinary transfers in this file are unaffected, low enough to exceed on purpose.
+// Real ceilings admit a large tree, too big to build in a unit test; this one trips from a handful of
+// entries while leaving the ordinary transfers here unaffected.
 const ENTRY_CAP = 8;
 const BYTE_CAP = 64;
 vi.mock("@/lib/uploads/limits", async (importOriginal) => ({
@@ -130,9 +129,8 @@ describe("tar transfers", () => {
     await expect(collectTransfer(SOURCE, "link.txt")).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });
 
-  // The receive half of the rule above. Containment alone passes this — the link points inside the
-  // workspace — so the push landed on the link's target, destroying a file the receipt never named
-  // while reporting the link's own path as overwritten. Both directions refuse it now.
+  // Containment passes this link (it points inside), so the push landed on its target, destroying an unnamed
+  // file while reporting the link overwritten. Both directions refuse now.
   it("refuses a destination that resolves through a symlink rather than following it", async () => {
     fs.writeFileSync(path.join(SOURCE, "link.txt"), "new");
     fs.writeFileSync(path.join(DEST, "real.txt"), "secret");
@@ -187,19 +185,16 @@ describe("tar transfers", () => {
     expect(fs.existsSync(path.join(DEST, "landed"))).toBe(false);
   });
 
-  // The CLI half had this exact archive hang rather than reject, because it relied on destroy(err)
-  // surfacing as an "error" event while the extract was parked waiting for next(). Pinned here too:
-  // server-side the same shape must fail the request, never hold the connection open.
+  // The CLI hung on this archive, as destroy(err) never surfaced while extract waited on next(). Server-side the
+  // same shape must fail the request, not hold the connection.
   it("refuses an archive whose first entry is a child, rather than stalling on it", async () => {
     await expect(
       putTransfer(DEST, ".", await archive([{ name: "payload/orphan.txt", type: "file", body: Buffer.from("x") }])),
     ).rejects.toBeInstanceOf(AppError);
   }, 5_000);
 
-  // Every existing test pipes packTransfer straight into putTransfer, so nothing exercised the one
-  // conversion the pull route actually performs. tar-stream's pack is a streamx stream with no
-  // readableHighWaterMark, and Readable.toWeb rejects it — so every pull answered INTERNAL_ERROR while
-  // the archive was being built correctly. Assert the route's real path, not just the operation's.
+  // tar-stream's pack lacks readableHighWaterMark, so Readable.toWeb rejected it and every pull answered
+  // INTERNAL_ERROR. Tests the route's real conversion, not just packTransfer → putTransfer.
   it("packs into a stream a Response can consume, the way the pull route serves it", async () => {
     fs.writeFileSync(path.join(SOURCE, "a.txt"), "a");
     fs.mkdirSync(path.join(SOURCE, "nested"));

@@ -26,11 +26,7 @@ export interface WorkspaceMetadataInput {
   description?: string;
   maxIterations?: number;
   maxRunMinutes?: number;
-  /**
-   * Any subset of the three model fields. What is omitted is resolved from the workspace's current
-   * choice and the provider's catalog, the same way the picker resolves it — so naming just a provider
-   * is a complete request.
-   */
+  // Any subset of the model fields; the rest resolve like the picker, so a provider alone is enough.
   model?: RequestedModelSelection;
 }
 
@@ -52,19 +48,8 @@ export type MetadataWriter = Pick<
   | "setWorkspaceLlm"
 >;
 
-/**
- * Checks and canonicalizes every supplied metadata field, touching nothing. Pure so the caller can
- * validate a whole request before its first write — see update.ts for why that ordering is the
- * contract rather than an implementation detail.
- *
- * Out-of-range numbers are rejected rather than clamped, and the message states the accepted range:
- * callers with no form to validate against — the CLI, scripts, an agent — otherwise get "ok" back for
- * a value we silently replaced.
- *
- * `current` is the workspace's existing model choice, which a partial model request resolves against.
- * It defaults to the selection a fresh workspace would run, so a caller validating a request with no
- * workspace in hand gets that same answer.
- */
+// Pure, so a whole request is checked before any write. Out-of-range numbers are refused, not clamped;
+// `current` (default: a fresh workspace's) resolves a partial model.
 export function validateMetadata(
   input: WorkspaceMetadataInput,
   current: ModelSelection = defaultModelSelection(),
@@ -148,14 +133,8 @@ export function validateMetadata(
       throw new WorkspaceUpdateError(`llmModel for ${selection.provider} must be one of: ${models.join(", ")}`);
     }
 
-    /**
-     * An effort the caller named that the model does not accept is refused rather than replaced: a
-     * caller with no dropdown constraining it would otherwise read "ok" for a value we substituted.
-     * An omitted one cannot land here — resolution only ever picks a level the model accepts.
-     *
-     * Checked per MODEL, not per provider: Scaleway's levels belong to the model, and its gateway
-     * accepts every level on every one of them, so this is the only thing that can refuse a mismatch.
-     */
+    // A named effort the model rejects is refused, not replaced. Checked per model: Scaleway's gateway
+    // accepts any level, so this is the only check.
     const efforts = modelReasoningEfforts(selection.provider, selection.model);
     const named = input.model.reasoningEffort?.trim();
     // Guards a model with no dial at all, which would otherwise be told to pick "one of: ".
@@ -175,11 +154,8 @@ export function validateMetadata(
   return metadata;
 }
 
-/**
- * The store writes that applying `metadata` requires, one per supplied field and in a fixed order.
- * Returned as descriptors rather than performed here so the caller keeps ownership of what happens
- * between them: which fields it records as applied, and how it reports a write that refuses.
- */
+// One write per supplied field, in a fixed order. Returned rather than run, so the caller decides how
+// to record and report each one.
 export function metadataWrites(
   id: string,
   metadata: WorkspaceMetadata,

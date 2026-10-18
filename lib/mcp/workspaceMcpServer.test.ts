@@ -1,6 +1,4 @@
-// The Workspace-MCP surface exposes every skill the workspace declares in .skills/ and runs them
-// through executeSkill, mapping the result onto MCP tool results. These pin that the exposed set is
-// exactly what is on disk (read live, so a deleted skill is uncallable and not merely unlisted) and
+// Pins that the exposed skills are exactly .skills/ on disk, read live so a deleted skill is uncallable, and
 // the completed/failed → MCP-result mapping.
 
 import { describe, it, expect, vi } from "vitest";

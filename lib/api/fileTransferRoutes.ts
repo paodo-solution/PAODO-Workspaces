@@ -18,11 +18,7 @@ import {
 
 /** How a versioned space records what a push did. Omitted entirely by a space that keeps no history. */
 export interface TransferVersioning {
-  /**
-   * Run once the archive has been staged and validated, before anything is applied. A pending burst
-   * from another client is a different user action, so it becomes its own revision rather than being
-   * folded into this one.
-   */
+  // Runs after staging, before applying, so another client's pending burst becomes its own revision.
   beforeApply(): Promise<void>;
   /** Record a revision covering what was applied. `false` means it could not be recorded. */
   commit(receipt: PutTransferReceipt): Promise<boolean>;

@@ -1,15 +1,13 @@
-// Background-task lifecycle: startBackground launches a command DETACHED (its own setsid session,
-// output to a log file) so the foreground exec timeout/escape kill can never reach it; stopBackground
-// group-kills the recorded pgid; stop()/remove() clear the per-workspace bookkeeping.
+// startBackground runs DETACHED (own setsid, log file) out of reach of foreground kills; stopBackground
+// group-kills the recorded pgid; stop()/remove() clear per-workspace bookkeeping.
 import { describe, it, expect, beforeEach } from "vitest";
 import { ContainerManager } from "./containerManager";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 
 const OK: DockerResult = { stdout: "", stderr: "", code: 0 };
 
-// Records every exec() invocation and answers the pidfile poll with a canned pgid, so we can assert
-// on the exact in-container commands startBackground/stopBackground issue. `scanOut` answers the
-// rehydration scan (the exec whose script does the `kill -0` liveness check over the pidfiles).
+// Records every exec() and answers the pidfile poll with a canned pgid; `scanOut` answers the rehydration
+// scan's `kill -0` liveness check.
 function makeDocker(opts: { pgid?: string; scanOut?: string } = {}): { docker: IDockerClient; execCalls: string[][] } {
   const { pgid = "4242", scanOut } = opts;
   const execCalls: string[][] = [];
@@ -49,9 +47,8 @@ function makeManager(opts: { pgid?: string; scanOut?: string } = {}) {
   return { mgr, execCalls };
 }
 
-// Rehydration lives on the BackgroundTaskManager collaborator (invoked from the reattach path in
-// _ensureContainer); reach it directly so these unit tests don't have to stand up the whole
-// container-status state machine.
+// Rehydration lives on BackgroundTaskManager (called from _ensureContainer's reattach path); reached directly
+// to skip the container-status state machine.
 function rehydrate(mgr: ContainerManager, workspaceId: string): Promise<void> {
   return (mgr as unknown as { background: { rehydrate(id: string): Promise<void> } }).background.rehydrate(workspaceId);
 }
@@ -245,9 +242,8 @@ describe("ContainerManager remove result", () => {
   });
 });
 
-// Rehydration: after an app restart the in-memory map is empty but the workspace container and its
-// servers keep running. Rebuilding from the container's pidfiles makes a survivor server visible
-// again — surfaced in the agent's context and stoppable — instead of colliding invisibly.
+// After a restart the map is empty but servers keep running; rebuilding from pidfiles makes a survivor
+// visible and stoppable instead of colliding invisibly.
 describe("ContainerManager background-task rehydration", () => {
   it("rebuilds the map from the container's live pidfiles (decoding the base64 command)", async () => {
     const scanOut = `${taskLine("task-aaa", 7001, "npm run dev")}\n${taskLine("task-bbb", 7002, "python3 -m http.server 8080")}`;

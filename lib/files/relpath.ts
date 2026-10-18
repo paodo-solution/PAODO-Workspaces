@@ -3,12 +3,8 @@
 
 import path from "path";
 
-/**
- * Where the agent's container mounts the workspace. Named here because it is the single most likely
- * thing a caller gets wrong: an agent that has been editing /workspace/src/main.ts through its own
- * tools will reach for that same string here, and it deserves an answer that names the right form
- * rather than a bare "invalid path".
- */
+// The container's mount point, named so an agent sending /workspace/... is told the right form rather
+// than a bare "invalid path".
 export const CONTAINER_MOUNT = "/workspace";
 
 /** A path a caller is not allowed to say. Lexical only — see resolveContained for the disk half. */
@@ -26,11 +22,8 @@ function reject(attemptedPath: string, reason: string): never {
   throw new InvalidPathError(attemptedPath, reason);
 }
 
-/**
- * Normalize a caller-supplied path into the wire space. Returns "" for the root; every other result
- * is a relative POSIX path with no "." or ".." segments and no trailing slash, so it is usable as a
- * stable identity key as well as a path.
- */
+// "" for the root, else a relative POSIX path with no "."/".." or trailing slash, usable as an identity
+// key.
 function normalizeClientPath(clientPath: string): string {
   const trimmed = clientPath.trim();
 
@@ -58,10 +51,8 @@ function normalizeClientPath(clientPath: string): string {
   return normalized;
 }
 
-/**
- * A path that must name an entry inside the space. The root is refused: every caller of this reads,
- * writes or deletes one thing, and "" reaching fs.rm would take the whole workspace or drive with it.
- */
+// A path that must name an entry inside the space. The root is refused: every caller of this reads,
+// writes or deletes one thing, and "" reaching fs.rm would take the whole workspace or drive with it.
 export function relativeEntryPath(clientPath: string): string {
   const relPath = normalizeClientPath(clientPath);
   if (relPath === "") reject(clientPath, "Path names the root, not an entry inside it");
@@ -74,11 +65,7 @@ export function relativeDirPath(clientPath: string | null | undefined): string {
   return normalizeClientPath(clientPath);
 }
 
-/**
- * The wire path for an absolute host path known to sit under `rootDir` — the direction the file tree
- * and the filesystem watcher need, since both start from what the OS handed them. Returns "" for
- * `rootDir` itself.
- */
+/** Host path under `rootDir` to wire path ("" for the root), for the tree and the watcher. */
 export function toRelativePath(rootDir: string, absPath: string): string {
   const relative = path.relative(rootDir, absPath);
   return relative === "" ? "" : relative.split(path.sep).join("/");

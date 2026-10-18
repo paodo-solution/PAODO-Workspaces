@@ -28,19 +28,8 @@ function invalid(message: string): DriveNameError {
 // Control chars (C0 range + DEL) that must never appear in a filesystem-facing or displayed name.
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
-/**
- * Validates and cleans a user-supplied drive name. Returns the canonical display form (trimmed,
- * NFC-normalized). Throws DriveNameError("DRIVE_NAME_INVALID") on any violation.
- *
- * The name never reaches the drive's own path — that is keyed by UUID, so renaming is safe — but
- * drive_download writes into a workspace at downloads/<drive-name>/, so it becomes a real directory
- * inside a workspace and is held to the same rules a workspace name is.
- *
- * The non-string guard is not redundant with the declared type: a name arriving in a JSON body has
- * only claimed to be a string, and `.trim()` on anything else leaves a TypeError here — which no
- * adapter recognizes as an expected failure, so it surfaces as an opaque 500 rather than the 400
- * this policy exists to give.
- */
+// Returns the trimmed NFC name or throws DRIVE_NAME_INVALID. Held to workspace-name rules since it
+// becomes downloads/<drive-name>/; the string check stops a TypeError 500.
 export function validateDriveName(raw: string): string {
   if (typeof raw !== "string") throw invalid("Drive name must be a string.");
   const name = raw.trim().normalize("NFC");
@@ -60,12 +49,8 @@ export function validateDriveName(raw: string): string {
   return name;
 }
 
-/**
- * Folds a name to its uniqueness key: NFC + trim + case-insensitive. Two names with the same key are
- * treated as the same name, because two drives are already indistinguishable by name in two places:
- * resolveDriveDir resolves a drive_* tool's `driveRef` by name case-insensitively, and drive_download
- * lands every drive's files at downloads/<drive-name>/, where a duplicate would silently overwrite.
- */
+// NFC, trimmed, case-folded: drive tools match names case-insensitively, and duplicates would overwrite
+// each other under downloads/.
 export function normalizeForUniqueness(name: string): string {
   return name.trim().normalize("NFC").toLowerCase();
 }

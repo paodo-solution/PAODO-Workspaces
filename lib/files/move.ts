@@ -17,11 +17,7 @@ interface MoveBody {
   destinationDirectory: string;
 }
 
-/**
- * Why one item of a batch could not move. It carries a code rather than a status: a batch that moved
- * some of its items answers 200 with the failure inside it, so the transport status is not the place
- * the reason can live.
- */
+// A code, not a status: a partly successful batch answers 200, so the reason lives in the body.
 interface MoveFailure {
   code: AppErrorCode;
   error: string;
@@ -179,15 +175,8 @@ async function moveOne(
   }
 }
 
-/**
- * What a batch move answers with, whether or not it succeeded.
- *
- * This is deliberately its own declared shape rather than the plain error envelope: a batch that moved
- * two of three items has to report both halves at once, because the client needs the per-item results
- * to reconcile its tree no matter what stopped the rest. `results` is therefore present on every
- * response, including a refusal — its absence is how the client tells a rejected batch from a request
- * that was never understood (see useFileOperations.handleMoveMany).
- */
+// Not the plain error envelope: `results` is on every response, refusals included, so the client can
+// reconcile its tree; its absence means the request wasn't understood.
 interface MoveBatchBody {
   ok?: boolean;
   results: { sourcePath: string; path: string; unchanged: boolean }[];

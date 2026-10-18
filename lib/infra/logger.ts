@@ -107,8 +107,8 @@ function eventFromMessage(message: string | undefined, level: number): string {
   return /^[a-z]/.test(event) ? event : `log_${event}`;
 }
 
-/** Give every record an event and outcome; explicit fields win. Error and fatal call sites must set their
- * own (errorLogContract.test.ts). */
+// Give every record an event and outcome; explicit fields win. Error and fatal call sites must set their
+// own (errorLogContract.test.ts).
 function applyLogContract(args: unknown[], level: number): unknown[] {
   const message = args.find((arg): arg is string => typeof arg === "string");
   const defaults = {
@@ -179,8 +179,8 @@ export function createLogger(context: string) {
   return root.child({ context });
 }
 
-/** Security-event logger, tagged `audit: true` on the same stream (`jq 'select(.audit)'`). LOG_LEVEL
- * applies too, so a level above `info` hides low-severity audit events. */
+// Security-event logger, tagged `audit: true` on the same stream (`jq 'select(.audit)'`). LOG_LEVEL
+// applies too, so a level above `info` hides low-severity audit events.
 export function createAuditLogger(context: string) {
   return root.child({ context, audit: true });
 }

@@ -1,8 +1,5 @@
-/**
- * The concurrency cases here are not hypothetical. Six simultaneous requests to a limit-4 Mistral
- * model were measured returning remaining = 3, 1, 1 and 0 — two callers told the same number — and
- * two 429s. Every assertion about queueing and pessimistic reconciliation exists because of that.
- */
+// Not hypothetical: six concurrent calls to a limit-4 Mistral model returned remaining 3, 1, 1, 0 and two
+// 429s. The queueing and pessimistic reconciliation assertions exist because of that.
 import { describe, it, expect } from "vitest";
 import { ProviderPacer, providerPacer, NOTICE_THRESHOLD_MS } from "./providerPacer";
 
@@ -10,13 +7,8 @@ const LARGE = { provider: "mistral", model: "mistral-large-latest" };
 const CODESTRAL = { provider: "mistral", model: "codestral-latest" };
 const HAIKU = { provider: "anthropic", model: "claude-haiku-4-5" };
 
-/**
- * A pacer on a clock the test drives: sleeps advance time instead of taking it.
- *
- * The yield before the clock moves matters. A real sleep suspends its caller first, so anything
- * starting in the same tick sees the earlier time; advancing synchronously would hand later callers
- * a clock that had already jumped and hide the queueing this file exists to test.
- */
+// A pacer on a test-driven clock. It yields before advancing, as a real sleep would; advancing synchronously
+// would hand later callers a jumped clock and hide the queueing under test.
 function testPacer() {
   let clock = 1_700_000_000_000;
   const slept: number[] = [];
@@ -78,12 +70,8 @@ describe("ProviderPacer — admission", () => {
     expect(slept).toHaveLength(1);
   });
 
-  /**
-   * Measured on mistral-medium: an agent's context reaches 49,263 tokens by the twelfth turn against
-   * a 25,000/minute ceiling, and the provider still serves it. A gate that waits for a call to fit
-   * would wait forever, so it must send on a clear window instead of stalling the run to its
-   * deadline.
-   */
+  // Measured: context reaches 49,263 tokens against a 25,000/minute ceiling and is still served. Waiting for
+  // a fit would wait forever, so a clear window must admit it.
   it("still admits a call whose context outgrew the whole per-minute allowance", async () => {
     const MEDIUM = { provider: "mistral", model: "mistral-medium-latest" };
     const { pacer, slept } = testPacer();
@@ -170,9 +158,8 @@ describe("ProviderPacer — admission", () => {
     const TOKENS = { provider: "scaleway", model: "short-token-reset" };
     const { pacer, slept, at } = testPacer();
 
-    // Reserve one cold-estimated send before learning that it filled the token allowance.
-    // The provider says that allowance reopens in three seconds, much sooner than the conservative
-    // 60-second local ledger. The old behavior slept to the reset and then slept another 57 seconds.
+    // One cold send fills the token allowance, which the provider says reopens in 3s, well before the 60s ledger.
+    // The old code slept to the reset, then another 57s.
     const first = await pacer.acquire(TOKENS);
     pacer.settle(TOKENS, { limitTokens: 25_000, remainingTokens: 0, resetTokensAt: at() + 3_000 });
     first.release();
@@ -267,11 +254,8 @@ describe("ProviderPacer — concurrent callers", () => {
     alongside.release();
   });
 
-  /**
-   * With nothing else out, the reading is the whole truth and is adopted as-is — including upwards.
-   * Clamping to the older projection forever would leave a bucket empty for good, and every later
-   * call would wait on a window that had long since reopened.
-   */
+  // With nothing else in flight, a reading is adopted as-is, even upwards; clamping to the old projection
+  // would leave a bucket empty after its window reopened.
   it("adopts a reading outright when no other call is in flight", async () => {
     const { pacer } = testPacer();
     pacer.settle(LARGE, mistralState(1));
@@ -347,11 +331,8 @@ describe("ProviderPacer — learning", () => {
     expect(pacer.snapshot(LARGE).recoveryMs).toBeLessThan(widened);
   });
 
-  /**
-   * A refusal must not fabricate a `remaining` of zero. Mistral reports nothing on a successful
-   * stream, so an invented zero would never be corrected and would throttle the bucket for good;
-   * the ledger and the learned ceiling carry the refusal instead, and they expire on their own.
-   */
+  // A refusal must not invent remaining = 0: Mistral streams report nothing, so it would never be corrected.
+  // The ledger and learned ceiling carry it and expire on their own.
   it("records a refusal without inventing a remaining count", async () => {
     const { pacer, advance } = testPacer();
     for (let i = 0; i < 4; i++) (await pacer.acquire(LARGE)).release();
@@ -407,11 +388,8 @@ describe("ProviderPacer — learning", () => {
   });
 });
 
-/**
- * Mistral reports rate-limit headers on ordinary responses and NONE on streaming ones — verified
- * against the live API. The agent loop streams, so on the one provider that throttles hard enough to
- * matter the pacer never sees `remaining` and has to work entirely from what it counted itself.
- */
+// Mistral sends rate-limit headers on ordinary responses but NONE on streams (verified live), so the pacer
+// never sees `remaining` and works only from its own counts.
 describe("ProviderPacer — no headers at all, as a streaming Mistral call sees it", () => {
   it("sends freely until a refusal, since nothing has stated a ceiling", async () => {
     const { pacer, slept } = testPacer();

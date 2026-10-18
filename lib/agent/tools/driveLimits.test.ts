@@ -1,7 +1,5 @@
-// Ceilings on the drive tools. These are the app's only host-side reads: drives are never mounted
-// into a container, so `fs.readFile` here lands straight in the app's heap with no container limit
-// and no capture ceiling above it. Each test below pins one half of the contract — the read is
-// bounded, and the refusal says so rather than returning a partial file as if it were whole.
+// Drives are never mounted, so these reads land in the app's heap with no ceiling above them. Each test pins
+// that the read is bounded, and the refusal says so rather than passing a partial file as whole.
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -40,10 +38,8 @@ function seedDrive(name: string): string {
   return mods.store.driveContentDir(drive.id);
 }
 
-/**
- * A file of `size` bytes that costs no disk: truncate leaves a hole, and every ceiling here is
- * checked against the size stat reports. Without this the transfer tests would each write 50MB.
- */
+// A file of `size` bytes that costs no disk: truncate leaves a hole, and every ceiling here is
+// checked against the size stat reports. Without this the transfer tests would each write 50MB.
 function sparseFile(absPath: string, size: number): void {
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
   fs.closeSync(fs.openSync(absPath, "w"));
@@ -130,10 +126,8 @@ describe("drive transfer ceiling", () => {
 
 describe("drive read bounding, beyond plain size", () => {
   it("refuses a file whose reported size understates it, rather than reading forever", async () => {
-    // A character device stats as 0 bytes and yields bytes without end. Reached through a drive it is
-    // an unbounded read: the previous fs.readFile would have consumed the heap until the process
-    // died. The bound catches it because more arrived than the stat promised — the same signal as a
-    // file being written while it is read.
+    // A character device stats 0 bytes and never ends; fs.readFile would have eaten the heap. The bound catches
+    // it because more arrived than stat promised, as with a file still being written.
     const dir = seedDrive("notes");
     fs.symlinkSync("/dev/zero", path.join(dir, "endless"));
 

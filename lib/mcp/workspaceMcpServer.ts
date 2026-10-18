@@ -109,11 +109,8 @@ function toolError(text: string): CallToolResult {
   return { isError: true, content: [{ type: "text", text }] };
 }
 
-/**
- * Builds a fresh low-level MCP Server bound to one workspace, with tools/list and tools/call wired
- * to the workspace's declared skills. A new instance is created per request in the stateless HTTP
- * handler, so nothing here holds cross-request state.
- */
+// An MCP server exposing one workspace's skills as tools. Built per request by the stateless handler,
+// so it holds no cross-request state.
 export function buildWorkspaceMcpServer(workspaceId: string, deps: WorkspaceMcpDeps = {}): Server {
   const description = getStore().getWorkspace(workspaceId)?.description?.trim();
   const server = new Server(

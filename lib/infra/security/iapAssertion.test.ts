@@ -1,6 +1,5 @@
-// This is the only thing standing between "a header said so" and an authenticated session, so the
-// tests are written around forgeries rather than the happy path: a wrong audience, a swapped key, an
-// algorithm the token chose for itself, a payload edited after signing.
+// The only thing between "a header said so" and a session, so tests target forgeries: wrong audience, swapped
+// key, self-chosen algorithm, payload edited after signing.
 import { describe, it, expect, vi } from "vitest";
 import { generateKeyPairSync, sign as cryptoSign, type KeyObject } from "crypto";
 

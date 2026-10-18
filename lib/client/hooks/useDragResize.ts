@@ -3,27 +3,18 @@ import { useCallback, useEffect, useRef } from "react";
 type ResizeCursor = "col-resize" | "row-resize";
 
 interface UseDragResizeOptions {
-  /**
-   * Called on every mousemove while a drag is active. Compute the new size (or ratio) here from the
-   * event and your own container bounds, then set state. Kept caller-side on purpose so each site's
-   * distinct geometry — which edge, pixels vs. ratio, clamp bounds — stays legible at its use site.
-   */
+  // Called on every mousemove during a drag; computes and sets the new size. Caller-side so each site's
+  // geometry stays visible where it's used.
   onMove: (e: MouseEvent) => void;
   /** Body cursor shown for the duration of the drag. Defaults to horizontal (column) resize. */
   cursor?: ResizeCursor;
-  /**
-   * Notified when a drag starts (true) and ends (false). Wire it to an `isDragging` state to, e.g.,
-   * overlay a pointer-events shield so an iframe/CodeMirror doesn't swallow the mouse mid-drag.
-   */
+  // Notified when a drag starts (true) and ends (false). Wire it to an `isDragging` state to, e.g.,
+  // overlay a pointer-events shield so an iframe/CodeMirror doesn't swallow the mouse mid-drag.
   onDragChange?: (dragging: boolean) => void;
 }
 
-/**
- * Owns the identical mouse-drag boilerplate every resizable divider needs — the window
- * mousemove/mouseup listeners, the dragging guard, the body cursor/user-select toggle, and cleanup —
- * so pages don't hand-copy it. Returns a `startDrag` to bind to the divider's `onMouseDown`; the
- * per-site geometry lives in `onMove`.
- */
+// Shared drag boilerplate for resizable dividers: listeners, guard, body cursor and cleanup. Bind the
+// returned `startDrag` to the divider's `onMouseDown`.
 export function useDragResize({ onMove, cursor = "col-resize", onDragChange }: UseDragResizeOptions): () => void {
   const dragging = useRef(false);
   // Latest callbacks in refs (written in an effect), so inline closures don't re-subscribe the listeners.

@@ -1,14 +1,5 @@
-// The agent's home must outlive its container.
-//
-// Everything the agent installs that is NOT an apt package lands under /home/dev — npm globals, pip
-// packages, extra node/python versions, and anything a downloaded installer places (rustup, go and
-// friends hardcode $HOME and cannot be redirected). Left in the container's writable layer, all of
-// it dies with a `docker rm`, which is why containers were never recreated and why a /workspace-only
-// backup silently restores a workspace with the user's files and none of their tools.
-//
-// Mounting it durably is what makes that whole class of loss impossible, so these tests pin the two
-// halves that have to hold together: the mount is always there, and it is filled from the image
-// exactly once — a container started on an empty home reads as "node is missing", not "setup broke".
+// /home/dev holds every non-apt install (npm, pip, runtimes, $HOME-bound installers) and must outlive the
+// container. Pins that the mount is always there and seeded from the image exactly once.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { access, mkdtemp, mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";

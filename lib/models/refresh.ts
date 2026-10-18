@@ -1,28 +1,5 @@
-/**
- * Builds the model-pricing catalog from the public price lists. This is the ONE implementation of
- * "what are the current rates" — both consumers import it:
- *   - scripts/update-pricing.ts, which vendors the result into ./model-pricing.json at author time
- *   - ./priceRefresher.ts, which swaps the result into the live catalog on a timer in production
- * Keeping it in one place is the point: a second copy of the provider filter or the key-prefix rules
- * would drift, and a drifted rate is exactly the bug this file exists to prevent.
- *
- * ONE BULK SOURCE, THEN NARROWER ONES THAT ONLY FILL WHAT IT MISSED:
- *   1. LiteLLM — the bulk source. Its file carries ~3000 models across every provider; we keep only
- *      the providers this app supports and only the fields the cost math needs. Its breadth is what
- *      keeps RETIRED models priced, which matters because a turn's cost is frozen from this data at
- *      write time (lib/usage/record.ts).
- *   2. Scaleway's public product catalog — the VENDOR'S OWN billing feed, so it is authoritative
- *      rather than a third-party transcription, and it is the only source that carries Scaleway's
- *      cached-input rate. Unauthenticated. Fetched only while a Scaleway model is offered.
- *   3. models.dev — fetched ONLY when the steps above left an offered model with no rate. LiteLLM
- *      can lag a launch by weeks (it had no kimi-k3 six days after release); models.dev had it on
- *      day 0 and is keyed by bare model id, exactly what the app stores and looks up.
- * Each entry records which source it came from so a reviewer can tell at a glance.
- *
- * EVERY RATE CARRIES ITS CURRENCY. Scaleway prices in euros, and converting at refresh time would
- * bake a moving exchange rate into a cost that lib/usage/record.ts then freezes forever. So a euro
- * rate stays a euro rate end to end, and the dashboard renders whichever currency it was billed in.
- */
+// The one rate builder, for update-pricing.ts and priceRefresher.ts: LiteLLM in bulk, Scaleway's own
+// feed, then models.dev for gaps. Rates keep their currency, never converted.
 import { AVAILABLE_MODELS, offeredModelIds, scalewayModel } from "./registry";
 import type { Currency } from "./currency";
 import type { LongPromptRates } from "./pricing";
@@ -44,23 +21,12 @@ const SCALEWAY_REGION = "fr-par";
 // keyed "moonshot/kimi-…" and would never resolve by the bare id, so models.dev supplies them.
 const PROVIDERS = new Set(["anthropic", "openai", "deepseek", "mistral"]);
 
-/**
- * Providers whose LiteLLM rows are keyed "<provider>/<model>". Their rates are vendored under the
- * bare tail, the only form lookup() in ./pricing.ts can find.
- *
- * Moonshot has the same mismatch and stays on models.dev: moving it would reprice a shipping model.
- */
+// LiteLLM keys these "<provider>/<model>"; rates are vendored under the bare tail lookup() finds.
+// Moonshot stays on models.dev: moving it would reprice a shipping model.
 const LITELLM_PREFIXED = new Set(["mistral"]);
 
-/**
- * App provider id → models.dev provider id, for the fallback lookup. A provider added to
- * buildModel.ts wants an entry here too, or its models can only ever be priced by LiteLLM.
- *
- * Scaleway is deliberately ABSENT from this map and from PROVIDERS above. LiteLLM keys it three
- * segments deep ("scaleway/mistralai/pixtral-12b-2409"), which collides with the direct Mistral rows
- * once de-prefixed; and models.dev lists its models with the euro figures presented as dollars. Its
- * own catalog is both correct and currency-labelled, so it is the only source allowed to price it.
- */
+// App id → models.dev id; new providers need an entry. Scaleway is absent here and from PROVIDERS:
+// LiteLLM's keys collide with Mistral's and models.dev labels its euros as dollars.
 const MODELS_DEV_PROVIDER: Record<string, string> = {
   anthropic: "anthropic",
   openai: "openai",
@@ -96,12 +62,8 @@ interface ModelsDevProvider {
   models?: Record<string, ModelsDevEntry>;
 }
 
-/**
- * One row of Scaleway's public product catalog. A row is a single metric for a single model —
- * "deepseek-v4-flash-0731 - input cached token - realtime - fr-par" — so a model spans several.
- *
- * `price` is absent on retired products, which is why every read of it is guarded.
- */
+// One metric for one model, so a model spans several rows. `price` is absent on retired products, so
+// every read of it is guarded.
 interface ScalewayProduct {
   sku?: string;
   product?: string;
@@ -140,12 +102,8 @@ function resolves(catalog: Catalog, modelId: string): boolean {
 
 const LITELLM_TIER_KEY = /^input_cost_per_token_above_(\d+)k_tokens$/;
 
-/**
- * LiteLLM's long-prompt rate card for a row, or undefined when it has none.
- *
- * Read off the key names because the threshold lives only there. The lowest threshold wins, and a
- * tier priced on input alone is dropped: it would bill every long completion at the base rate.
- */
+// The threshold lives only in LiteLLM's key names; the lowest wins. An input-only tier is dropped, as it
+// would bill long completions at the base rate.
 function liteLLMLongPrompt(e: LiteLLMEntry): LongPromptRates | undefined {
   const sizes = Object.keys(e).flatMap((key) => LITELLM_TIER_KEY.exec(key)?.[1] ?? []);
   const size = sizes.map(Number).sort((a, b) => a - b)[0];
@@ -244,16 +202,8 @@ function scalewayRate(row: ScalewayProduct): number | undefined {
   return ((retail.units ?? 0) + (retail.nanos ?? 0) / 1e9) / size;
 }
 
-/**
- * Prices the OFFERED Scaleway models from the vendor's own catalog rows.
- *
- * Which metric a row carries is read off the SKU tail, not the human-readable variant string:
- * ".../deepseek_v4_flash_input_cached/fr-par" is stable in a way that " - input cached token - " is
- * not. Batch rows are skipped — they are a different API at half price, and billing a real-time call
- * at the batch rate would understate every turn.
- *
- * Rates are EUR per token, carried without conversion. See getRate in ./pricing.ts.
- */
+// EUR per token for offered models, unconverted. The metric comes from the stable SKU tail; batch rows
+// are skipped, being a half-price API that would understate real-time turns.
 export function fromScalewayCatalog(rows: readonly ScalewayProduct[]): Catalog {
   const offered = new Set(AVAILABLE_MODELS.scaleway ?? []);
   const metrics = new Map<string, { input?: number; output?: number; cacheRead?: number }>();
@@ -294,16 +244,8 @@ export function missingOfferedScalewayModels(catalog: Catalog): string[] {
   return (AVAILABLE_MODELS.scaleway ?? []).filter((model) => !resolves(catalog, model));
 }
 
-/**
- * Offered Scaleway models whose documented reasoning levels no longer match their ./registry.ts records.
- *
- * Those records are checked in rather than fetched, because they decide what the picker offers and
- * what validateMetadata accepts — see the note above them. This is the other half of that bargain: the same rows
- * the prices come from are re-read here, and `npm run update-pricing` fails on any disagreement, so
- * the transcription cannot quietly rot while the vendor moves on.
- *
- * A model with no rows carrying the field is not drift — that is an absent source, not a changed one.
- */
+// Models whose catalog effort levels differ from registry.ts, so `update-pricing` fails before the
+// checked-in copy rots. A model with no such rows isn't drift.
 export function scalewayEffortDrift(rows: readonly ScalewayProduct[]): string[] {
   const offered = new Set(AVAILABLE_MODELS.scaleway ?? []);
   const drift: string[] = [];
@@ -354,31 +296,13 @@ export interface BuiltCatalog {
   unpriced: string[];
   /** Descriptions of any Scaleway model whose documented effort levels have moved. Author-time only. */
   effortDrift: string[];
-  /**
-   * Sources that could not deliver a complete catalog, by `VendoredEntry.source`. A NARROWER source
-   * is allowed to fail without failing the run — one vendor's outage or malformed response must not
-   * throw away every other rate — but the result is then incomplete, and saying so is what stops a
-   * caller mistaking it for a full catalog.
-   *
-   * The two callers disagree about what to do, exactly as they do about `unpriced`: the author-time
-   * script refuses to vendor a partial file, while the refresher carries the missing source's
-   * previous rates forward and retries sooner. Both are in the dark without this list.
-   */
+  // Narrower sources that failed without failing the run, so no caller takes the catalog as complete.
+  // The script refuses to vendor it; the refresher carries old rates forward.
   sourceFailures: VendoredEntry["source"][];
 }
 
-/**
- * Fetch the price lists and assemble the catalog. Network-bound; throws if a BULK source is
- * unreachable. `unpriced` and `sourceFailures` are reported rather than thrown on, because the two
- * callers disagree about severity: the author-time script fails the run, while the production
- * refresher keeps the rates it already has (an unpriced model costs "unknown", which is survivable —
- * a wrong rate is not). Reported is not the same as ignored: a caller that drops `sourceFailures` on
- * the floor publishes a catalog with a hole in it as though the fetch had gone fine.
- *
- * Only Scaleway's own feed may price a Scaleway model. models.dev also lists some of them, but it
- * republishes the euro figures as though they were dollars; taking the vendor feed instead is what
- * makes the currency on those entries true rather than a label over a number that means something else.
- */
+// Throws only if the bulk source is down; `unpriced` and `sourceFailures` are reported for each caller
+// to judge. Only Scaleway's feed prices Scaleway models (models.dev mislabels euros).
 export async function buildCatalog(): Promise<BuiltCatalog> {
   const catalog = fromLiteLLM(await fetchJson<Record<string, LiteLLMEntry>>(LITELLM_SOURCE));
 

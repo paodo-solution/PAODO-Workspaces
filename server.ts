@@ -74,11 +74,8 @@ import { executionCapacity } from "./lib/agent/executionCapacity";
 const rawPort = process.env.PORT ?? "3000";
 const port = Number(rawPort);
 
-/**
- * How this deployment identifies a browser: a shared password, or an identity-aware proxy whose
- * signed assertion the origin verifies. The two are mutually exclusive — see uiAuth.ts — and an
- * unconfigured mode throws here so the process never serves a route it cannot guard.
- */
+// Shared password or verified identity-proxy assertion, never both (uiAuth.ts). An unconfigured mode
+// throws, so no route is ever served unguarded.
 let uiAuth: import("./lib/infra/security/uiAuth").UiAuthenticator;
 try {
   uiAuth = resolveUiAuth();

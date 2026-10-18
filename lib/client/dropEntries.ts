@@ -45,10 +45,8 @@ export interface DroppedFiles {
   hasDirectory: boolean;
 }
 
-/**
- * Flatten a drag-and-drop DataTransfer into files with workspace-relative paths, recursing into
- * any dropped folders. Falls back to dataTransfer.files if the entry API is unavailable.
- */
+// Flatten a drag-and-drop DataTransfer into files with workspace-relative paths, recursing into
+// any dropped folders. Falls back to dataTransfer.files if the entry API is unavailable.
 export async function readDroppedEntries(dt: DataTransfer): Promise<DroppedFiles> {
   // getAsEntry must be called synchronously before any await — the items list is cleared after.
   const entries = Array.from(dt.items)

@@ -13,9 +13,8 @@ beforeEach(() => {
   written = [];
   vi.stubEnv("NODE_ENV", "production");
   process.env.LOG_LEVEL = "info";
-  // Routine records use Pino's asynchronous SonicBoom destination. Tests explicitly flush that
-  // buffer, whose synchronous drain uses fs.writeSync; intercept fd 1 only and let other writes
-  // through. The separate process-boundary test below verifies the real exit path.
+  // Routine records go through async SonicBoom; tests flush it, which drains via fs.writeSync, so only fd 1 is
+  // intercepted. The spawned test below covers the real exit path.
   const realWriteSync = fs.writeSync.bind(fs);
   vi.spyOn(fs, "writeSync").mockImplementation(((fd: number, data: unknown, ...rest: unknown[]) => {
     if (fd !== 1) return (realWriteSync as (...a: unknown[]) => number)(fd, data, ...rest);
@@ -196,9 +195,8 @@ describe("logger", () => {
     expect(written[0]).toEqual(expect.objectContaining({ context: "test", msg: "routine record" }));
   });
 
-  // Regression: process.exit() stops the event loop before an asynchronous stdout queue drains.
-  // exitAfterLogs synchronously drains the final record at the intentional exit boundary, while
-  // routine writes above remain asynchronous. Spawned because the failure crosses a process edge.
+  // process.exit() stops the loop before an async stdout queue drains; exitAfterLogs drains the last record
+  // synchronously. Spawned because the failure crosses a process edge.
   it("does not lose a record when the process exits immediately after writing", () => {
     const script = path.join(mkdtempSync(path.join(tmpdir(), "paodo-logexit-")), "exit.ts");
     const loggerModule = path.join(__dirname, "logger.ts");

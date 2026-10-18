@@ -20,11 +20,8 @@ function shape(value: object): Record<string, string[] | Record<string, string[]
   );
 }
 
-/**
- * When this fails, decide which change it is before touching the snapshot. Something added — a route,
- * a field, a limit: update the snapshot and nothing else. Something removed, renamed, or answering in
- * a shape an existing client would misread: raise PLATFORM_CONTRACT_VERSION too, in the same commit.
- */
+// On failure: an addition only updates the snapshot; a removal, rename or reshaped answer also bumps
+// PLATFORM_CONTRACT_VERSION in the same commit.
 it("pins the platform routes and the contract's shape to the contract version", () => {
   expect({
     version: PLATFORM_CONTRACT_VERSION,

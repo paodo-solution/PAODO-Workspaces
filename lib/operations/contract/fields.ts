@@ -20,12 +20,8 @@ import {
 } from "@/lib/workspace/limits";
 import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/workspace/name";
 
-/**
- * One settable field. `type` is the JSON type the route expects, which is what a client that receives
- * every value as text needs in order to encode it; `values` is the closed set when there is one; `rule`
- * is the rest, in words. None of it is enforcement — the validators are — so a rule here may be looser
- * than the truth but must never contradict it.
- */
+// `type` is the expected JSON type, `values` any closed set, `rule` the rest in words. Descriptive only:
+// it may be looser than the validators but never contradict them.
 export interface ContractField {
   type: "string" | "int" | "boolean";
   values?: readonly string[];
@@ -122,10 +118,8 @@ const explained = (values: Record<string, string>) =>
     .map(([value, meaning]) => `${value} (${meaning})`)
     .join(", ");
 
-/**
- * What the replies and behaviours a caller meets mean, in sentences owned beside the code that makes
- * them true. They name fields and rules, never a client's commands: more than one client reads this.
- */
+// What the replies and behaviours a caller meets mean, in sentences owned beside the code that makes
+// them true. They name fields and rules, never a client's commands: more than one client reads this.
 function describe() {
   const { sessionPreviewChars, sessionListModelCalls, scheduleTickSeconds } = limits();
   return {

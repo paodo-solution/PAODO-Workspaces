@@ -1,7 +1,5 @@
-/**
- * Loads and toggles a workspace's internet-access flag. A failed read is an `error`, never "off"; the
- * toggle is optimistic and rolls back on rejection. Shared by InternetAccessBlock and EnvVarsBlock.
- */
+// Loads and toggles a workspace's internet-access flag. A failed read is an `error`, never "off"; the
+// toggle is optimistic and rolls back on rejection. Shared by InternetAccessBlock and EnvVarsBlock.
 "use client";
 
 import { useState, useCallback } from "react";

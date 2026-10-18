@@ -8,23 +8,16 @@ function blockText(block: unknown): string {
   return "";
 }
 
-/**
- * The message's text as one run, blocks concatenated with no separator — the provider split them at
- * arbitrary points mid-sentence while streaming, so anything inserted between them lands inside a
- * word. Non-text blocks (reasoning, tool calls, images) contribute nothing.
- */
+// Text blocks joined with no separator, since streaming splits them mid-word. Non-text blocks are
+// skipped.
 export function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map(blockText).join("");
 }
 
-/**
- * The message's text with each block as its own paragraph, for content whose blocks are authored
- * sections rather than stream fragments — the system prompt, whose blocks are the model config, the
- * AGENTS.md body, and the drives and secrets listings. Empty blocks are dropped so a section that
- * rendered to nothing does not leave a blank gap.
- */
+// One paragraph per block, for authored sections like the system prompt's. Empty blocks are dropped,
+// leaving no blank gaps.
 export function contentToParagraphs(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";

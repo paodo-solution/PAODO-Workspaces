@@ -97,8 +97,8 @@ function workspacesVolume(): string {
 const AGENT_HOME = "/home/dev";
 const SEED_TARGET = "/seed";
 
-/** Workspace policy and credential material needed by the Docker lifecycle. The concrete
- * workspace/secret stores are wired only by defaultContainerManager.ts. */
+// Workspace policy and credential material needed by the Docker lifecycle. The concrete
+// workspace/secret stores are wired only by defaultContainerManager.ts.
 export interface ContainerWorkspaceDependencies {
   internetAccessFor(workspaceId: string): boolean;
   /** Env baked in at `docker run` (proxy routing, CA trust). Constant per workspace, so it never goes stale. */
@@ -668,8 +668,8 @@ export class ContainerManager implements IContainerManager {
     return p;
   }
 
-  /** Non-streaming exec after ensure(). cmdArgs go straight to execvp (no shell); stdout is left untrimmed
-   * so file content stays exact. */
+  // Non-streaming exec after ensure(). cmdArgs go straight to execvp (no shell); stdout is left untrimmed
+  // so file content stays exact.
   async exec(
     workspaceId: string,
     workspaceDir: string,
@@ -810,8 +810,8 @@ export class ContainerManager implements IContainerManager {
     });
   }
 
-  /** Drains over-cap output to a file through its own `docker exec`, leaving execStreaming's pid-recording
-   * launcher untouched. No ensure(): a command is already mid-flight. */
+  // Drains over-cap output to a file through its own `docker exec`, leaving execStreaming's pid-recording
+  // launcher untouched. No ensure(): a command is already mid-flight.
   openOutputSink(workspaceId: string, runId: string): OutputSink {
     // runId reaches a shell: sanitize it even though today's only caller passes a UUID.
     const safeId = runId.replace(/[^a-zA-Z0-9-]/g, "") || "run";
@@ -915,8 +915,8 @@ export class ContainerManager implements IContainerManager {
     return this.background.reconcile(workspaceId);
   }
 
-  /** Applies the internet toggle to a running container by attaching or detaching the sidecar. Throws when
-   * it can't be confirmed, so the caller can roll the persisted setting back. */
+  // Applies the internet toggle to a running container by attaching or detaching the sidecar. Throws when
+  // it can't be confirmed, so the caller can roll the persisted setting back.
   async applyInternetAccess(workspaceId: string, enabled: boolean): Promise<void> {
     // Wait out any in-flight ensure()/stop() before claiming the slot, so this can't interleave
     // with a bring-up that is halfway through wiring the old network. Mirrors stop().

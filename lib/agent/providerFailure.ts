@@ -23,10 +23,8 @@ export interface ProviderFailure {
   failureCode: ClassifiedProviderCode;
   resource: string;
   resourceScope: string;
-  /**
-   * Whether waiting could help. False for a config or billing fact a retry cannot change; true for
-   * throttling, which is the same refusal a funded account gets and clears on its own.
-   */
+  // Whether waiting could help. False for a config or billing fact a retry cannot change; true for
+  // throttling, which is the same refusal a funded account gets and clears on its own.
   retryable: boolean;
   /** The HTTP status the provider answered with, when it gave one. */
   status?: number;
@@ -40,8 +38,8 @@ interface ProviderFailureRule {
   resource: string;
   resourceScope: string;
   retryable: boolean;
-  /** Statuses decisive on their own. Any other needs the wording to agree, so an ordinary rate
-   *  limit is never read as an empty account. */
+  // Statuses decisive on their own. Any other needs the wording to agree, so an ordinary rate
+  // limit is never read as an empty account.
   decisiveStatuses: readonly number[];
   /** One entry per observed provider wording. */
   patterns: readonly RegExp[];
@@ -95,10 +93,8 @@ function providerMessage(error: unknown): string {
 
 const providerName = (target: ProviderTarget) => target.provider ?? "The model provider";
 
-/**
- * ORDER IS PRECEDENCE — first match wins. Credit leads because a dry account answers 401 or a
- * balance-worded 429, and "replace your key" sends that operator to fix the wrong thing.
- */
+// ORDER IS PRECEDENCE — first match wins. Credit leads because a dry account answers 401 or a
+// balance-worded 429, and "replace your key" sends that operator to fix the wrong thing.
 const RULES = [
   {
     code: PROVIDER_CREDIT_EXHAUSTED_CODE,
@@ -212,14 +208,12 @@ export type ProviderFailureCode = ClassifiedProviderCode | LocalProviderCode;
 /** Empty today. Named so that adding one retryable rule updates every consumer's types at once. */
 type RetryableProviderCode = Extract<Rule, { retryable: true }>["code"];
 
-/**
- * Every provider failure no retry can fix. Derived from the rules' own `retryable` rather than
- * hand-listed, so a rule added above cannot be one this silently omits.
- */
+// Every provider failure no retry can fix. Derived from the rules' own `retryable` rather than
+// hand-listed, so a rule added above cannot be one this silently omits.
 export type TerminalProviderCode = LocalProviderCode | Exclude<ClassifiedProviderCode, RetryableProviderCode>;
 
-/** The rules' public facts, so a consumer can reason about a cause it has never seen an instance
- *  of — which is what TERMINAL_PROVIDER_CODES does. */
+// The rules' public facts, so a consumer can reason about a cause it has never seen an instance
+// of — which is what TERMINAL_PROVIDER_CODES does.
 export const CLASSIFIED_PROVIDER_FAILURES: readonly { code: ClassifiedProviderCode; retryable: boolean }[] = RULES.map(
   ({ code, retryable }) => ({ code, retryable }),
 );
@@ -246,10 +240,8 @@ function ruleFor(code: ClassifiedProviderCode): Rule {
   return rule;
 }
 
-/**
- * Classify a provider's refusal. Null for anything unrecognized — the caller shows the raw error,
- * because inventing a cause is worse than quoting the provider.
- */
+// Classify a provider's refusal. Null for anything unrecognized — the caller shows the raw error,
+// because inventing a cause is worse than quoting the provider.
 export function classifyProviderFailure(error: unknown): ProviderFailure | null {
   const status = providerStatus(error);
   const text = searchableText(error);
@@ -276,10 +268,8 @@ export function providerFailureMessage(failure: ProviderFailure, target: Provide
   return ruleFor(failure.failureCode).message(failure, target);
 }
 
-/**
- * One queryable record per account-level failure, throttled: a dry balance fails every workspace on
- * that provider within seconds (18 runs in 8s, once), and the burst would rotate the log.
- */
+// One queryable record per account-level failure, throttled: a dry balance fails every workspace on
+// that provider within seconds (18 runs in 8s, once), and the burst would rotate the log.
 export function reportProviderFailure(
   logger: ErrorLogger,
   error: unknown,
@@ -300,10 +290,8 @@ export function reportProviderFailure(
   return failure;
 }
 
-/**
- * Whether a run can be attempted at all, before the first request. Null means proceed. A switched-off
- * provider outranks its purged key: the consequence would send the operator to a form lacking it.
- */
+// Whether a run can be attempted at all, before the first request. Null means proceed. A switched-off
+// provider outranks its purged key: the consequence would send the operator to a form lacking it.
 export function preflightProviderFailure(
   config: { provider: string; model: string; apiKey?: string },
   offeredProviders: readonly string[],

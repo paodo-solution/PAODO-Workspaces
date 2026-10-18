@@ -22,10 +22,8 @@ export class WorkspaceNameError extends AppError {
 // Control chars (C0 range + DEL) that must never appear in a filesystem-facing or displayed name.
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
-/**
- * Validates and cleans a user-supplied workspace name. Returns the canonical display form
- * (trimmed, NFC-normalized). Throws WorkspaceNameError("WORKSPACE_NAME_INVALID") on any violation.
- */
+// Validates and cleans a user-supplied workspace name. Returns the canonical display form
+// (trimmed, NFC-normalized). Throws WorkspaceNameError("WORKSPACE_NAME_INVALID") on any violation.
 export function validateWorkspaceName(raw: string): string {
   // A JSON body may send a non-string; refuse it with the typed error (400) instead of a TypeError (500).
   if (typeof raw !== "string") {
@@ -60,11 +58,8 @@ export function validateWorkspaceName(raw: string): string {
   return name;
 }
 
-/**
- * Folds a name to its uniqueness key: NFC + trim + case-insensitive. Two names with the same key
- * are treated as the same name (e.g. "Sales" and "sales", or Unicode-equivalent spellings), so they
- * cannot coexist while call_agent / the legacy /api/agent endpoint still address workspaces by name.
- */
+// NFC, trimmed, case-folded, so "Sales" and "sales" can't coexist while call_agent and /api/agent
+// still address workspaces by name.
 export function normalizeForUniqueness(name: string): string {
   return name.trim().normalize("NFC").toLowerCase();
 }

@@ -91,10 +91,8 @@ function turnParams(record: TurnRecord) {
   };
 }
 
-/**
- * Insert one model turn. Returns false when the turn id already exists. The caller owns the
- * transaction, so serializing invalid tool arguments cannot leave a partial record.
- */
+// Insert one model turn. Returns false when the turn id already exists. The caller owns the
+// transaction, so serializing invalid tool arguments cannot leave a partial record.
 export function insertRecord(conn: Database.Database, record: TurnRecord): boolean {
   return conn.prepare(INSERT_TURN_SQL).run(turnParams(record)).changes > 0;
 }
@@ -137,11 +135,8 @@ export function toolCallsFromJson(value: string | null): TurnRecord["toolCalls"]
   }
 }
 
-/**
- * The currency a stored cost is in. NULL on every row written before the column existed, and those
- * turns really were dollars, so an absent value on a PRICED row reads as the default rather than as
- * "unknown". An unpriced row has no currency at all — there is no amount for one to qualify.
- */
+// A priced row with NULL currency predates the column and was in dollars, so it gets the default. An
+// unpriced row has no currency.
 export function currencyFromRow(
   value: string | null | undefined,
   cost: number | null | undefined,

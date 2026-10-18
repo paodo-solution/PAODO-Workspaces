@@ -74,10 +74,8 @@ export interface StartRunParams {
   capacity?: ExecutionCapacityGate;
 }
 
-/**
- * Start a run for a conversation, or report that one is already running. The actual run proceeds
- * in the background regardless of who (if anyone) is subscribed.
- */
+// Start a run for a conversation, or report that one is already running. The actual run proceeds
+// in the background regardless of who (if anyone) is subscribed.
 export function startRun(params: StartRunParams): {
   alreadyRunning: boolean;
   capacityReached?: ExecutionCapacitySnapshot;
@@ -351,31 +349,21 @@ export function startRun(params: StartRunParams): {
   return { alreadyRunning: false };
 }
 
-/**
- * A producer-driven run: its events are generated elsewhere rather than by a detached runAgent
- * loop. executeSkill uses this for agent-to-agent calls — it has to drive the callee's runAgent
- * itself (it needs the streamed text for output validation and correction retries), but the
- * callee's run must still be live-subscribable so the callee's own conversation tab can attach and
- * watch it (otherwise a caller deep-linking into the callee session sees a blank, "stuck" UI while
- * the run only logs to the console and persists at the very end).
- */
+// A run whose events come from elsewhere: executeSkill drives the callee itself for output validation,
+// yet the callee's own tab must still be able to watch it live.
 export interface ExternalRun {
   /** Buffer + fan out one event to subscribers, exactly as the detached loop in startRun does. */
   publish: (event: AgentEvent) => void;
-  /** Mark the run done and schedule eviction. Persist the conversation BEFORE calling this so a
-   *  client reconnecting at the end replays from consistent committed history. */
+  // Mark the run done and schedule eviction. Persist the conversation BEFORE calling this so a
+  // client reconnecting at the end replays from consistent committed history.
   finish: (status?: AgentRunStatus) => void;
-  /** Fires when stop() is called for this conversation. The producer (executeSkill) must thread
-   *  this into the callee's runner so a Stop on the callee's own tab actually halts it — otherwise
-   *  the session's AbortController has no listener and stop() is a no-op. */
+  // Fires on stop(). The producer must pass it to the callee's runner, or Stop on the callee's tab is
+  // a no-op.
   signal: AbortSignal;
 }
 
-/**
- * Register a producer-driven run for a conversation. Returns null if a run is already live for it
- * (mirrors startRun's one-run-per-conversation rule). The caller publishes each event and calls
- * finish() when the whole call — including any correction retries — has completed.
- */
+// Null if a run is already live for the conversation. The caller publishes events and calls finish()
+// after the whole call, correction retries included.
 export function startExternalRun(
   workspaceId: string,
   conversationId: string,
@@ -509,10 +497,8 @@ export interface Subscription {
   unsubscribe: () => void;
 }
 
-/**
- * Attach to a run. Returns null if no run exists for this conversation. The replay snapshot and the
- * subscriber registration happen in one synchronous step, so no event can slip through the gap.
- */
+// Attach to a run. Returns null if no run exists for this conversation. The replay snapshot and the
+// subscriber registration happen in one synchronous step, so no event can slip through the gap.
 export function subscribe(workspaceId: string, conversationId: string, cb: Subscriber): Subscription | null {
   const session = sessions.get(key(workspaceId, conversationId));
   if (!session) return null;

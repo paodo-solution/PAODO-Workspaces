@@ -19,18 +19,12 @@ const APPROX_MS = {
   week: 604_800_000,
 } as const;
 
-/**
- * Just the fields the recurrence is derived from. Narrower than ScheduleEntry so a caller can ask
- * "when would this fire?" about a configuration it has validated but not yet given an identity —
- * which is exactly the order lib/operations/schedules/schedule.ts needs. A full entry still
- * satisfies it.
- */
+// The recurrence fields only, so a validated config without an identity yet can be asked when it would
+// fire. A full entry still satisfies it.
 export type Recurrence = Pick<ScheduleEntry, "intervalValue" | "intervalUnit" | "startAt" | "timezone" | "endAt">;
 
-/**
- * The first occurrence strictly after `after`, or `null` if the schedule is invalid or has passed
- * its `endAt` bound. If `startAt` is itself after `after`, that first anchor is returned.
- */
+// The first occurrence strictly after `after`, or `null` if the schedule is invalid or has passed
+// its `endAt` bound. If `startAt` is itself after `after`, that first anchor is returned.
 export function computeNextRun(entry: Recurrence, after: Date): Date | null {
   if (
     !Number.isSafeInteger(entry.intervalValue) ||
@@ -90,10 +84,8 @@ export function endBound(entry: Pick<ScheduleEntry, "endAt" | "timezone">): Date
   return end.isValid ? end : null;
 }
 
-/**
- * An instant on the schedule's clock (`2026-03-29T03:30+02:00`, not `…01:30Z`), so it reads beside
- * startAt. The one format every recorded schedule time is shown in; null when it cannot be read.
- */
+// An instant on the schedule's clock (`2026-03-29T03:30+02:00`, not `…01:30Z`), so it reads beside
+// startAt. The one format every recorded schedule time is shown in; null when it cannot be read.
 export function onScheduleClock(instant: string | Date, timezone: string): string | null {
   const parsed = typeof instant === "string" ? DateTime.fromISO(instant) : DateTime.fromJSDate(instant);
   return parsed.setZone(timezone).startOf("second").toISO({ suppressMilliseconds: true, suppressSeconds: true });

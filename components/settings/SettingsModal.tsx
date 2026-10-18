@@ -68,8 +68,7 @@ function SettingsBody() {
     <>
       {loading && <LoadingState className="mt-6 py-16" />}
 
-      {/* Sections stay mounted while loading so they can fetch; the wrapper only reveals them once
-          every section reports ready. */}
+      {/* Sections stay mounted while loading so they can fetch; revealed once all report ready. */}
       <div className={loading ? "hidden" : "mt-6 flex flex-col gap-8"}>
         <ProviderKeysSection open onReady={markReady} />
         <div className="border-t border-border" />

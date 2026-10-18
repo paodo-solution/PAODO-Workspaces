@@ -38,11 +38,8 @@ export interface WorkspaceDeleteDeps {
   cleanupGroups: readonly (readonly WorkspaceDeleteStage[])[];
   log: DeleteLogger;
   audit: DeleteAuditLogger;
-  /**
-   * Derives the on-disk directory for an id whose registry entry is already missing, so a resumed
-   * or duplicate deletion can still target orphaned resources. Only consulted when
-   * `registry.getWorkspace` returns undefined.
-   */
+  // The directory for an id already gone from the registry, so a resumed deletion can still reach its
+  // orphaned resources.
   deriveWorkspaceDir(id: string): string;
 }
 
@@ -74,15 +71,8 @@ async function runDeleteCleanup(
   }
 }
 
-/**
- * Permanently removes an existing workspace and every resource it owns. The registry is finalized
- * last, so a cleanup failure leaves the workspace addressable and the caller can retry the same
- * deletion. A missing registry record is treated as a possibly-interrupted prior deletion, not
- * proof that nothing remains: every cleanup stage still runs against a target reconstructed from
- * the id alone, and only the registry write (a no-op here) is skipped by the store itself. The
- * result is still reported as not found — this sweeps orphaned resources without ever turning a
- * missing workspace into a successful deletion.
- */
+// The registry goes last, so a failed cleanup can be retried. A missing record may be an interrupted
+// deletion: cleanup still sweeps by id, but the result is still not found.
 export async function deleteWorkspace(id: string, deps: WorkspaceDeleteDeps): Promise<DeleteWorkspaceResult | null> {
   const registered = deps.registry.getWorkspace(id);
   const resuming = !registered;

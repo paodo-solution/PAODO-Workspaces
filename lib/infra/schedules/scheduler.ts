@@ -193,10 +193,8 @@ function tick(): void {
   }
 }
 
-/**
- * Start the tick loop. Idempotent. Recomputes every schedule's nextRunAt to a strictly-future
- * instant first, so a restart never replays runs that were due while the server was down.
- */
+// Start the tick loop. Idempotent. Recomputes every schedule's nextRunAt to a strictly-future
+// instant first, so a restart never replays runs that were due while the server was down.
 export function startScheduler(): void {
   if (state.timer) return;
   const now = new Date();

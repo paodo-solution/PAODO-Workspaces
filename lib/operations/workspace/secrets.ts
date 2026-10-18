@@ -19,22 +19,14 @@ const SECRET_DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[
 // Re-exported so the CLI schema states the same rule; defined in the store, which enforces it at injection.
 export { RESERVED_SECRET_NAMES };
 
-/**
- * One third-party secret held for a workspace: its name, when it was stored, and the hosts it may be
- * spent on. The secret VALUE is never part of this shape — it stays in workspaceSecretStore and is
- * injected by the credential proxy, so no caller of this operation can read it back.
- */
+// A secret's name, date and allowed hosts. Never its value, which only the credential proxy injects.
 export interface ThirdPartySecret {
   name: string;
   createdAt: string;
   /** Hosts this credential is scoped to. Independent of `internetAccess`: both must allow the call. */
   domains: string[];
-  /**
-   * Present, and only present, when something stops this secret from working — today that is the
-   * workspace having no egress. Absent means nothing blocks it. Derived here rather than left to
-   * callers so a CLI or an agent reading `domains` next to `internetAccess: false` cannot mistake a
-   * dormant secret for a live capability; omitted when clear so the common case carries no noise.
-   */
+  // Set only when something stops the secret working (today, no egress), so no caller mistakes a dormant
+  // secret for a live one.
   blockedBy?: "internetAccess";
 }
 
@@ -58,11 +50,7 @@ export interface SecretDeleter {
   delete(id: string, name: string): boolean;
 }
 
-/**
- * The one rule this file exists to state: a scoped secret cannot be spent while the workspace has no
- * egress. Spread into a secret rather than assigned, so the key is absent entirely when nothing blocks
- * it. Private — both callers that need it are in this file, which is why they are in this file.
- */
+// A scoped secret can't be spent without egress. Spread in, so the key is absent when nothing blocks.
 function blockedFor(internetAccess: boolean): { blockedBy?: "internetAccess" } {
   return internetAccess ? {} : { blockedBy: "internetAccess" };
 }
@@ -91,18 +79,8 @@ export function deleteWorkspaceSecret(
   return secrets.delete(id, name);
 }
 
-/**
- * Checks a supplied secret without storing it, and returns it as the checked shape. Pure, so a caller
- * can validate a whole request before its first write. Hosts are checked in normalized form because
- * that is the form they are stored and matched in — a caller may send `API.EXAMPLE.COM` and have it
- * accepted.
- *
- * Takes `unknown` rather than the input type, because this is the only field of the update contract
- * whose whole object crosses the wire: the transport hands over what the caller nested under `secret`,
- * so the shape is a claim to check here rather than one the compiler already established. Every
- * rejection is a typed WorkspaceUpdateError, so no malformed spelling can escape as a TypeError and
- * reach the caller as an opaque 500.
- */
+// Pure; hosts compared normalized. Takes `unknown` since the object comes straight off the wire, and
+// every rejection is a WorkspaceUpdateError, never a TypeError 500.
 export function validateSecret(input: unknown): WorkspaceSecretInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new WorkspaceUpdateError("secret must be an object with name, value and domains");
@@ -128,12 +106,8 @@ export function validateSecret(input: unknown): WorkspaceSecretInput {
   return { name, value, domains };
 }
 
-/**
- * The secrets held for a workspace — names, dates and scoped hosts, never values. The home page hides
- * this block while internetAccess is off; this operation reports the secrets either way, because they
- * still exist and an operator auditing a workspace needs to see them, with `blockedBy` marking any
- * that cannot currently be spent.
- */
+// Listed even without egress (unlike the home page), since they still exist; `blockedBy` marks the
+// unspendable ones.
 export function listWorkspaceSecrets(
   id: string,
   store: WorkspaceLookup = getStore(),
@@ -145,11 +119,8 @@ export function listWorkspaceSecrets(
   return secrets.read(id).map(({ name, createdAt, domains }) => ({ name, createdAt, domains, ...blocked }));
 }
 
-/**
- * Stores a validated secret and reports it back in the same shape the list query returns — including
- * `blockedBy`, so a caller that has just added a key to a workspace with no egress learns immediately
- * that it will not be spent yet. Validate with validateSecret first; this assumes a checked input.
- */
+// Expects validateSecret's output. Returns the list shape, `blockedBy` included, so the caller learns
+// at once if it can't be spent yet.
 export function storeWorkspaceSecret(
   id: string,
   input: WorkspaceSecretInput,

@@ -44,9 +44,8 @@ describe("parseSseStream", () => {
     expect(events).toEqual([{ type: "ok" }]);
   });
 
-  // The server sends `: ping` comment frames on an interval to stop proxies dropping a stream that
-  // has gone quiet (see lib/agent/sse.ts). They land in arbitrary places — including between the
-  // halves of a data frame — and must be invisible to the consumer.
+  // Keepalive `: ping` frames (lib/agent/sse.ts) can land anywhere, even between a data frame's halves, and
+  // must be invisible to the consumer.
   it("ignores keepalive pings interleaved between data frames", async () => {
     const events = await collect(
       parseSseStream(streamFrom([`: ping\n\n`, `data: {"type":"a"}\n\n`, `: ping\n\n`, `data: {"type":"b"}\n\n`])),

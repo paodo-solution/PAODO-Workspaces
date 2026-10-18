@@ -82,14 +82,8 @@ function hashSecret(plain: string): string {
   return createHash("sha256").update(plain).digest("hex");
 }
 
-/**
- * Mints (or rotates) the key for this credential and returns the plaintext once.
- *
- * Leaves the channel's enabled flag exactly as it found it — minting is the credential axis, opening
- * the channel is the access axis, and one must never move the other. A key minted on a closed channel
- * is inert until someone opens it, which is what makes "issue the key now, switch on when the
- * integrator is ready" a safe order.
- */
+// Mints or rotates the key and returns the plaintext once. Never touches `enabled`: a key minted on a
+// closed channel stays inert until someone opens it.
 export function mint(kind: CredentialKind, subject: CredentialSubject = null): string {
   const key = recordKey(kind, subject);
   const plain = PREFIX[kind] + randomBytes(32).toString("hex");
@@ -104,15 +98,8 @@ export function mint(kind: CredentialKind, subject: CredentialSubject = null): s
   return plain;
 }
 
-/**
- * Destroys the key so it can never validate again, keeping the record's enabled flag. Revoking and
- * disabling are different intents: revoke invalidates the key, disable closes the channel.
- *
- * Idempotent, because destroying a leaked key must succeed whatever the channel's current state —
- * but the audit event is emitted only when a key was actually there to destroy. `credential_revoked`
- * has to mean "a key stopped working from this moment", or the log cannot be read as a history of
- * when access ended.
- */
+// Destroys the key but keeps `enabled` (disabling is a separate intent). Idempotent, and audits only
+// when a key existed, so `credential_revoked` always marks when access actually ended.
 export function revoke(kind: CredentialKind, subject: CredentialSubject = null): void {
   const key = recordKey(kind, subject);
   const record = store[key];
@@ -122,10 +109,8 @@ export function revoke(kind: CredentialKind, subject: CredentialSubject = null):
   audit.info({ kind, subject, event: "credential_revoked" }, "credential revoked");
 }
 
-/**
- * Turns the access channel on or off. A channel may be enabled before a key exists — that is the
- * UI's "Key required" state — but a disabled channel rejects every key.
- */
+// Turns the access channel on or off. A channel may be enabled before a key exists — that is the
+// UI's "Key required" state — but a disabled channel rejects every key.
 export function setEnabled(kind: CredentialKind, subject: CredentialSubject, enabled: boolean): void {
   const key = recordKey(kind, subject);
   store[key] = {
@@ -185,11 +170,8 @@ function touchLastUsed(key: string, record: CredentialRecord): void {
   }
 }
 
-/**
- * The authentication chokepoint for every programmatic caller. Fails closed on every uncertain
- * state: unknown credential, disabled channel, revoked key, empty input, or a stored hash that is
- * not a well-formed SHA-256 digest (a hand-edited or truncated file must deny, not throw).
- */
+// Auth chokepoint for every programmatic caller. Fails closed on any doubt, including a malformed
+// stored hash: a hand-edited or truncated file must deny, not throw.
 export function validate(kind: CredentialKind, subject: CredentialSubject, plain: string): boolean {
   const key = recordKey(kind, subject);
   const record = store[key];

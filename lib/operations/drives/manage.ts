@@ -24,14 +24,8 @@ export interface DriveUpdateValues {
   description?: string;
 }
 
-/**
- * The same shape a workspace PATCH answers with (lib/api/workspaceUpdateReceipt.ts), so both `set`
- * verbs report a mutation identically instead of one returning a receipt and the other a resource.
- *
- * `applied` carries the values as the store now holds them, not as they were sent: the name is
- * trimmed and NFC-folded on the way in, so a caller that echoed its own request would be reporting a
- * spelling the drive does not have.
- */
+// Same shape as a workspace PATCH receipt. `applied` holds stored values, not the request, since names
+// are trimmed and NFC-folded.
 export interface DriveUpdateReceipt {
   ok: true;
   driveId: string;
@@ -81,12 +75,8 @@ export function getDrive(driveIdValue: unknown, deps: DriveDeps = defaultDeps())
   return drive;
 }
 
-/**
- * A present, non-empty name is this layer's check; everything the name may then SAY is
- * lib/drives/name.ts's, applied inside the store call — so length, dot-names, separators and
- * collisions come back as DRIVE_NAME_INVALID/DRIVE_NAME_CONFLICT with their own messages, and only a
- * missing or blank name is the generic INVALID_REQUEST composed here.
- */
+// Only checks the name is non-blank; its content rules live in lib/drives/name.ts and come back as
+// DRIVE_NAME_INVALID or DRIVE_NAME_CONFLICT.
 export function createDrive(input: CreateDriveInput, deps: DriveDeps = defaultDeps()): Drive {
   const name = requireNonEmptyString(input.name, "name");
   return deps.create(name, optionalString(input.description, "description"));
@@ -94,18 +84,8 @@ export function createDrive(input: CreateDriveInput, deps: DriveDeps = defaultDe
 
 export const UPDATABLE_FIELDS = ["name", "description"] as const;
 
-/**
- * Omitted means unchanged; an explicitly empty description clears it, as the store already does.
- *
- * An unrecognised field is refused rather than dropped, the same way a workspace PATCH refuses one:
- * a misspelling alongside a valid field would otherwise apply half the request and answer `ok` with
- * the typo nowhere in the reply — a partial change reported as a complete one, which no caller can
- * detect. `paodo drive set <id> nmae=x` reported success and changed nothing. The refusal names the
- * accepted fields, because a programmatic caller has no form to discover them from.
- *
- * Answers with a receipt rather than the drive, the same way a workspace PATCH does: GET is the sole
- * drive representation, so a projection added there can never make this partial or expensive.
- */
+// Omitted means unchanged; an empty description clears it. Unknown fields are refused with the
+// accepted list, so a typo can't half-apply and report `ok`.
 export function updateDrive(
   driveIdValue: unknown,
   input: UpdateDriveInput,
@@ -143,11 +123,8 @@ export function updateDrive(
   };
 }
 
-/**
- * Removes the drive, its connections, and its files. Raises NOT_FOUND rather than reporting
- * `deleted: false`, so a receipt that says it succeeded always names something that was really there —
- * the same answer DELETE on a workspace gives.
- */
+// Removes the drive, its connections and files. Raises NOT_FOUND like a workspace DELETE, so success
+// always names something real.
 export async function deleteDrive(driveIdValue: unknown, deps: DriveDeps = defaultDeps()): Promise<DeleteDriveResult> {
   const driveId = requireNonEmptyString(driveIdValue, "driveId");
   if (!(await deps.remove(driveId))) throw notFound(driveId);

@@ -21,11 +21,8 @@ export function canMoveToDirectory(
   return source.type !== "directory" || !isPathWithinRoot(destinationDirectory, source.path);
 }
 
-/**
- * Reduce paths to the ones that must be acted on directly, dropping any that already travel with a
- * selected ancestor — a checked folder carries its contents, so moving or deleting both the folder
- * and its children would act on the children twice, at paths that no longer exist.
- */
+// Drops paths under a selected ancestor: the folder carries them, and acting on both would hit the
+// children twice at paths that no longer exist.
 export function collapseToRoots(paths: string[]): string[] {
   return paths.filter((p) => !paths.some((other) => other !== p && isPathWithinRoot(p, other)));
 }

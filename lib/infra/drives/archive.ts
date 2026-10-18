@@ -50,10 +50,8 @@ async function copyOrEmptyList(source: string, out: string): Promise<void> {
   else await writeFile(out, "[]");
 }
 
-/**
- * Tars the drive content tree whole, always producing a member — an instance with no drives yields an
- * empty tar. Exit 1 is tar's "file changed as we read it" warning, expected on live content.
- */
+// Tars the drive content tree whole, always producing a member — an instance with no drives yields an
+// empty tar. Exit 1 is tar's "file changed as we read it" warning, expected on live content.
 async function writeContentArchive(contentDir: string, out: string, stageDir: string): Promise<void> {
   const src = (await exists(contentDir)) ? contentDir : await mkdtemp(path.join(stageDir, "empty-"));
   const result = await run("tar", ["-czf", out, "-C", src, "."]);

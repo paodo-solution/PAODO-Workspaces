@@ -1,6 +1,5 @@
-// Invariant: the composer must open the mention popup only for an "@" that begins a word and close
-// it the moment whitespace follows, and insertion must land the caret after the inserted token.
-// Bug class guarded: mentions firing mid-word (emails, "a@b"), or a wrong slice corrupting the draft.
+// The popup opens only for a word-initial "@" and closes at whitespace, and the caret lands after the insert;
+// guards against firing mid-word ("a@b") or a bad slice corrupting the draft.
 
 import { describe, it, expect } from "vitest";
 import { activeMention, applyMention } from "./mentionQuery";

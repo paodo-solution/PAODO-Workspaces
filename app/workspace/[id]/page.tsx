@@ -1,9 +1,5 @@
-/**
- * Workspace page — the main three-column layout combining the file tree, file viewer, chat panel, and console.
- * Manages column/row resize state and coordinates file selection, viewer visibility, and tree refreshes across panels.
- * A single shared WebSocket (useWorkspaceSocket) routes files_changed / files_deleted events to both the
- * file tree (via treeRefreshKey) and the file viewer (via the imperative FileViewerHandle ref).
- */
+// Three-column workspace layout: file tree, viewer, chat and console, with resizing and shared selection.
+// One WebSocket routes file events to the tree (treeRefreshKey) and the viewer (FileViewerHandle).
 "use client";
 
 import { use, useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
@@ -14,9 +10,8 @@ import { AsyncState } from "@/components/shared/AsyncState";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import FileTreePanel from "@/components/workspace/FileTreePanel";
 import { type FileViewerHandle } from "@/components/workspace/FileViewer";
-/* FileViewer pulls in heavy, view-only deps (the CodeMirror editor with all languages,
-   react-markdown). It is only mounted once the user opens a file, so load its chunk lazily to
-   keep them out of the workspace page's initial bundle (the main first-open latency cost). */
+// Lazy: FileViewer pulls in CodeMirror and react-markdown, and mounts only once a file is opened, so
+// keeping it out of the initial bundle cuts first-open latency.
 const FileViewer = lazy(() => import("@/components/workspace/FileViewer"));
 import ChatPanel from "@/components/workspace/ChatPanel";
 import ConversationBar from "@/components/workspace/ConversationBar";

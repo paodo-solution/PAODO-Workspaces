@@ -168,11 +168,8 @@ describe("Scaleway product catalog", () => {
     expect(result.catalog["deepseek-v4-flash-0731"]).toBeUndefined();
   });
 
-  /**
-   * Scaleway's records in registry.ts are hand-maintained, so the only thing keeping it honest is this check
-   * against the same rows the prices come from. It has to fail on a real move and stay quiet
-   * otherwise, or `npm run update-pricing` either cries wolf or stops catching anything.
-   */
+  // Scaleway's records are hand-maintained, checked against the same rows as the prices. It must fail on real
+  // drift only, or `npm run update-pricing` cries wolf or goes blind.
   describe("reasoning-level drift", () => {
     const withEfforts = (product: string, supported: string[], fallback: string) => ({
       ...row("x_input", 0.0001, product),

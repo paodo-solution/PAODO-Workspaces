@@ -33,23 +33,16 @@ export function normalizeDirPath(dirPath: string | undefined): string | null {
   return normalized.startsWith("..") ? null : normalized;
 }
 
-/**
- * Realpath-based containment check for a workspace path. `workspaceDir` is the host path for the
- * workspace (not the container's `/workspace` view, which `relpath` may itself be expressed in).
- * Returns null if `relpath` escapes — via `..`, an absolute path outside `/workspace`, or a symlink
- * anywhere along the way.
- */
+// `workspaceDir` is the host path; `relpath` may use the container's `/workspace` view. Null if it
+// escapes via `..`, an outside absolute path, or a symlink.
 export async function resolveWorkspacePath(workspaceDir: string, relpath: string): Promise<string | null> {
   const normalized = normalizeRelpath(relpath);
   if (normalized === null) return null;
   return resolveContained(workspaceDir, normalized);
 }
 
-/**
- * Normalize a caller-supplied file path and realpath-contain it in one step — the check every
- * write tool (file_write, file_edit) needs before touching disk. Returns the normalized,
- * workspace-relative path, or null if it escapes lexically or via a symlink.
- */
+// The pre-write check for file_write and file_edit: the normalized relative path, or null if it escapes
+// lexically or via a symlink.
 export async function containWorkspacePath(workspaceDir: string, filePath: string): Promise<string | null> {
   const relpath = normalizeRelpath(filePath);
   if (relpath === null) return null;

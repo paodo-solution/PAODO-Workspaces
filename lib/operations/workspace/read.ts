@@ -34,16 +34,8 @@ export type PublicModelSelection = {
 export type WorkspaceReader = Pick<IWorkspaceStore, "getWorkspace" | "listWorkspaces">;
 export type WorkspaceLookup = Pick<IWorkspaceStore, "getWorkspace">;
 
-/**
- * A workspace's stored model choice, with defaults applied for fields it never set. The defaults come
- * from the available catalog, so a workspace that never picked shows and runs a provider .env actually
- * allows.
- *
- * A stored choice is returned as-is, unexamined: this projects what the workspace holds, it does not
- * police it. Nothing reachable here can be pointed at a withdrawn provider anyway — startup clears
- * those selections (clearWithdrawnLlmSelections), which puts the workspace back on this function's
- * defaults, and validateMetadata refuses to write a new one.
- */
+// The stored model choice, unexamined, with catalog defaults for unset fields. Withdrawn providers are
+// cleared at startup, so none reach here.
 export function currentModelSelection(workspace: Workspace): ModelSelection {
   const fallback = defaultModelSelection();
   return {

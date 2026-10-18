@@ -33,8 +33,8 @@ function defaultDeps(): ConnectionCountDeps {
   };
 }
 
-/** Distinct ends that still exist: the graph accepts a pair twice, and neither store refuses an id
- *  nothing answers to, so counting rows would report reach this workspace does not have. */
+// Distinct ends that still exist: the graph accepts a pair twice, and neither store refuses an id
+// nothing answers to, so counting rows would report reach this workspace does not have.
 function reachable(ids: string[], exists: (id: string) => boolean): number {
   return new Set(ids.filter(exists)).size;
 }

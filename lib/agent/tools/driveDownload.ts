@@ -1,11 +1,5 @@
-/**
- * Agent tool: copy a file or a whole folder from a shared drive into the local workspace so you can
- * work on it with your normal file tools. Symmetric with drive_upload — drive bytes are read host-side
- * and written host-side straight into the workspace tree at downloads/<drive-name>/<path> with plain
- * fs, no container in the path. The app process and the in-container agent share uid 1000 on the same
- * workspace volume, so a host-side write lands owned by the agent with no chown, exactly as the browser
- * upload routes already rely on. Writing raw bytes keeps binary files (SQLite, images, archives) intact.
- */
+// Copies a drive file or folder to downloads/<drive>/<path>, host-side as raw bytes. The app and agent
+// share uid 1000, so the files land owned by the agent with no chown.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

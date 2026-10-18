@@ -1,6 +1,5 @@
-// internetAccess gates whether apt_install/http_get are BOUND at all — not just whether they'd
-// error if called. This pins the actual tools array, since that's the real defense: a model can't
-// emit a tool call for a tool it was never given, regardless of what a prompt injection asks for.
+// internetAccess decides whether apt_install/http_get are BOUND at all. Pins the tools array, since a model
+// cannot call a tool it was never given, whatever a prompt injection asks.
 
 import { describe, it, expect } from "vitest";
 import { buildTools } from "./buildTools";

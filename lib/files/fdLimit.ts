@@ -5,10 +5,8 @@
 // for sockets and the rest of the process; still plenty of parallelism to keep the disk busy.
 export const MAX_OPEN_FILES = 64;
 
-/**
- * Counting semaphore. Releasing hands the permit straight to the next waiter (without touching the
- * active count) so the in-flight total never exceeds `max`.
- */
+// Counting semaphore. Releasing hands the permit straight to the next waiter (without touching the
+// active count) so the in-flight total never exceeds `max`.
 export class Semaphore {
   private active = 0;
   private waiters: (() => void)[] = [];

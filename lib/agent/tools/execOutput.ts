@@ -4,13 +4,8 @@
 import type { OutputSink } from "../../infra/interfaces";
 import { MAX_INLINE_BYTES, PREVIEW_BYTES, STDERR_SAMPLE_BYTES, formatOutputBytes } from "../../infra/limits";
 
-/**
- * Accumulator for one command's output, shared by its stdout and stderr streams.
- *
- * Under the cap it behaves exactly as the old string concatenation did — the streams stay separate
- * so diagnoseStderr and the existing result format still work on whole output. Over the cap it stops
- * retaining and hands everything to a sink instead, keeping only a head preview.
- */
+// One command's stdout and stderr. Under the cap they're kept whole and separate; over it, everything
+// goes to a sink and only a head preview is kept.
 export class ExecOutput {
   // Arrival-order copy, used to flush a complete file at spill time and to cut the preview. Only
   // retained until the spill happens, which is the only moment it is needed.
@@ -116,11 +111,8 @@ export class ExecOutput {
     return this.overflowed ? this.stderrSample() : Buffer.concat(this.stderrKept).toString("utf8");
   }
 
-  /**
-   * The inline block for an over-cap result: size, where the full output went, and the head preview.
-   * Shaped after Claude Code's own message so the agent reads a familiar contract — a preview plus a
-   * path it is expected to go query, not a dead end.
-   */
+  // Size, file path and head preview for an over-cap result, modelled on Claude Code's message so the
+  // agent knows to go query the file.
   overflowNotice(): string {
     const sink = this.sink;
     if (!sink || !this.preview) return "";

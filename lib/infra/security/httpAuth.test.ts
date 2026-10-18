@@ -1,6 +1,5 @@
-// These guards front every request to the app. The dangerous failures are the inverse of each
-// function's job: checkAuth returning "ok" for a bad/absent credential, and isCsrf returning false
-// for a genuine cross-site mutation. Tests lock down both directions.
+// These guards front every request. The dangerous failures are checkAuth passing a bad credential and isCsrf
+// missing a real cross-site mutation, so both directions are locked down.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import {
@@ -348,10 +347,8 @@ describe("checkAuth", () => {
   });
 
   it("does not count an authorization denial toward the brute-force lockout", () => {
-    // The tracker is shared with the UI's Basic auth. A valid token used on a route that simply is
-    // not shared is a misconfigured client, not a credential guess — counting it would let a script
-    // polling an unshared route lock its own operator out of the web interface. Ten attempts here is
-    // twice the lockout threshold.
+    // The tracker is shared with UI Basic auth; a valid token on an unshared route is a misconfigured client, and
+    // counting it would lock the operator out. Ten attempts is twice the threshold.
     const spy = vi.spyOn(tracker, "recordFailure");
     for (let attempt = 0; attempt < 10; attempt++) {
       expect(

@@ -1,6 +1,5 @@
-// A backup that fails must be loud, never silent. Plant a file where the set directory's parent
-// needs to be, so the first archive's mkdir fails, and assert archiveSet both rejects (the catch
-// rethrows, never swallows) and emits the per-stage and set-level failure records operators grep for.
+// A failed backup must be loud: a file planted where the set's parent dir goes fails the first mkdir, and
+// archiveSet must reject and emit the stage and set failure records.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "os";

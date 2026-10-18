@@ -1,27 +1,16 @@
-// Throttle for log lines unauthenticated callers can trigger at will, so a flood doesn't rotate real history
-// out of Docker's capped logs. Opt-in per call site, only where repeats add no evidence.
+// Throttles log lines unauthenticated callers can trigger, so a flood can't rotate real history out of
+// Docker's capped logs. Opt-in per call site, only where repeats add no evidence.
 
 type Window = { openedAt: number; suppressed: number; sources: Set<string> };
 
+// Keyed by event name only, never client address, so a distributed flood is caught and the map stays tiny.
 const windows = new Map<string, Window>();
 
-// Enough to tell one persistent caller from a campaign; more would be the unbounded map this avoids.
+// Enough to tell one persistent caller from a campaign without an unbounded set.
 const MAX_TRACKED_SOURCES = 20;
 
-/**
- * Decide whether to emit a throttled log line.
- *
- * Returns `null` when the line should be dropped, or the number of lines this one stands in for
- * (0 on the first emission of a window). Attach that as a `suppressed` field.
- *
- * Key on the event name alone, never the client address: a flood spread across many addresses is
- * the case this exists for, and per-address keys would let it through untouched. That keeps the map
- * bounded by the number of distinct event names — a handful — so it needs no eviction.
- *
- * The count for a window that never sees another event is lost, so a burst that stops mid-window
- * under-reports its tail. Accepted: the point is to bound the flood while it is happening, and a
- * long flood crosses window boundaries and reports each one.
- */
+// Returns `null` to drop the line, else how many lines it stands in for (0 on a window's first line).
+// A burst that stops mid-window under-reports its tail; a sustained flood reports every window.
 export function throttleLog(event: string, now = Date.now(), windowMs = 10_000): number | null {
   return rotate(event, undefined, now, windowMs)?.suppressed ?? null;
 }
@@ -29,23 +18,14 @@ export function throttleLog(event: string, now = Date.now(), windowMs = 10_000):
 /** What a throttled line stands in for: how many were dropped, and who they came from. */
 export type ThrottledWindow = {
   suppressed: number;
-  /** Distinct addresses seen during the closed window, including the one that was emitted. */
+  /** Distinct addresses seen during the closed window, including the one that opened it. */
   sources: string[];
-  /** True when more than MAX_TRACKED_SOURCES distinct addresses appeared — i.e. it is distributed. */
+  /** True once MAX_TRACKED_SOURCES addresses were seen, i.e. the flood is likely distributed. */
   sourcesTruncated: boolean;
 };
 
-/**
- * Same throttle, but attributing the flood.
- *
- * `throttleLog` alone reduces a burst to a count, which cannot distinguish one persistent guesser
- * from a spread-out campaign — and the caller that happens to open a window is the only address the
- * line names. Use this on paths an unauthenticated caller reaches, where that distinction is the
- * whole point of having the log.
- *
- * Windows are shared with `throttleLog`, so the same event throttles identically whichever function
- * reports it. Returns `null` when the line should be dropped.
- */
+// `throttleLog` that also records sources, to tell one persistent guesser from a spread-out campaign.
+// Shares windows with `throttleLog`, so an event throttles identically through either.
 export function throttleLogWithSources(
   event: string,
   source: string,
@@ -72,7 +52,7 @@ function rotate(event: string, source: string | undefined, now: number, windowMs
   return null;
 }
 
-/** Test seam — the map is process-wide, so a test that asserts counts has to start from zero. */
+/** Test seam: the map is process-wide, so count assertions must start from zero. */
 export function resetLogThrottle(): void {
   windows.clear();
 }

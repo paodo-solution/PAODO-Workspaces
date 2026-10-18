@@ -37,11 +37,8 @@ export function databaseArchiveFileName(deployment: string, at: Date): string {
   return `paodo-db-${slugify(deployment)}-${archiveStamp(at)}${ARCHIVE_SUFFIX}`;
 }
 
-/**
- * Writes a gzipped archive of the database and registry. The database is copied through SQLite's own
- * backup call rather than the filesystem: almost all of a live database sits in the write-ahead log,
- * so a plain file copy yields something that opens cleanly and is nearly empty.
- */
+// Archives the database and registry. Uses SQLite's backup call: a live database sits mostly in the
+// WAL, so a plain file copy opens cleanly but is nearly empty.
 export async function archiveDatabase(dest: string): Promise<DatabaseArchiveResult> {
   const capturedAt = new Date();
   const source = archiveSource(capturedAt);

@@ -1,10 +1,5 @@
-/**
- * Serialize/deserialize the agent's LangChain message history for durable persistence, and
- * project a message history into the client transcript shape used by the chat UI.
- *
- * The system prompt is rebuilt on every run from AGENTS.md (see chat/route.ts), so it is stripped
- * before saving and re-prepended on load: persisting it would freeze a stale prompt.
- */
+// Persists the agent's message history and projects it into the chat transcript. The system prompt is
+// stripped before saving and rebuilt each run, so a stale one is never frozen.
 import {
   mapChatMessagesToStoredMessages,
   mapStoredMessagesToChatMessages,
@@ -33,11 +28,7 @@ export function deserializeMessages(stored: StoredMessage[]): BaseMessage[] {
   return mapStoredMessagesToChatMessages(stored);
 }
 
-/**
- * Set the system prompt in place at index 0: replace an existing one, or unshift if absent.
- * Used by the run path so a freshly loaded (system-less) history gets the current prompt without
- * clobbering its first real message.
- */
+/** Sets the system prompt at index 0, replacing one or unshifting without clobbering a real message. */
 export function setSystemPrompt(messages: BaseMessage[], system: BaseMessage): void {
   if (messages.length > 0 && isSystem(messages[0])) messages[0] = system;
   else messages.unshift(system);
@@ -47,16 +38,8 @@ export function setSystemPrompt(messages: BaseMessage[], system: BaseMessage): v
 // as something the assistant said. `additional_kwargs` survives serialization and no adapter reads it.
 const RUN_ERROR_KEY = "runError";
 
-/**
- * Record on the conversation history why this run stopped.
- *
- * Without this a failed run persists as a user message with nothing after it: the live error event
- * exists only in the stream, so re-opening the conversation — or opening it for the first time,
- * when the run was started through the API — shows a prompt that was apparently ignored.
- *
- * The explanation is all that is kept: the machine code is already recorded per run in the usage
- * ledger, and the transcript renders an error as text either way.
- */
+// Persists why a run stopped; otherwise a reopened conversation shows a prompt apparently ignored. Only
+// the text is kept, since the usage ledger already has the error code.
 export function noteRunError(messages: BaseMessage[], message: string): void {
   const last = messages.at(-1);
   if (!last) return;
@@ -68,11 +51,8 @@ function readRunError(message: BaseMessage): string | null {
   return typeof note === "string" && note ? note : null;
 }
 
-/**
- * Project saved replay state into the client transcript. The execution ledger aggregates a
- * session's model turns onto its final visible output and keys that total by the stable id on the
- * corresponding AIMessage; the conversation never owns a second copy of those measurements.
- */
+// Usage totals come from the execution ledger, keyed by the final AIMessage's id; the conversation never
+// stores its own copy.
 export function messagesToTranscript(
   messages: BaseMessage[],
   outputUsage: ReadonlyMap<

@@ -1,6 +1,5 @@
-// WorkspaceHistoryTool turns the versioning service's structured data + raw diffs into the
-// token-optimized text the agent reads. These tests pin the two modes (overview vs detail),
-// the path containment guard, the sha guard, and the diff boilerplate-stripping.
+// Turns versioning data and raw diffs into the agent's compact text. Pins overview vs detail mode, the path
+// and sha guards, and diff boilerplate stripping.
 
 import { describe, it, expect } from "vitest";
 import { WorkspaceHistoryTool } from "./workspaceHistory";

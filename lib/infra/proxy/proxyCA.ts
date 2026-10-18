@@ -46,8 +46,8 @@ const domainCertCache = new Map<string, { cert: string; key: string; notAfter: n
 const DOMAIN_CERT_RENEW_BEFORE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface EnsureCAOptions {
-  /** Refuse to replace existing unreadable/partial trust material. Production uses this because
-   * silently rotating it breaks trust and workspace proxy authentication. */
+  // Refuse to replace existing unreadable/partial trust material. Production uses this because
+  // silently rotating it breaks trust and workspace proxy authentication.
   strictExisting?: boolean;
 }
 

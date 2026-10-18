@@ -1,33 +1,16 @@
 // The upload size limit, enforced by upload.ts and pre-checked by useFileUpload.ts, so the UI never accepts
 // what the server 413s. Client-bundled: no server-only imports.
 
-/**
- * Per-file ceiling, honoured by every path that accepts bytes. Transfers stream straight to disk and
- * are never buffered, so this bounds disk use rather than process memory — which is why it can sit far
- * above the container's RAM.
- *
- * A per-file limit is the *only* limit the browser's upload path needs, because a folder upload there
- * is N independent one-file requests: a large tree is never more demanding than its single largest
- * file. That reasoning does not carry over to the CLI's transfer route, where one request carries a
- * whole tree — hence the two aggregate caps below, which apply only to that path.
- */
+// Per-file cap on every byte path. Uploads stream to disk, so it can exceed RAM. The browser sends one
+// request per file; the CLI's single-request transfer also gets the caps below.
 export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB
 
-/**
- * Entry ceiling for one tar transfer. Per-entry size and free-space checks bound the *bytes* a
- * transfer can land but say nothing about how many inodes it consumes, so an archive of millions of
- * empty files passes every other check and still exhausts the filesystem. The browser path gets this
- * bound for free from the rate limiter, one request per file; a single-request transport has to state
- * it. Set well above a real source tree — the Linux kernel is roughly 80k files — so it refuses abuse
- * rather than work.
- */
+// Bounds inodes, which byte checks miss (millions of empty files). Well above a real tree (Linux is
+// ~80k files), so it stops abuse, not work.
 export const MAX_TRANSFER_ENTRIES = 100_000;
 
-/**
- * Total ceiling for one tar transfer. Distinct from free space, which is already checked per entry:
- * this bounds how much time and I/O a single request can claim, since the server holds one connection
- * open for the whole transfer (server.ts sets a 30 minute request timeout).
- */
+// Bounds the time and I/O one request can hold a connection for (30-minute timeout), separate from the
+// per-entry free-space check.
 export const MAX_TRANSFER_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB
 
 /** Byte size for limit messages — "1 GB", "734.2 MB", "512 B". */

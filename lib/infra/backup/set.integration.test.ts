@@ -1,6 +1,5 @@
-// End-to-end against real tar in a temp root: a full set is graph + database + a workspace under
-// <instance>/<stamp>-<id>/, defined by backup.json. Asserts the layout, the manifest's identity
-// fields, the entry union, and that every recorded sha256 matches the file on disk.
+// Real tar in a temp root: a set is graph + database + workspace under <instance>/<stamp>-<id>/. Asserts the
+// layout, the manifest's identity and entries, and every sha256.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHash } from "crypto";
 import fs from "fs";

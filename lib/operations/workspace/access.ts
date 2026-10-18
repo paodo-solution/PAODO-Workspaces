@@ -5,11 +5,8 @@ import { WorkspaceUpdateError } from "./errors";
 
 export type AccessChannel = "workspace-api" | "workspace-mcp";
 
-/**
- * Each channel reports its two axes separately, then its address. A caller that wants to know why a
- * channel is unusable — closed, or open with no key — can read it here; that is not something one
- * nullable URL can express, and the CLI has no panel to infer it from.
- */
+// Each channel reports enabled and hasKey separately, then its address, so a caller can tell closed
+// from open-but-keyless.
 export interface WorkspaceAccessDetails {
   workspaceApiAccess: boolean;
   workspaceApiHasKey: boolean;
@@ -42,16 +39,8 @@ export function validateChannelEnabled(field: string, value: unknown): boolean {
   return value;
 }
 
-/**
- * Returns the external-access fields for a workspace without exposing either credential.
- *
- * Reports both axes per channel and the address unconditionally. The address is a property of where
- * the workspace lives, not of whether a call would currently succeed, so folding the two axes into a
- * nullable URL only destroyed information: one `null` meant closed, or open-and-keyless, and the
- * caller could not tell which, nor which of the two things to go and fix. The booleans say that
- * plainly, and a URL that is present but not yet usable is exactly what an operator needs while
- * setting an integration up — it is the value they have to paste somewhere before it works.
- */
+// Never exposes a credential. The address is always present, even before it works, since an operator
+// needs it while setting an integration up.
 export function getWorkspaceAccess(
   id: string,
   connectionOrigin: string,
@@ -72,15 +61,8 @@ export function getWorkspaceAccess(
   };
 }
 
-/**
- * Opens or closes a channel, and does nothing else.
- *
- * It deliberately does not mint. A first key comes from an explicit generate, so the plaintext — which
- * is readable exactly once — is only ever produced by a caller that asked for it and is reading the
- * response. Toggling therefore stays non-destructive in both directions: consumers keep whatever key
- * they hold across an off/on cycle, and a caller that flips this flag can never lose a key it never
- * requested.
- */
+// Only opens or closes; never mints, so the one-time plaintext goes only to a caller that asked for it.
+// Toggling keeps existing keys across an off/on cycle.
 export function setChannelEnabled(
   channel: AccessChannel,
   id: string,

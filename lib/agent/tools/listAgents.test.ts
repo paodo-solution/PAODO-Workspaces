@@ -5,9 +5,8 @@ import { describe, it, expect } from "vitest";
 import { formatSkill } from "./listAgents";
 import type { SkillDefinition } from "@/lib/skills/types";
 
-// The skill listing is the calling agent's ONLY view of another workspace's contract —
-// if optionality or the return shape renders wrong, the caller fills in wrong args and
-// burns its bounded input retries on calls the platform will reject.
+// This listing is the caller's ONLY view of another workspace's contract; a wrong render makes it guess args
+// and burn its bounded retries on calls that will be rejected.
 
 describe("formatSkill", () => {
   it("renders required and optional params, description, return shape, and supplied examples", () => {

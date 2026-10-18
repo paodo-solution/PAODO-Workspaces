@@ -23,13 +23,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return getFileTransfer(req, backend(id, ws.dir));
 }
 
-/**
- * Commit the pushed tree so the transfer is undoable from version history, and report only whether
- * that succeeded. The commit sha is deliberately not returned to the client: it names a snapshot of
- * the whole workspace rather than of what was pushed, so a caller reading it beside a list of pushed
- * paths reads it as an identifier for those paths, which it is not. History and restore are where a
- * revision is chosen, and both name it in a context that makes clear what it covers.
- */
+// Commits so the transfer can be undone, returning only success. No sha: it snapshots the whole
+// workspace and would be misread as naming the pushed paths.
 async function snapshot(id: string, ws: { id: string; dir: string }, receipt: PutTransferReceipt): Promise<boolean> {
   try {
     await snapshotWorkspaceStrict(

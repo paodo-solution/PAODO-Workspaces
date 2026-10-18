@@ -1,19 +1,12 @@
-/**
- * How a partial model choice becomes a complete one. Owned in one place because the picker resolves
- * it client-side and the update path server-side, and both must give the same answer.
- *
- * Kept free of the provider registry, which pulls the LLM SDKs: the selected provider's vocabulary
- * arrives as data — from the registry on the server, from GET /api/models on the client.
- */
+// Resolves a partial model choice identically for the client picker and the server. Free of the
+// registry (it pulls the LLM SDKs): vocabularies arrive as data.
 import { NO_DIAL_EFFORT, type ReasoningEffort } from "@/lib/models/llmSelection";
 
 /** What the selected provider offers: its models, and the effort levels each one accepts. */
 export interface ModelVocabulary {
   models: readonly string[];
-  /**
-   * Keyed by model id, because effort levels belong to the model and not to its provider. An empty
-   * list — or no entry, as for a retired id a workspace still stores — means the model has no dial.
-   */
+  // Keyed by model id, because effort levels belong to the model and not to its provider. An empty
+  // list — or no entry, as for a retired id a workspace still stores — means the model has no dial.
   modelReasoningEfforts: Readonly<Record<string, readonly ReasoningEffort[]>>;
 }
 
@@ -44,38 +37,22 @@ function trimmed(value: string | undefined): string | undefined {
   return result ? result : undefined;
 }
 
-/**
- * The model to select when the caller named none and the previous one no longer applies: the
- * provider's first catalog entry, which the catalog orders default-first — usually the flagship, but
- * deepseek leads with the cheaper Flash on purpose (see registry.ts). Empty when the provider
- * serves no models, which the caller reports rather than storing.
- */
+// The provider's first catalog entry (the catalog lists its default first). Empty when it serves no
+// models, which the caller reports rather than storing.
 export function defaultModelFor(vocabulary: ModelVocabulary): string {
   return vocabulary.models[0] ?? "";
 }
 
-/**
- * The effort to start a model at. Deliberately not the level the previous model was on: the lists
- * only partly overlap, so carrying a level across would sometimes produce a selection the new model
- * rejects at call time — a failure far from the change that caused it. A known-good level every time
- * is worth more than preserving a choice the caller can always restate.
- *
- * "low" whenever offered. The fallback is the quietest level the model does offer rather than its
- * first: `none` disables reasoning outright, so position alone is not a safe rule.
- */
+// "low" if offered, else the quietest level other than "none". Never carried over from the previous
+// model, whose level the new one might reject.
 export function defaultEffortFor(vocabulary: ModelVocabulary, model: string): ReasoningEffort {
   const accepted = effortsForModel(vocabulary, model);
   if (accepted.includes("low")) return "low";
   return accepted.find((effort) => effort !== "none") ?? accepted[0];
 }
 
-/**
- * The selection a workspace that has never picked one runs and displays: the first available
- * provider, its first model, that model's default effort.
- *
- * `providers` comes filtered and ordered by lib/agent/buildModel.ts, keeping the LLM SDKs out of this
- * client-safe module. All fields are empty when every provider is off, which the app must render.
- */
+// First provider, its first model, that model's default effort. `providers` is pre-filtered by
+// buildModel.ts; all fields are empty when every provider is off.
 export function firstAvailableSelection(
   providers: readonly string[],
   vocabularyFor: (provider: string) => ModelVocabulary,
@@ -94,20 +71,8 @@ export function firstAvailableSelection(
   };
 }
 
-/**
- * Completes a partial model choice against the current selection and the chosen provider's vocabulary.
- *
- * Resolution is per field, so any subset works. An omitted provider keeps the current one. An omitted
- * model and an omitted effort both keep their current value while the provider is unchanged, except a
- * model change resets effort to that model's default. An explicit effort always wins. A model with no
- * effort dial always resolves to the stored placeholder.
- *
- * Validation is NOT done here: this decides what was meant, not whether it is allowed. The caller
- * checks the provider against its registry and the effort against `vocabulary` — it owns the error
- * messages, and only it knows whether an unacceptable value should be refused or coerced. An effort
- * supplied to a no-dial model is one of those refusals, and validateMetadata raises on it; this
- * function only reports the placeholder it resolved to.
- */
+// Per field: omitted ones keep current values, a model change resets effort, an explicit effort wins.
+// Doesn't validate; the caller decides whether to refuse a value.
 export function resolveModelSelection(
   requested: RequestedModelSelection,
   current: ModelSelection,

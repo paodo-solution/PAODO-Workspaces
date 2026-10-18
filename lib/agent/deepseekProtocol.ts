@@ -9,21 +9,12 @@ import { THINKING_OFF_EFFORT, type ReasoningEffort } from "../models/llmSelectio
 /** Reasoning for one request, keyed by the tool-call id of the turn that produced it. */
 type ReasoningLookup = Map<string, string>;
 
-/**
- * Scoped to a single call rather than held on the client, because the object the runner calls is not
- * the one this module builds: bindTools returns a fresh Runnable wrapping the same client, so anything
- * keyed by instance is missed on exactly the calls that matter, while the shared client's fetch would
- * still see a lookup another call had left behind.
- */
+// Per-call, not per-client: bindTools wraps the shared client in a fresh Runnable, so instance state
+// would miss those calls and leak lookups between them.
 const REASONING_SCOPE = new AsyncLocalStorage<ReasoningLookup>();
 
-/**
- * DeepSeek's thinking fields. The OpenAI-compatible `reasoning_effort` has no "none", so switching
- * thinking off is a different field entirely rather than another level.
- *
- * Sending neither is not an option: since 13 Aug 2026 V4-Flash and V4-Pro think by default at "high",
- * so a request that says nothing pays for the most verbose reasoning the model offers.
- */
+// `reasoning_effort` has no "none", so off is a separate field. Always sent: since 13 Aug 2026 V4
+// models default to "high", so silence pays for maximum reasoning.
 export function deepseekReasoningConfig(effort: ReasoningEffort): { modelKwargs: Record<string, unknown> } {
   return effort === THINKING_OFF_EFFORT
     ? { modelKwargs: { thinking: { type: "disabled" } } }
@@ -33,13 +24,8 @@ export function deepseekReasoningConfig(effort: ReasoningEffort): { modelKwargs:
 /** An assistant message as it appears in the request body, once LangChain has converted it. */
 type WireMessage = { tool_calls?: Array<{ id?: string }>; reasoning_content?: string };
 
-/**
- * Put each turn's reasoning back on the wire message that produced it.
- *
- * Pairing is by tool-call id — unique, already persisted, and stable across a reload — rather than by
- * position, which a compaction or a dropped turn would silently shift. A body this cannot parse is
- * returned untouched: replay must never be the reason a call fails.
- */
+// Paired by tool-call id, not position, which compaction would shift. An unparseable body passes
+// through untouched: replay must never fail a call.
 function restoreReasoningContent(body: string, lookup: ReasoningLookup): string {
   let payload: { messages?: WireMessage[] };
   try {
@@ -61,14 +47,8 @@ function restoreReasoningContent(body: string, lookup: ReasoningLookup): string 
   return changed ? JSON.stringify(payload) : body;
 }
 
-/**
- * The fetch seam is where injection happens, because there is nowhere earlier that survives.
- *
- * LangChain's outbound converter copies only function_call, tool_calls and audio off a message's
- * additional_kwargs and drops everything else, so reasoning_content cannot ride on a cloned message
- * the way Mistral's thinking blocks ride in `content`. Here the body is already DeepSeek's own
- * documented shape — a far steadier contract than the SDK's internals.
- */
+// Injected at fetch because LangChain drops reasoning_content from additional_kwargs. The body here is
+// DeepSeek's documented shape, a steadier contract than SDK internals.
 function deepseekFetch(inner: typeof fetch): typeof fetch {
   return (input, init) => {
     const lookup = REASONING_SCOPE.getStore();
@@ -98,13 +78,8 @@ function lookupFrom(messages: BaseMessage[]): ReasoningLookup {
   return lookup;
 }
 
-/**
- * DeepSeek's outbound adapter: run one call with its own reasoning in scope.
- *
- * The messages go out untouched — unlike Mistral, nothing about a DeepSeek message needs rewriting.
- * Only a field LangChain refuses to carry has to be restored, and that happens in the fetch above,
- * which reads the scope this opens. The lifetime is the call, so nothing can leak into the next one.
- */
+// Runs one call with its reasoning in scope for the fetch above; messages go out untouched. Scoped to
+// the call, so nothing leaks into the next.
 export function sendWithDeepSeekReasoning<T>(
   messages: BaseMessage[],
   send: (messages: BaseMessage[]) => Promise<T>,

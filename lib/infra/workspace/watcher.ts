@@ -112,10 +112,8 @@ export function stopWatcher(workspaceId: string): void {
   watchers.delete(workspaceId);
 }
 
-/**
- * Suppress the echo event for a file the UI itself just saved. `relPath` is workspace-relative, as it
- * arrives from the browser; it is keyed absolute here because that is the space chokidar reports in.
- */
+// Suppress the echo event for a file the UI itself just saved. `relPath` is workspace-relative, as it
+// arrives from the browser; it is keyed absolute here because that is the space chokidar reports in.
 export function markSelfWrite(workspaceDir: string, relPath: string): void {
   if (WATCHERS_DISABLED) return;
   ignorePaths.set(path.join(workspaceDir, relPath), Date.now() + 500);

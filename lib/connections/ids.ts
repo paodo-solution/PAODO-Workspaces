@@ -14,8 +14,8 @@ export function mintConnectionId(kind: ConnectionKind): string {
   return `${PREFIX[kind]}${crypto.randomUUID()}`;
 }
 
-/** The graph an id belongs to, or null for anything that is not a connection id — a bare prefix
- *  included, since it names a kind without naming a connection. */
+// The graph an id belongs to, or null for anything that is not a connection id — a bare prefix
+// included, since it names a kind without naming a connection.
 export function connectionKind(id: string): ConnectionKind | null {
   return KINDS.find((kind) => id.startsWith(PREFIX[kind]) && id.length > PREFIX[kind].length) ?? null;
 }

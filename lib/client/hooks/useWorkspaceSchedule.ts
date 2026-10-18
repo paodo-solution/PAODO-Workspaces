@@ -21,10 +21,8 @@ export interface WorkspaceSchedule extends AsyncResource<ScheduleData> {
   save: (payload: Partial<SchedulePayload>) => Promise<void>;
 }
 
-/**
- * Reads and replaces a workspace's single schedule. While `pollMs` is set it re-reads at once and then
- * on that interval (skipped while the tab is hidden), so a finished run or a CLI edit shows up.
- */
+// Reads and replaces a workspace's single schedule. While `pollMs` is set it re-reads at once and then
+// on that interval (skipped while the tab is hidden), so a finished run or a CLI edit shows up.
 export function useWorkspaceSchedule(workspaceId: string, { pollMs }: { pollMs?: number } = {}): WorkspaceSchedule {
   const url = `/api/workspaces/${workspaceId}/schedule`;
   const resource = useAsyncResource<ScheduleData>(

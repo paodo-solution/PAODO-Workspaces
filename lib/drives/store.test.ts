@@ -1,6 +1,5 @@
-// resolveDriveDir is the single resolver every drive_* tool funnels through. It must accept
-// EITHER a drive's id (the stable handle agents pass to each other) OR its name (case-insensitive),
-// and stay scoped to the drives the calling workspace is actually connected to.
+// Every drive_* tool resolves through resolveDriveDir: by id or case-insensitive name, scoped to the drives
+// the calling workspace is connected to.
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -74,9 +73,8 @@ describe("formatDriveLine", () => {
   });
 });
 
-// Uniqueness is enforced in the store rather than the operation because the store is what holds the
-// list to compare against — and because resolveDriveDir above, which resolves a drive_* tool's
-// `driveRef` by name case-insensitively, is the reason the rule exists at all.
+// Enforced in the store, which holds the list to compare; name lookup in resolveDriveDir is case-insensitive,
+// which is why the rule exists.
 describe("drive name uniqueness", () => {
   const conflict = expect.objectContaining({ name: "DriveNameError", code: "DRIVE_NAME_CONFLICT" });
 

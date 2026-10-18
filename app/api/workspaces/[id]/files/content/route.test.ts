@@ -1,25 +1,12 @@
-// The workspace file-content API route must serve files inside a workspace but reject every attempt to
-// name a host file outside it.
-//
-// Requests speak workspace-relative paths (lib/files/relpath.ts) — "hello.txt", never
-// "/tmp/.../ws/hello.txt". The fixtures below still build absolute paths, because that is what fs
-// needs; `abs()` marks each crossing, and anything passed to a request is deliberately relative. A
-// test that names an absolute path in a request is asserting the refusal, not setting up a read.
+// Must serve files inside a workspace and refuse any host path outside it. Requests speak relative paths;
+// `abs()` marks fixture paths fs needs, so an absolute path in a request is asserting the refusal.
 
 import { describe, it, expect, vi, afterAll } from "vitest";
 import fs from "fs";
 import path from "path";
 
-// Build a real on-disk fixture BEFORE the module mock is hoisted:
-//
-//   <root>/
-//     secret.txt          <- OUTSIDE the workspace (host secret)
-//     ws/                 <- the workspace dir
-//       hello.txt         <- a legitimate file
-//       escape            <- symlink pointing at ../secret.txt
-//
-// This mirrors the real attack: an agent inside its container plants a symlink
-// in its own workspace, then a host-side HTTP request tries to read it.
+// Real fixture built before the hoisted mock: <root>/secret.txt outside, ws/hello.txt inside, and ws/escape
+// symlinked to ../secret.txt, as an agent would plant it before a host-side read.
 const { WS_DIR } = vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
@@ -93,9 +80,8 @@ describe("files/content GET — workspace containment", () => {
     expect((await getFile(treePath)).status).toBe(200);
   });
 
-  // THE test that matters: a symlink inside the workspace pointing outside it must NOT be followed.
-  // This is the cross-workspace / host-file boundary, and it is the one case a lexical path check
-  // cannot see — "escape" is a perfectly ordinary relative path.
+  // THE boundary test: an in-workspace symlink pointing outside must NOT be followed. A lexical check cannot
+  // see it, since "escape" is an ordinary relative path.
   it("refuses to follow a symlink that escapes the workspace", async () => {
     const res = await getFile("escape");
     expect(res.status).toBe(400);
@@ -133,9 +119,8 @@ describe("files/content GET — workspace containment", () => {
   });
 });
 
-// The transport half of a line window: which query parameters reach the rule, and that the raw body a
-// CLI pipes to stdout is the window rather than the file. The line arithmetic itself is pinned in
-// lib/operations/files/content.test.ts.
+// Transport half of a line window: which params reach the rule, and that ?raw=1 returns the window, not the
+// file. The line arithmetic is pinned in lib/operations/files/content.test.ts.
 describe("files/content GET — a window of lines", () => {
   const window = (query: string) => GET(new Request(`http://x/api/files/content?${query}`), ctx);
 
@@ -200,9 +185,8 @@ describe("files/content GET — a window of lines", () => {
   });
 });
 
-// ?raw=1 answers with bytes and nothing else, so its Content-Type is the only thing a streaming client
-// has to go on. `paodo file cat` reads it to refuse a file it must not write to a terminal, which it
-// can only do if text and binary are told apart — one octet-stream for both is what let a PNG through.
+// ?raw=1's Content-Type is all a streaming client has: `paodo file cat` uses it to refuse binary on a
+// terminal, which one octet-stream for both let a PNG through.
 describe("files/content GET — what ?raw=1 says the bytes are", () => {
   const raw = (name: string) => GET(new Request(`http://x/api/files/content?path=${name}&raw=1`), ctx);
   const mediaType = async (name: string) => (await raw(name)).headers.get("content-type");
@@ -402,9 +386,8 @@ describe("files/content PATCH — move", () => {
     expect(fs.readFileSync(abs("to/same.txt"), "utf8")).toBe("destination");
   });
 
-  // The mkdir reservation carries this case alone: rename(2) replaces an empty directory happily,
-  // so without the reservation an empty same-named folder is silently clobbered and the 409 never
-  // fires. A non-empty one is caught by rename's own ENOTEMPTY, which is why it can't pin this.
+  // Only the mkdir reservation catches this: rename(2) happily replaces an empty directory, while a non-empty
+  // one fails on its own ENOTEMPTY.
   it("returns a conflict rather than replacing an empty same-named folder", async () => {
     fs.mkdirSync(abs("empty-from/dup"), { recursive: true });
     fs.mkdirSync(abs("empty-to/dup"), { recursive: true });
@@ -417,9 +400,8 @@ describe("files/content PATCH — move", () => {
     expect(fs.readdirSync(abs("empty-to/dup"))).toEqual([]);
   });
 
-  // Folders take the mkdir-reserve-then-rename path rather than the files' link-then-unlink one,
-  // so a same-named folder at the destination has to be rejected outright: merging the two trees
-  // would be a silent, unrecoverable mix of the user's files.
+  // Folders take the mkdir-reserve-then-rename path, so a same-named destination folder is refused outright;
+  // merging the trees would silently and irrecoverably mix the user's files.
   it("returns a conflict without merging into a same-named folder", async () => {
     fs.mkdirSync(abs("merge-from/dup"), { recursive: true });
     fs.mkdirSync(abs("merge-to/dup"), { recursive: true });
@@ -465,9 +447,8 @@ describe("files/content PATCH — move", () => {
     expect(fs.readFileSync(abs("absolute-dest.txt"), "utf8")).toBe("safe");
   });
 
-  // The browser can only act on a path it can find in the tree it was served, and an external client
-  // cannot know the host directory at all. Returning anything but the tree's own space silently breaks
-  // selection and expansion state — and used to leak the host layout on every move.
+  // Clients act only on paths in the tree's own space; anything else breaks selection and expansion, and used
+  // to leak the host layout on every move.
   it("returns the new path in the same space the file tree serves", async () => {
     fs.mkdirSync(abs("inbox"));
     fs.writeFileSync(abs("tracked.txt"), "x");

@@ -98,11 +98,7 @@ export interface LightTurnRecord {
   id: string;
   sessionId: string;
   conversationId?: string;
-  /**
-   * Whether that conversation still exists. Usage records outlive conversations (deleting a
-   * workspace drops its replay state but keeps its execution records), so the dashboard keeps
-   * showing the id either way but only links one it can actually open.
-   */
+  // Usage outlives conversations, so the dashboard shows the id regardless but links only a live one.
   conversationLive?: boolean;
   workspaceId: string;
   workspaceName: string;
@@ -122,10 +118,8 @@ export interface LightTurnRecord {
   toolCalls: Array<{ name: string; status: ToolStatus }>;
 }
 
-/**
- * Session token totals projected onto one turn — see getConversationOutputTokens in ./queries.ts.
- * Narrower than TurnRecord on purpose: chat renders an aggregate badge, not per-turn accounting.
- */
+// Session token totals projected onto one turn — see getConversationOutputTokens in ./queries.ts.
+// Narrower than TurnRecord on purpose: chat renders an aggregate badge, not per-turn accounting.
 export interface OutputTokenUsage {
   inputTokensTotal: number;
   inputTokensCacheRead: number;

@@ -1,12 +1,5 @@
-// Route-level coverage for workspace deletion's failure handling. Two invariants:
-//   1. The registry entry is removed LAST. Anything that fails before it leaves the workspace
-//      listed, so the user can delete again — rather than orphaning a directory, git history, or a
-//      running container behind a registry entry that no longer exists (nothing else sweeps them).
-//   2. A missing registry entry is NOT a successful deletion, and it does not mean nothing needs
-//      cleaning up: it may be a previous deletion that was interrupted after some resources were
-//      removed but before the registry write. The full cleanup sweep still runs; only the response
-//      (not found) reflects that no registry entry existed, so the app and every thin client agree
-//      that deleting an already-deleted workspace fails.
+// Deletion removes the registry entry LAST, so any earlier failure leaves the workspace listed for a retry.
+// A missing entry still runs the full sweep (it may be an interrupted delete) but answers not found.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

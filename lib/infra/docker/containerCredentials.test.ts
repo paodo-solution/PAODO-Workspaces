@@ -224,14 +224,8 @@ describe("buildExecEnv — egress relay", () => {
   });
 });
 
-/**
- * An exec-level `-e` outranks the container's own environment, so a secret named after the proxy
- * address or a CA-trust path would replace that wiring with an opaque token on EVERY command — and
- * the resulting TLS failures name nothing that would lead anyone back to a secret's name.
- *
- * validateSecret refuses these names when a secret is stored, but that only covers what was written
- * after the rule existed. This is the boundary that also covers what was already in the store.
- */
+// Exec `-e` outranks the container env, so a secret named like the proxy or CA vars would silently break TLS.
+// validateSecret refuses new ones; this boundary also covers names stored before the rule.
 describe("buildExecEnv — names the container itself uses", () => {
   it("refuses to inject a secret that would shadow the container's wiring", () => {
     listSecretMeta.mockReturnValue([meta("HTTPS_PROXY"), meta("SSL_CERT_FILE"), meta("VERCEL_TOKEN")]);

@@ -21,12 +21,8 @@ export interface RestoreTarget {
   dir: string;
 }
 
-/**
- * Restores an existing workspace to `sha`. A ref that is not a snapshot of THIS workspace is a
- * caller error, not a missing resource: the workspace was found, and the id it supplied for a
- * revision does not name one. Both rejections stay on the invalid-input path so a caller does not
- * have to distinguish "malformed" from "no longer in history" to know it must send a different ref.
- */
+// A malformed sha and one that isn't this workspace's snapshot are both invalid input, not not-found:
+// either way the caller must send a different ref.
 export async function restoreWorkspace(
   workspace: RestoreTarget,
   input: RestoreWorkspaceInput,

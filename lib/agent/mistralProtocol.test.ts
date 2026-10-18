@@ -104,9 +104,8 @@ describe("flattenMistralDelta", () => {
   });
 });
 
-// Driven through a real model instance rather than the subclass alone: the hook it overrides is
-// deprecated upstream, and once removed the override would sit there passing while every reasoning
-// delta is dropped again — the failure this whole seam exists to prevent.
+// Through a real model, not the subclass alone: the overridden hook is deprecated, and once removed the
+// override would keep passing while every reasoning delta is dropped.
 describe("createMistralChatModel", () => {
   function sseResponse(events: object[]): Response {
     const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";

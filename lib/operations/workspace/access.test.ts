@@ -27,10 +27,8 @@ describe("workspace access details", () => {
     });
   });
 
-  // The four combinations of the two axes are all ordinary states, and each needs a different action
-  // to become usable: open the channel, issue a key, both, or nothing. A single nullable URL collapsed
-  // three of them into one `null`, which told a programmatic caller that something was wrong but never
-  // which thing — and the CLI, unlike the UI, has no panel to read the answer off.
+  // Each of the four axis combinations needs a different fix (open, issue, both, none). One nullable URL
+  // collapsed three into `null`, telling the CLI something was wrong but not what.
   it.each([
     { enabled: false, hasKey: false },
     { enabled: false, hasKey: true },
@@ -47,9 +45,8 @@ describe("workspace access details", () => {
     });
   });
 
-  // The address is where the workspace lives, not a statement that a call would succeed right now.
-  // Withholding it until both axes line up hid the value an operator has to paste into the client
-  // they are configuring — precisely while they are configuring it.
+  // The address is where the workspace lives, not a promise a call succeeds; hiding it until both axes align
+  // hid it exactly while the operator was configuring the client.
   it("reports both addresses even for a closed, keyless channel", () => {
     const readState = () => ({ enabled: false, hasKey: false });
 
@@ -77,9 +74,8 @@ describe("workspace access details", () => {
 });
 
 describe("opening and closing a channel", () => {
-  // The toggle owns one axis and the credential verbs own the other. Enabling therefore returns
-  // nothing at all: a caller that flips this flag can neither obtain a key it did not ask for nor lose
-  // one it is holding, in either direction.
+  // The toggle owns one axis, credential verbs the other, so enabling returns nothing: a caller can neither
+  // gain an unasked-for key nor lose one it holds.
   it("moves only the enabled flag, returning no credential", () => {
     const touched: string[] = [];
     const credentials = credentialStub({ setEnabled: () => touched.push("setEnabled") });

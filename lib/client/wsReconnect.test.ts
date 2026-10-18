@@ -1,6 +1,5 @@
-// The failure this schedule exists to prevent is an unbounded fast retry loop: a handshake the
-// browser cannot satisfy used to be retried every 2s forever. So the assertions that matter are the
-// growth and the cap, not the exact numbers.
+// Prevents the old unbounded 2s retry loop on an unsatisfiable handshake, so the growth and the cap matter,
+// not the exact numbers.
 import { describe, it, expect } from "vitest";
 
 import { WS_RECONNECT_DELAYS_MS, isWsConnectionStale, wsReconnectDelayMs } from "./wsReconnect";

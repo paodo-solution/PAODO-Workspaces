@@ -1,12 +1,5 @@
-// What happens to a workspace whose provider the deployment switches off.
-//
-// The store keeps the choice; startup sweeps it. These cases pin the sweep itself — that it clears
-// all three model fields (a stale model or effort left behind would resurface the moment the
-// provider name was reused), that it persists once for the whole batch, and that it leaves every
-// other workspace and every other field untouched.
-//
-// Same temp-root + vi.resetModules() harness as the other registry tests, so paths.ts resolves to a
-// throwaway WORKSPACES_ROOT rather than the developer's data directory.
+// Startup sweep for a withdrawn provider: clears all three model fields (stale ones would resurface if the
+// name returns), persists once, touches nothing else. Temp-root harness like the other registry tests.
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -29,9 +22,8 @@ afterEach(() => {
   fs.rmSync(ROOT, { recursive: true, force: true });
 });
 
-// Seeded straight into the backing map: createWorkspace never sets a model choice (a new workspace
-// runs the defaults), so the state under test can only be reached by hydration from a registry
-// written before the provider was withdrawn.
+// Seeded into the backing map: createWorkspace never sets a model, so this state only arises by hydrating a
+// registry written before the withdrawal.
 function seed(store: WorkspaceStore, entries: Array<Partial<Workspace> & { id: string }>): void {
   for (const entry of entries) {
     (store as unknown as { workspaces: Map<string, Workspace> }).workspaces.set(entry.id, {

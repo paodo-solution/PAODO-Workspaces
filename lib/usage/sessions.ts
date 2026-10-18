@@ -23,12 +23,8 @@ export interface LightSession {
   toolTotal: number;
   // undefined until a priced turn contributes; stays undefined if no turn's model is in the catalog.
   cost: number | undefined;
-  /**
-   * Per-currency subtotals, because a session is free to switch models mid-run and a euro-priced
-   * Scaleway turn cannot be added to a dollar-priced one. `cost` above stays the total ONLY while a
-   * session is single-currency, and is undefined the moment two appear — a sum across currencies is
-   * a number that means nothing, and showing it would be worse than showing the parts.
-   */
+  // A session can mix currencies, which can't be summed, so `cost` is undefined once two appear and
+  // these subtotals are the answer.
   costByCurrency: Partial<Record<Currency, number>>;
   // The last error recorded across the run's turns: what stopped it. A failed tool call the agent
   // recovered from is not a failed run; those stay visible as red dots inside the drawer.

@@ -45,11 +45,8 @@ export interface CredentialEnv {
   hasProxyCA: boolean;
 }
 
-/**
- * The env for ONE `docker exec`: the workspace's secrets as opaque tokens (the proxy swaps in real
- * values on scoped HTTPS), none at all while internet access is off, and routing through the egress
- * relay once it is up. Recomputed per command, so a secret added later reaches the very next one.
- */
+// Env for one `docker exec`: secrets as proxy-swapped tokens (none while internet is off), plus relay
+// routing once it is up. Recomputed per command, so a new secret reaches the very next one.
 export function buildExecEnv(workspaceId: string, internetAccess: boolean, relayReady = false): Record<string, string> {
   const secrets = internetAccess ? listSecretMeta(workspaceId) : [];
   // Node's fetch/http(s) ignore HTTP(S)_PROXY without this. Set per exec so older containers get it too.
@@ -73,10 +70,8 @@ export function buildExecEnv(workspaceId: string, internetAccess: boolean, relay
   return env;
 }
 
-/**
- * The env baked in at `docker run`: proxy routing and CA trust, constant for the container's life.
- * The proxy credentials live only in the egress relay's root-written config, never in this env.
- */
+// The env baked in at `docker run`: proxy routing and CA trust, constant for the container's life.
+// The proxy credentials live only in the egress relay's root-written config, never in this env.
 export function buildRunEnv(): CredentialEnv {
   if (!hasProxyCA()) return { envArgs: [], hasProxyCA: false };
   const env: Record<string, string> = {

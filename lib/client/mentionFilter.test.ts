@@ -1,6 +1,5 @@
-// Invariant: the mention list ranks basename matches above path-only matches, stays case-insensitive
-// and capped, and never truncates a basename out of the displayed path. Bug class guarded: the popup
-// burying the file you typed under unrelated deep matches, or a garbled/oversized row breaking layout.
+// Basename matches rank above path-only ones, case-insensitive and capped, without truncating the basename;
+// otherwise the typed file gets buried or a long row breaks layout.
 
 import { describe, it, expect } from "vitest";
 import { filterMentions, truncateMiddlePath } from "./mentionFilter";

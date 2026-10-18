@@ -92,8 +92,7 @@ export default function CredentialPanel({
         </p>
       )}
 
-      {/* Describes what an open channel does, and MCP's tools and URL. Both are true only of a live
-          channel, so unlike the credential controls they stay behind the switch. */}
+      {/* Channel and MCP details are true only of a live channel, so they stay behind the switch. */}
       {enabled && (
         <>
           <p className="m-0 text-xs text-text-3">{description}</p>
@@ -123,10 +122,8 @@ export default function CredentialPanel({
   );
 }
 
-/**
- * Names both axes at once. A closed channel that still holds a key says so rather than reading as a
- * bare "Disabled", which would suggest the key was gone and leave no reason to look for Revoke.
- */
+// Names both axes at once. A closed channel that still holds a key says so rather than reading as a
+// bare "Disabled", which would suggest the key was gone and leave no reason to look for Revoke.
 function statusLabel(enabled: boolean, hasKey: boolean): string {
   if (!enabled) return hasKey ? "Disabled · key exists" : "Disabled";
   return hasKey ? "Key active" : "Key required";

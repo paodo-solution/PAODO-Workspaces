@@ -23,12 +23,8 @@ export function notFound(request: Request | undefined, what: string): NextRespon
 
 const CANONICAL_WORKSPACE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/**
- * Validate the public workspace-id wire format. Workspace ids are generated as lowercase UUIDs and
- * stored as opaque, case-sensitive keys; accepting another spelling here only turns a malformed
- * request into a misleading not-found response. Kept at the API boundary so UI, CLI and direct HTTP
- * callers receive the same answer.
- */
+// Ids are lowercase UUIDs stored case-sensitively, so another spelling is refused here rather than
+// becoming a misleading not-found.
 export function workspaceIdParam(id: string, request?: Request): string | NextResponse {
   if (CANONICAL_WORKSPACE_ID.test(id)) return id;
   return errorResponse("INVALID_REQUEST", "workspace id must be a lowercase UUID", {

@@ -48,15 +48,8 @@ export function requestIdOf(request?: Request): string | undefined {
   return request?.headers.get("x-request-id")?.trim() || undefined;
 }
 
-/**
- * The transport status a code maps to.
- *
- * Exported for the one caller whose failure body is genuinely not the envelope alone: a batch endpoint
- * that refused after doing part of the work has to carry its per-item results too. That caller declares
- * its own body type and composes publicErrorBody into it, which keeps this module's return type an
- * honest description of what it returns — an `extra` option here would have made
- * NextResponse<ApiErrorBody> a lie for every caller in order to serve one.
- */
+// Exported for the batch move, whose failure body adds per-item results to publicErrorBody; an `extra`
+// option here would make ApiErrorBody's type a lie for every caller.
 export function statusForCode(code: AppErrorCode): number {
   return STATUS_BY_CODE[code];
 }

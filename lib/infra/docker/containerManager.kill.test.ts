@@ -1,12 +1,5 @@
-/**
- * Killing a foreground command is a two-step escalation, not a single SIGKILL.
- *
- * Commands are killed routinely and without anyone asking — the silence guard, the max-runtime cap,
- * the mid-run disk check, and the user's Stop all land here. SIGKILL cannot be caught, so a command
- * killed that way never runs its own cleanup: git keeps its index.lock, npm keeps a half-written
- * staging dir, and the agent spends its next turns repairing that. SIGTERM first gives the process
- * group the chance to do it properly; SIGKILL still follows for anything that ignores the request.
- */
+// Kills escalate SIGTERM then SIGKILL: routine kills (silence guard, runtime cap, disk check, Stop) would
+// otherwise skip cleanup, leaving git's index.lock or npm's half-written staging dir for the agent to repair.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";

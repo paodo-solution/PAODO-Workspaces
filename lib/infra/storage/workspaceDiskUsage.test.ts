@@ -1,6 +1,5 @@
-// getWorkspaceDiskUsage sums the three durable locations a workspace occupies, so the test writes
-// known files into a real temp root and checks each lands in the right bucket — a directory that was
-// never created must count as 0, not fail the measurement.
+// Sums a workspace's three durable locations: known files in a real temp root must land in the right bucket,
+// and a missing directory counts as 0 rather than failing.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -403,12 +403,7 @@ export default function DashboardPage() {
                     onClick={() => setOpenSession(s)}
                     className={`border-b border-border cursor-pointer transition-colors hover:bg-bg-deep ${openSession?.sessionId === s.sessionId ? "bg-bg-tint" : ""}`}
                   >
-                    {/* Conversation id deep-links to its conversation tab in the callee/UI workspace,
-                        matching the call_agent "View conversation" link. The visible id is the
-                        conversation id so it matches the link target. stopPropagation so the link
-                        navigates instead of opening the detail drawer (the row's click). A deleted
-                        conversation keeps its id as plain text — the id still identifies the run's
-                        conversation, but linking it would promise a page that no longer opens. */}
+                    {/* Links like call_agent's; stopPropagation keeps the drawer shut. A deleted conversation shows its id. */}
                     <td className="px-6 py-2.5 font-mono">
                       {!s.conversationId ? (
                         <span className="text-text-3" title="No conversation (external agent run)">
@@ -433,8 +428,7 @@ export default function DashboardPage() {
                     <td className="px-6 py-2.5 font-mono text-text-1">{s.sessionId.slice(0, 8)}</td>
                     <td className="px-6 py-2.5 text-text-1 font-medium">{s.workspaceName}</td>
                     <td className="px-6 py-2.5 text-text-2">{originLabel(s.origin)}</td>
-                    {/* Model(s) the run's turns used. Usually one; multiple are joined. "—" when no
-                        turn carried a model (records written before the field existed). */}
+                    {/* Models the run's turns used, joined; "—" for records written before the field existed. */}
                     <td className="px-6 py-2.5 font-mono text-text-2 truncate" title={s.models.join(", ")}>
                       {s.models.length ? s.models.join(", ") : "—"}
                     </td>

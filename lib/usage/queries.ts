@@ -17,10 +17,8 @@ import { MAX_DASHBOARD_TURNS } from "./types";
 // A session's final answer: its last turn that wrote text and called no tool. Needs the turn aliased `turn`.
 const FINAL_ANSWER_TURN = "TRIM(COALESCE(turn.output_text, '')) <> '' AND json_array_length(turn.tool_calls_json) = 0";
 
-/**
- * Session token totals keyed by the final visible-output turn. Execution detail remains per turn;
- * this projection lets chat show one aggregate badge on the answer that completed the run.
- */
+// Session token totals keyed by the final visible-output turn. Execution detail remains per turn;
+// this projection lets chat show one aggregate badge on the answer that completed the run.
 export function getConversationOutputTokens(
   workspaceId: string,
   conversationId: string,

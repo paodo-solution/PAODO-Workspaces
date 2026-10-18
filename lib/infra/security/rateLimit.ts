@@ -2,12 +2,8 @@
 // request, narrower route policies after. Uploads skip the global bucket (see checkApiRateLimit).
 const LOOPBACK = new Set(["::1", "127.0.0.1", "::ffff:127.0.0.1"]);
 
-/**
- * The addresses `check` waives, so local development is never throttled by its own traffic. Exported
- * because the exemption is only safe while it cannot be selected: both client-IP extractors refuse a
- * forwarded value that claims one of these, which would otherwise turn a header into a way to opt out
- * of every limit in the application.
- */
+// Addresses `check` waives for local dev. Exported so both client-IP extractors can refuse a forwarded
+// loopback, which would otherwise opt out of every limit.
 export function isLoopbackAddress(ip: string): boolean {
   return LOOPBACK.has(ip);
 }

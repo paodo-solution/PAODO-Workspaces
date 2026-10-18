@@ -78,12 +78,8 @@ export function setNextRunAt(workspaceId: string, nextRunAt: string | null): voi
   );
 }
 
-/**
- * Remove a workspace's schedule entirely. Called only from the workspace-deletion cascade — a
- * schedule must not outlive the workspace it fires. Disabling a schedule is a separate,
- * non-destructive operation (setSchedule with enabled: false), so this is deliberately not
- * reachable over HTTP.
- */
+// Called only from the workspace-deletion cascade, so a schedule never outlives its workspace. Not on
+// HTTP: disabling is the non-destructive setSchedule({ enabled: false }).
 export function clearSchedule(workspaceId: string): void {
   const entry = store[workspaceId];
   // No-op when absent: avoids a pointless disk write and log line for the common case of deleting

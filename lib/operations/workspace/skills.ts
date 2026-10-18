@@ -9,10 +9,8 @@ export interface ExposedSkill {
   description: string;
 }
 
-/**
- * The declared skills, in the shape the MCP settings UI already shows. Separate from getWorkspace
- * because reading them touches the filesystem; callers that only need metadata should not pay for it.
- */
+// The declared skills, in the shape the MCP settings UI already shows. Separate from getWorkspace
+// because reading them touches the filesystem; callers that only need metadata should not pay for it.
 export async function listWorkspaceSkills(
   id: string,
   store: WorkspaceReader = getStore(),

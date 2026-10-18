@@ -25,10 +25,8 @@ export interface ProviderKeyMeta {
 
 const store: Store = providerKeyRecords();
 
-/**
- * Production startup calls this before accepting requests, so an empty fallback can never overwrite
- * a store that existed but could not be read or decrypted. Mirrors assertSecretStoreAvailable().
- */
+// Production startup calls this before accepting requests, so an empty fallback can never overwrite
+// a store that existed but could not be read or decrypted. Mirrors assertSecretStoreAvailable().
 export function assertProviderKeyStoreAvailable(): void {
   assertProviderVaultAvailable();
 }
@@ -44,13 +42,8 @@ function hintFor(value: string): string {
   return value.length <= HINT_LENGTH ? value : value.slice(-HINT_LENGTH);
 }
 
-/**
- * The plaintext key for a provider, or undefined when none is set.
- *
- * The ONLY way a value leaves this module. `undefined` is the normal state for a deployment whose
- * operator has not entered that provider's key yet — callers must treat it as "cannot run", not as
- * an error condition, and must never log the return value.
- */
+// The only way a key leaves this module; never log it. `undefined` means none entered yet, which
+// callers treat as "cannot run", not an error.
 export function getProviderKey(provider: string): string | undefined {
   return store[provider]?.value;
 }
@@ -87,22 +80,8 @@ export function listProviderKeyMeta(): ProviderKeyMeta[] {
   }));
 }
 
-/**
- * Delete every stored key whose provider is not in `allowed`, and report what went.
- *
- * This is what makes `<PROVIDER>_AVAILABLE=false` mean "nobody can spend on this" rather than merely
- * "hidden from the picker". Withdrawing a provider destroys its key, so a workspace still pointed at
- * it cannot keep billing the account after the operator believes they switched it off.
- *
- * DESTRUCTIVE AND NOT REVERSIBLE. Switching the flag back does not restore the key — it has to be
- * entered again. That is the trade the enforcement is worth, and the audit line is what makes it
- * explicable afterwards.
- *
- * Takes the allowed list rather than reading the environment itself: which providers exist and which
- * env var governs each is the provider registry's knowledge (lib/agent/buildModel.ts), and that
- * module pulls the LLM SDKs. An infra store must not drag those in, so the caller resolves the list.
- * It also means a provider deleted from the registry outright has its key purged on the next boot.
- */
+// Irreversibly deletes keys of withdrawn providers, so `<PROVIDER>_AVAILABLE=false` stops all spend.
+// The caller passes `allowed` because the registry (buildModel.ts) pulls in the LLM SDKs.
 export function purgeProviderKeysExcept(allowed: readonly string[]): string[] {
   const keep = new Set(allowed);
   const purged = Object.keys(store).filter((provider) => !keep.has(provider));

@@ -1,13 +1,5 @@
-/**
- * Refreshes the vendored model-pricing catalog (lib/models/model-pricing.json) from public price
- * lists, at author time (`npm run update-pricing`). This is only the CLI wrapper: fetching and
- * assembling live in lib/models/refresh.ts, shared with the running server's own refresher.
- *
- * Production refreshes itself; the vendored file is the SEED a container boots on before its first
- * fetch, and the offline fallback. Re-running this keeps that seed from drifting years behind.
- *
- * The run FAILS if any offered model (lib/models/registry.ts) still has no rate.
- */
+// CLI wrapper over lib/models/refresh.ts that refreshes the vendored seed prices production boots on.
+// Fails if any offered model is left without a rate.
 import { writeFileSync } from "fs";
 import path from "path";
 import { buildCatalog } from "../lib/models/refresh";

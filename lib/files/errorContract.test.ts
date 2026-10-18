@@ -1,14 +1,5 @@
-// The file surface is the newest part of the public API and the one an external client reaches first,
-// so this is a source-level guard on how it is allowed to fail.
-//
-// Every file failure used to be `NextResponse.json({ error: err.message }, { status: 400 })`. That has
-// two costs a behavioural test cannot see the shape of. A program gets nothing to branch on — a full
-// disk, a permission failure and a malformed request all read as INVALID_REQUEST — and `err.message`
-// is written by libuv, which appends the host path it failed on, so the response leaks the server's
-// directory layout on a surface whose whole point is that the layout is private.
-//
-// Both rules below exist because that pattern is easy to reintroduce: the fix reads as more work than
-// the mistake, and nothing about a new `NextResponse.json({ error })` call looks wrong on its own.
+// Source guard on how the file API fails. `{ error: err.message }` gave programs nothing to branch on and
+// leaked libuv's host paths; it is easy to reintroduce, since nothing about it looks wrong.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -87,9 +78,8 @@ describe("file error contract", () => {
     expect(violations).toEqual([]);
   });
 
-  // `error` without `code` is the shape that gives a program nothing to act on. A response may still
-  // carry `error` beside a `code` — the batch move's partial-success body does — which is why this
-  // checks for the pairing rather than banning the field.
+  // `error` without `code` gives a program nothing to act on. `error` beside a `code` is fine (the batch move's
+  // partial success), hence checking the pairing.
   it("never returns an error field without a code beside it", () => {
     const violations: string[] = [];
 
@@ -109,10 +99,6 @@ describe("file error contract", () => {
     expect(violations).toEqual([]);
   });
 
-  // The third thing worth pinning — that a failure message never carries the host path libuv writes
-  // into err.message — is deliberately NOT a source rule. A first attempt scanned for `err.message`
-  // and flagged four sites that read the message of an error already narrowed to AppError, which is a
-  // message we authored and meant to publish. Source text cannot tell those apart from a raw errno,
-  // so the guard is behavioural instead: lib/operations/files/errors.test.ts provokes real errnos and
-  // asserts the resulting message names only the caller's own relative path.
+  // Host-path leaks are not a source rule: scanning `err.message` flagged our own AppError messages. The guard
+  // is behavioural instead, in lib/operations/files/errors.test.ts.
 });

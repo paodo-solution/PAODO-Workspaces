@@ -1,9 +1,5 @@
-// Coverage for the update contract itself — the guarantees no single capability can provide.
-//
-// Each field's own rules are tested where they live (metadata, secrets, access, and egress). What is
-// asserted here is composition: that nothing is written until the whole
-// request validates, that the fields land in a fixed order, and that what landed is reported
-// accurately even when the workspace disappears halfway through.
+// Composition of the update contract, with each field's rules tested where they live: nothing is written
+// until all validates, fields land in fixed order, and the report stays accurate if the workspace vanishes.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { providerAvailabilityEnv, SUPPORTED_PROVIDERS } from "@/lib/agent/buildModel";
 import { updateWorkspace, type UpdateWorkspaceDeps, type UpdateWorkspaceStore } from "./update";
@@ -242,9 +238,8 @@ describe("the update contract", () => {
     );
   });
 
-  // The security property this whole result shape rests on: an update moves access flags and nothing
-  // else, so no caller of this operation — HTTP route, CLI, MCP adapter — can obtain a plaintext key
-  // as a side effect of a request it made for another reason, or lose one by not reading a field.
+  // The property this result shape rests on: updates move access flags only, so no caller can gain a plaintext
+  // key as a side effect or lose one by not reading a field.
   it("opens both channels without producing a credential", async () => {
     const opened: Array<[string, boolean]> = [];
     const credentials = credentialStub({ setEnabled: (channel, _id, enabled) => opened.push([channel, enabled]) });
