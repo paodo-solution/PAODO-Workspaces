@@ -1,11 +1,5 @@
-// Third-party secrets held for a workspace: the keys the credential proxy injects into the agent's
-// outbound calls to named hosts. Listing and storing live together because they share one rule that
-// neither could state alone — a scoped secret is inert while the workspace has no egress — and that
-// rule is the whole reason `blockedBy` exists.
-//
-// Scoped deliberately to third-party secrets. The workspace's own API and MCP channels are a different
-// capability with different gating (see workspaceAccess); egress does not block them, so nothing here
-// applies to them.
+// Third-party secrets the credential proxy injects. Listing and storing share one rule: a scoped secret is
+// inert without egress (`blockedBy`). The workspace's own API/MCP channels are separate (workspaceAccess).
 import { getStore } from "@/lib/infra/services";
 import {
   deleteSecret,
@@ -22,9 +16,7 @@ import type { WorkspaceLookup } from "./read";
 export const SECRET_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 const SECRET_DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
-// Re-exported so a caller that publishes this input contract (the CLI's schema) states the same
-// rule this validates, rather than a copy that drifts. Defined in the secret store because the
-// injection point enforces it too — see RESERVED_SECRET_NAMES there.
+// Re-exported so the CLI schema states the same rule; defined in the store, which enforces it at injection.
 export { RESERVED_SECRET_NAMES };
 
 /**
@@ -117,9 +109,7 @@ export function validateSecret(input: unknown): WorkspaceSecretInput {
   }
   const { name, value, domains } = input as Partial<Record<keyof WorkspaceSecretInput, unknown>>;
 
-  // Each check leads with the type so a missing field and a wrong-typed one give the same answer: both
-  // are a field the caller has not usably supplied, and the message that names the accepted form is the
-  // one they need either way.
+  // Type checked first, so a missing and a wrong-typed field get the same message naming the accepted form.
   if (typeof name !== "string" || !SECRET_NAME_RE.test(name)) {
     throw new WorkspaceUpdateError("name must be uppercase letters, digits, and underscores (e.g. OPENAI_KEY)");
   }

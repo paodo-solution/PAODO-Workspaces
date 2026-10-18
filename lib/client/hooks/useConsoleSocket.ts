@@ -1,8 +1,5 @@
-// Streams a workspace's live console output over a reconnecting WebSocket. Each server message
-// is mapped to a ConsoleLine by the MSG_HANDLERS map (stdout/stderr/exec_done/tool_call/
-// tool_result_log) — add a key to support a new message type without touching dispatch (OCP).
-// Auto-reconnects 2s after a drop, sends a 30s keep-alive ping, and caps the buffer at MAX_LINES.
-// Returns the line buffer and connection state.
+// Live console output over a reconnecting WebSocket; MSG_HANDLERS maps each message type to a line (add a key
+// for a new type). 30s keep-alive, buffer capped at MAX_LINES.
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -33,9 +30,7 @@ const MSG_HANDLERS: Record<string, MsgHandler> = {
   exec_done: (m) => ({ type: "info", text: `--- process exited (code ${m.exitCode ?? "?"}) ---` }),
   tool_call: (m) => (m.name ? { type: "tool", text: `▶ ${m.name}(${m.args ? JSON.stringify(m.args) : "{}"})` } : null),
   tool_result_log: (m) => (m.name ? { type: "info", text: `← ${m.name}: ${m.result ?? ""}` } : null),
-  // The server stopped queueing for us because this tab had fallen too far behind to keep up (a
-  // backgrounded or throttled tab). Shown as a visible break so the output either side of it is not
-  // mistaken for one continuous stretch.
+  // The server dropped output for a tab that fell too far behind; shown as a visible break.
   console_dropped: (m) => ({
     type: "info",
     text: `--- ${m.dropped ?? 0} messages dropped (this tab fell behind) ---`,
@@ -91,9 +86,7 @@ export function useConsoleSocket(workspaceId: string) {
           const delay = wsReconnectDelayMs(attempt);
           if (isWsConnectionStale(attempt) && !staleNoticeShown) {
             staleNoticeShown = true;
-            // The likely cause at this point is a credential the browser can no longer present —
-            // the /ws session cookie does not survive a server restart — and no amount of retrying
-            // fixes that. A reload re-mints it from the cached Basic credentials.
+            // Likely a /ws cookie invalidated by a restart, which only a reload re-mints.
             appendLine({ type: "stderr", text: "Still disconnected — reload the page to reconnect." });
           }
           reconnectTimer = setTimeout(connect, delay);

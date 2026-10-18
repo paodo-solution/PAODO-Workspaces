@@ -1,8 +1,4 @@
-// Owns the on-disk bootstrap of a workspace directory. Every workspace gets the user-editable
-// AGENTS.md plus a .skills/ folder and example template. Call-specific skill execution guidance
-// is injected only when this workspace is invoked as a callee.
-// Kept separate from the registry so persistence concerns don't mix with
-// filesystem scaffolding and the agent-instruction template.
+// Creates a workspace's directory: AGENTS.md plus .skills/ with a template. Separate from the registry.
 import fsAsync from "fs/promises";
 import fsSync from "fs";
 import path from "path";
@@ -15,10 +11,8 @@ Add your project-specific rules, conventions, and context here.
 The agent will follow these instructions on every request.
 `;
 
-// Seeded into .skills/ at workspace creation so both the human and the agent have a
-// working reference for the skill file format. The .template suffix keeps it out of
-// the skill loader (which only reads *.json) — a fresh workspace declares no skills
-// and is therefore not callable until a real skill file is written.
+// A format reference for humans and the agent. The .template suffix keeps it out of the loader, so a new
+// workspace has no skills and isn't callable yet.
 const SKILL_TEMPLATE = `${JSON.stringify(
   {
     id: "example-skill",

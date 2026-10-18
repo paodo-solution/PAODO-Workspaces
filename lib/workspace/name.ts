@@ -1,12 +1,5 @@
-// Workspace-name policy: validation, normalization, and the typed errors both the store and the
-// API routes use. Kept separate from the infrastructure registry so the rules are unit-testable and
-// so the routes can map an error to an HTTP status without importing the store.
-//
-// Two concerns live here:
-//   - validateWorkspaceName: is this a well-formed *display* name? (rejects separators, control
-//     chars, dot-names, over-length — the things that would make a name unsafe or confusing).
-//   - normalizeForUniqueness: fold a name to the key we compare on so visually/semantically
-//     equivalent names (case, Unicode form) can't coexist while agent routing is still name-based.
+// Workspace-name policy, separate from the registry so it's testable: validateWorkspaceName checks display
+// names; normalizeForUniqueness folds case and Unicode while agents route by name.
 import path from "path";
 import { WORKSPACES_ROOT } from "../infra/paths";
 import { AppError } from "../errors/appError";
@@ -34,10 +27,7 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
  * (trimmed, NFC-normalized). Throws WorkspaceNameError("WORKSPACE_NAME_INVALID") on any violation.
  */
 export function validateWorkspaceName(raw: string): string {
-  // The declared type binds in-process callers; a name arriving from a JSON body has only claimed to be
-  // a string. Refused here with the same typed error as every other name violation, because `.trim()`
-  // on a non-string leaves this layer as a TypeError instead — which no adapter recognizes as an
-  // expected failure, so it surfaces as an opaque 500 rather than the 400 this policy exists to give.
+  // A JSON body may send a non-string; refuse it with the typed error (400) instead of a TypeError (500).
   if (typeof raw !== "string") {
     throw new WorkspaceNameError("WORKSPACE_NAME_INVALID", "Workspace name must be a string.");
   }

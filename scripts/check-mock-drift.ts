@@ -1,14 +1,5 @@
-// Flags "dead test code" caused by vi.mock factories drifting from the real module they stub.
-//
-// The failure mode: `vi.mock("./x", () => ({ foo, bar }))` returns a hand-written module shape that
-// TypeScript never checks against the real ./x. When ./x renames or removes `foo`, the mock keeps
-// exporting a stale `foo`, the test still passes, and the assertions no longer exercise real code —
-// silent rot. This script parses every *.test.ts, extracts each mock factory's exported keys, and
-// diffs them against the real module's actual exports (via the TS type checker). A key the mock
-// provides that the module no longer exports is a stale mock → reported. Exits non-zero if any found,
-// so it can gate CI.
-//
-// Run:  npx tsx scripts/check-mock-drift.ts
+// Flags vi.mock factories exporting keys the real module no longer has, so tests can't silently stop exercising
+// real code. Exits non-zero if any are found. Run: npx tsx scripts/check-mock-drift.ts
 
 import * as ts from "typescript";
 import * as path from "path";
@@ -23,9 +14,7 @@ function loadProgram(): ts.Program {
   return ts.createProgram(parsed.fileNames, parsed.options);
 }
 
-// Collect the property names a mock factory's returned object literal defines, plus whether it
-// spreads another object (e.g. ...(await vi.importActual(...))) — a spread means unknown keys may be
-// intentional passthrough, so we downgrade those findings to a warning.
+// Keys a mock factory defines; a spread (e.g. importActual) may pass unknown keys through, so it only warns.
 interface MockShape {
   keys: string[];
   hasSpread: boolean;

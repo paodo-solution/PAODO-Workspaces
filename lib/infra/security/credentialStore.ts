@@ -1,23 +1,5 @@
-// One store for every minted bearer key PAODO issues: the per-workspace agent API key, the
-// per-workspace MCP key, and the instance-wide CLI/platform token. Before this existed the three
-// were separate copy-pasted modules (apiKeyStore / mcpConfigStore / platformTokenStore) with three
-// spellings of the same lifecycle, which is how the platform token ended up with no revoke at all.
-//
-// The unit is one record per (kind, subject) — one API key per workspace, one MCP key per
-// workspace, one CLI token for the instance — keyed naturally, so there are no synthetic ids and no
-// lookup indirection.
-//
-// A key here is also a secret, and the two words are used deliberately: "key" is the product noun,
-// which is what `hasKey` and every user-facing label say, while "secret" is the security property —
-// a key may be public, a secret may not. This module is where that property is enforced, so it is
-// the one place the word survives: keys are stored only as SHA-256 hashes and the hash never leaves
-// here, because callers get `state()`, which cannot expose one.
-//
-// Deliberately NOT here: the UI's Basic-Auth login (a human credential, see wsSession.ts) and
-// workspaceSecretStore, whose ThirdPartySecret values are reversibly encrypted because the proxy
-// must recover them — a different primitive, and the reason this module's product noun is "key".
-// Which routes a credential may reach is authorization, not identity, and lives in
-// platformAccessPolicy.ts.
+// Every bearer key PAODO mints (workspace API, MCP, CLI token), one record per (kind, subject), stored only
+// as SHA-256 hashes that never leave this module. Logins and third-party secrets live elsewhere.
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import path from "path";
 import { WORKSPACES_ROOT } from "../paths";
@@ -67,9 +49,7 @@ const store = globalSingleton<Record<string, CredentialRecord>>("credentials", (
   readJson<Record<string, CredentialRecord>>(FILE, {}),
 );
 
-// `platform` is instance-wide so it takes no subject; the workspace kinds require one. Passing the
-// wrong combination is a programming error, not a runtime condition — fail loudly rather than
-// silently reading or writing the wrong record.
+// `platform` takes no subject; workspace kinds need one. A mismatch is a programming error, so throw.
 function recordKey(kind: CredentialKind, subject: CredentialSubject): string {
   if (kind === "platform") {
     if (subject) throw new Error("The platform credential is instance-wide and takes no subject.");

@@ -1,6 +1,5 @@
-// Shared helpers for the drive_* agent tools. Resolves a (drive_name, relative path) pair to an
-// absolute host path inside the drive's content directory, scoped to the drives THIS workspace is
-// connected to, with traversal guarded. Drives are touched host-side only — never via a container.
+// Helpers for drive_* tools: resolves (drive_name, path) to a contained host path, only for drives connected
+// to this workspace. Host-side only.
 import path from "path";
 import fs from "fs/promises";
 import { normalizeRelpath } from "./pathUtils";
@@ -76,16 +75,12 @@ export async function readFileBounded(
     }
 
     handle = await fs.open(absPath, "r");
-    // One byte more than the stat said, so that a file which grew in between reads as "changed"
-    // rather than coming back silently short of itself. Sizing to the stat rather than to the limit
-    // is what keeps a 2KB read from allocating the whole transfer ceiling.
+    // Read one byte past the stat size so a growing file reads as changed, not silently short.
     const expected = Math.min(stat.size, limit);
     const buf = Buffer.alloc(expected + 1);
     const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
     if (bytesRead > expected) {
-      // Someone is writing this file right now. Whatever we hold is a torn read — half of one
-      // version and half of another — and copying that into a drive or a workspace would report
-      // success over a corrupt file, the one outcome this helper exists to prevent.
+      // Being written right now: copying a torn read would report success over a corrupt file.
       return `Error: "${path.basename(absPath)}" changed while being read — it is being written to. Try again once the write has finished.`;
     }
     return buf.subarray(0, bytesRead);

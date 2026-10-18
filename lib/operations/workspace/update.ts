@@ -1,11 +1,5 @@
-// The unified workspace update contract: one entry point every trigger writes through — the settings
-// UI, the per-setting REST routes, the CLI, MCP adapters — so the rules and their messages exist once
-// instead of once per transport.
-//
-// This file owns the contract and nothing else. Each field's rules belong to the capability that owns
-// it (metadata for the record's own settings, secrets, access, and egress);
-// what lives here is the part no single capability can provide: validating a whole request before the
-// first write, applying the fields in a fixed order, and accounting for what landed.
+// The one workspace update path for every trigger (UI, REST, CLI, MCP). Field rules live in their capabilities;
+// this validates the whole request first, applies in a fixed order, and reports what landed.
 import { getStore } from "@/lib/infra/services";
 import type { ReasoningEffort } from "@/lib/models/llmSelection";
 import { metadataWrites, validateMetadata, type MetadataWriter, type WorkspaceMetadataInput } from "./metadata";
@@ -137,15 +131,10 @@ export async function updateWorkspace(
   const mcpAccess = ifDefined(input.workspaceMcpAccess, (value) => validateChannelEnabled("workspaceMcpAccess", value));
   const secretInput = ifDefined(input.secret, validateSecret);
 
-  // Phase two: apply. Past this point the workspace is known to exist, and every store setter refuses
-  // only for an unknown id — so a refusal here means the workspace was deleted mid-update. Returning
-  // null would reach the caller as "no such workspace", which reads as "nothing happened" even though
-  // earlier fields already landed. Name what was applied instead, so a caller can tell a no-op from a
-  // half-done update.
+  // Setters refuse only for an unknown id, so a refusal now means the workspace was deleted mid-update.
+  // Report what was applied, so a half-done update isn't read as a no-op.
   const appliedFields: Array<keyof WorkspaceUpdateValues> = [];
-  // Takes the field names a write establishes rather than one name: `model` is a single store write
-  // that settles three public fields, and a refusal has to name all of them or it reports a partial
-  // change as a complete one.
+  // Takes all field names one write settles (`model` sets three), so a refusal names every one.
   const applied = (fields: Array<keyof WorkspaceUpdateValues>, ok: boolean): void => {
     if (!ok) {
       throw new WorkspaceUpdateFailure(

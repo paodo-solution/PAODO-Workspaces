@@ -1,20 +1,5 @@
-// Deployment-wide LLM provider API keys, entered in the app rather than .env.
-//
-// These must stay recoverable — buildModel hands the plaintext to the provider SDK on every run —
-// so this is encryption, not hashing (contrast credentialStore.ts, which only ever stores a SHA-256
-// of the bearer tokens PAODO itself mints and can therefore never give one back). The at-rest
-// envelope uses the same reviewed AES-256-GCM mechanics as workspace secrets, but an independent
-// vault and independent master key. Both live on app-only mounts outside ordinary workspace data,
-// so the credential proxy and workspace backups cannot recover provider credentials.
-//
-// ONE KEY PER PROVIDER, FOR THE WHOLE DEPLOYMENT. There is no workspace dimension here on purpose:
-// the operator who runs the instance is the account holder, and a per-workspace key would mean a
-// workspace could not switch provider without someone pasting a second key first.
-//
-// WHY THIS IS NOT THE WORKSPACE SECRET STORE. Workspace-secret values are swapped into a container's
-// outbound HTTPS by the credential-proxy sidecar. Provider values go the other way: the app itself
-// spends them, and neither proxy nor sandbox should see them. Separate vault/key pairs enforce that
-// trust boundary at the container mounts instead of relying on two namespaces in one decryptable file.
+// Deployment-wide provider keys (one per provider), entered in the app. Encrypted, not hashed, since the app
+// spends them; own vault and key on app-only mounts, so the proxy and backups can't recover them.
 import { createAuditLogger } from "../logger";
 import {
   PROVIDER_VAULT_FILE,
@@ -52,9 +37,7 @@ function save(next: Store, context: { operation: string; provider?: string }): v
   commitProviderKeys(next, context);
 }
 
-// Short enough to be useless to an attacker, long enough to tell two of the operator's own keys
-// apart. Keys shorter than this are shown whole — they cannot be real, and hiding a typo helps
-// nobody diagnose it.
+// Enough to tell keys apart, too little to use; keys shorter than this can't be real, so show them whole.
 const HINT_LENGTH = 4;
 
 function hintFor(value: string): string {

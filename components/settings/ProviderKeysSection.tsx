@@ -1,33 +1,12 @@
-// The deployment's LLM provider API keys — one block per provider this deployment offers.
-//
-// Every offered provider gets a block whether or not it has a key, because a block IS the place a
-// first key is entered. A provider .env has switched off appears nowhere: its key was destroyed at
-// startup and the server refuses to store a new one, so offering the field would be offering a dead
-// end.
-//
-// A stored value is never sent back to the browser. What a block shows is the last few characters and
-// the date it was set — enough for an operator to confirm which account is being billed, useless to
-// anyone reading over their shoulder.
-//
-// Laid out exactly like CliAccessSection below it: a label, one value row (a read-only code box, or
-// the field when there is something to type), then link actions. The two sections are the same kind
-// of thing — a credential this deployment holds — and reading as two different kinds of thing was
-// the whole problem.
-//
-// A provider that already HAS a key shows the code box, not a field: the input only appears once
-// Replace is clicked. Password fields standing open on providers that are all fine read as "something
-// is missing here", and bury the one line an operator opens this for — which key is loaded, and since
-// when.
+// One block per offered provider (switched-off ones appear nowhere). Shows only the key's last characters and
+// date. Laid out like CliAccessSection; a keyed provider shows its code box until Replace is clicked.
 "use client";
 
 import { useState } from "react";
 import { useProviderKeys, type ProviderKeyStatus } from "@/lib/client/hooks/useProviderKeys";
 import { useReadyOnce } from "@/lib/client/hooks/useReadyOnce";
 
-// Provider ids are configuration keys — lowercase because .env and the API paths are. A label is
-// read by a person deciding which vendor account they are about to pay, so it spells the vendor's own
-// capitalisation. Anything unlisted falls back to the id with a leading capital, which is right for
-// every one-word vendor name and never worse than the bare id.
+// Display names in the vendor's own capitalisation; unlisted ids fall back to a capitalised id.
 const PROVIDER_NAMES: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
@@ -93,9 +72,7 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
           <div className="flex items-start gap-2">
             <input
               type="password"
-              // The same box as the read-only value above it and as the CLI access boxes below: tinted,
-              // 12px monospace, same padding and radius. Only the focus ring says it is typeable. The
-              // utilities override .input's white background, 14px sans, and larger padding/radius.
+              // Same box as the read-only value and CLI boxes; only the focus ring shows it's editable.
               className="input min-w-0 flex-1 rounded bg-bg-tint px-2.5 py-1.5 font-mono text-xs"
               // Browsers offer to save anything they think is a password, and a vendor API key in a
               // personal password manager is a copy nobody is tracking.

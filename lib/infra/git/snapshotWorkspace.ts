@@ -1,6 +1,5 @@
-// Shared fire-and-forget snapshot helper for user-driven file changes (save/delete/upload).
-// Takes the versioning service as an argument rather than importing services.ts, so this stays
-// out of the services import graph and cycle-free.
+// Fire-and-forget snapshot after user file changes. Takes the versioning service as an argument to stay out
+// of the services import graph.
 import type { IWorkspaceSnapshotWriter } from "../interfaces";
 import { createLogger } from "../logger";
 
@@ -24,9 +23,7 @@ export function snapshotWorkspaceStrict(
   return versioning.commitResult(ws.id, ws.dir, label);
 }
 
-// Snapshot the workspace after a user-driven file change so it shows up in version history, just
-// like an agent run does. Fire-and-forget: a versioning failure must never fail the user's action.
-// commitResult force-stages everything and skips itself if nothing actually changed.
+// Fire-and-forget: a versioning failure never fails the user's action; no-op if nothing changed.
 export async function snapshotWorkspace(
   versioning: IWorkspaceSnapshotWriter,
   ws: { id: string; dir: string },
@@ -54,10 +51,8 @@ export async function flushSnapshotBurstStrict(
   return snapshotWorkspaceStrict(versioning, ws, burst.label(burst.changes, burst.firstChange));
 }
 
-// A folder upload arrives as one request per file, and commitResult force-stages the whole tree on
-// every call — so snapshotting per request would run thousands of `git add -A` passes over the same
-// directory and dominate the upload's cost. Two seconds of quiet is long enough to bridge the gap
-// between files in a burst and short enough that history still updates while the user watches.
+// A folder upload is one request per file, and each snapshot stages the whole tree, so coalesce bursts;
+// 2s still updates history while the user watches.
 const COALESCE_MS = 2_000;
 
 interface Burst {

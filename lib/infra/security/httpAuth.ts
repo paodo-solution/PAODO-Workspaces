@@ -48,11 +48,8 @@ export class AuthFailureTracker {
 
 // The agent run and stop endpoints authenticate via Bearer API key, not Basic Auth — exempt POSTs.
 const PUBLIC_API_RE = /^\/api\/workspaces\/[^/]+\/agent(?:\/stop)?$/;
-// The Workspace MCP endpoint authenticates via its own Bearer secret (credentialStore's
-// "workspace-mcp" kind), not Basic
-// Auth, so exempt every method here. POST is the protocol channel: the route validates the secret
-// and returns 401 on failure. GET/DELETE carry no secret and the route rejects them with 405 before
-// any workspace state is touched, so exempting them leaks nothing.
+// Workspace MCP authenticates with its own Bearer key, so it is exempt from Basic Auth. GET/DELETE carry no
+// secret and get 405 before touching state.
 const PUBLIC_MCP_RE = /^\/api\/workspaces\/[^/]+\/mcp$/;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -318,11 +315,8 @@ export function checkAuth(
       return "unauthorized";
     }
 
-    // Authorization second, and deliberately NOT a tracked failure. Default-deny: a route with no
-    // mapped permission never accepts the platform credential, so adding a UI route cannot silently
-    // create a programmatic capability. Counting these would be wrong and actively harmful — the
-    // tracker is shared with the UI credential, so a misconfigured script polling an unshared route
-    // would lock its own operator out of the web interface after five requests.
+    // Default-deny, and not counted as a failure: the tracker is shared with the UI login, so a script polling an
+    // unmapped route would lock its operator out.
     if (!isPlatformRouteAllowed(req.method, req.pathname)) return "forbidden";
 
     tracker.clear(ip);
@@ -375,9 +369,8 @@ export function checkWsAuth(
   return verifyCookie(req.cookie) ? "ok" : result;
 }
 
-// CSRF guard: browsers attach cached Basic Auth to cross-origin requests too. Browsers always send
-// Sec-Fetch-Site; reject cross-site mutations. Requests without the header (non-browser clients,
-// e.g. the external agent API using Bearer) are allowed.
+// CSRF: browsers send Sec-Fetch-Site and attach cached Basic Auth cross-origin, so cross-site mutations are
+// refused. Requests without the header (non-browser) pass.
 export function isCsrf(req: { method: string; pathname: string; secFetchSite: string | undefined }): boolean {
   if (!MUTATING_METHODS.has(req.method)) return false;
   if (!req.pathname.startsWith("/api/")) return false;

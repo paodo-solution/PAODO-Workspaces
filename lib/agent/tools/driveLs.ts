@@ -1,7 +1,4 @@
-// Agent tool: list shared drives, or browse a drive's contents.
-// No drive_name -> lists the drives connected to this workspace (name + description).
-// With drive_name [+ path] -> lists that directory's entries host-side (drives are never
-// mounted into a container). Directories are marked with a trailing slash.
+// drive_ls: lists connected drives, or a drive directory's entries host-side (dirs end with /).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -41,10 +38,7 @@ Call with drive_name (and optional path) to list a directory inside that drive.`
     if (typeof resolved === "string") return resolved;
 
     try {
-      // opendir + stop at the ceiling, rather than readdir. readdir materializes a Dirent for every
-      // name in the directory before this code sees any of them, so a drive holding a million files
-      // is an unbounded allocation in the app's heap that no container limit sits above — drives are
-      // read host-side. Streaming the entries means the ceiling bounds the scan, not just the output.
+      // opendir and stop at the ceiling: readdir would allocate every Dirent of a huge drive on the app's heap.
       const entries: { name: string; isDirectory: boolean }[] = [];
       let truncated = false;
       for await (const entry of await fs.opendir(resolved.absPath)) {
@@ -63,9 +57,7 @@ Call with drive_name (and optional path) to list a directory inside that drive.`
         })
         .map((e) => (e.isDirectory ? `${e.name}/` : e.name));
 
-      // Say that the set is partial AND that it is arbitrary: the sort runs after the cut, so these
-      // are the first entries the filesystem happened to return, not the alphabetically first ones.
-      // An agent told only "truncated" will reasonably assume it saw everything up to some letter.
+      // The cut happens before sorting, so say the entries are arbitrary, not the alphabetically first.
       if (truncated) {
         lines.push(
           `[listing truncated at ${MAX_DRIVE_LISTING_ENTRIES} entries — this directory holds more. ` +

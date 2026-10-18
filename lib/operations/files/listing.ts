@@ -1,10 +1,5 @@
-// Listing one directory of a workspace or a drive: the caller's own path in, the nested tree out.
-//
-// The walk itself is lib/files/tree.ts. What lives here is the half a
-// route must not do for itself (./paths.ts): turning a caller-supplied path into a host path, and a
-// filesystem errno into the public error vocabulary. Without it, a listing scoped to a subdirectory
-// would have to either trust the string or answer an empty tree for a path that does not exist — and
-// "nothing is there" is the wrong answer to "that is not a path".
+// Lists one directory of a workspace or drive (walk in lib/files/tree.ts). Resolves the caller's path and maps
+// errnos, so a bad path is an error rather than an empty tree.
 
 import fs from "fs/promises";
 import path from "path";
@@ -83,9 +78,7 @@ export async function listEntries(
 ): Promise<Listing> {
   const relPath = requireDirPath(pathValue);
   const hostPath = await resolveHostPath(rootDir, relPath);
-  // stat, not lstat: resolveHostPath has already refused a symlink that leaves the root, and a
-  // contained one is followed here for the same reason a read follows it — the tree lists such a link
-  // as an ordinary row, so listing through it is the same permission as reading through it.
+  // stat, not lstat: escaping symlinks are already refused, and a contained one lists like a read follows it.
   const stat = await fileSystemCall(relPath || "The root", () => fs.stat(hostPath));
   // A path naming a file is one entry, so there is nothing a ceiling could cut.
   const { nodes, truncated } = stat.isDirectory()
@@ -123,9 +116,7 @@ async function measure(rootDir: string, nodes: TreeNode[], sem: Semaphore): Prom
         // Sized before it is read, and never reported: the size is only ever the reason this stops.
         const { size } = await sem.run(() => fs.stat(hostPath));
         if (size > MAX_MEASURED_BYTES) return;
-        // Read through the content operation, not a decode of our own: `lines` is only worth reporting
-        // if it is the same count the read route would slice against, and that route's idea of which
-        // files have lines at all — an SVG is an image, not text — is decided by this classification.
+        // Count lines via the content operation, so the count matches what the read route would slice.
         const file = await sem.run(() => readFileEntry(rootDir, node.path));
         if (file.type === "text") node.lines = countLines(file.content);
       } catch {

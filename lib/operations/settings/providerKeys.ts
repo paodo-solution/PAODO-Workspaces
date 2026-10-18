@@ -1,14 +1,5 @@
-// Trigger-neutral operations for the deployment's LLM provider API keys.
-//
-// Shaped like lib/operations/workspace/secrets.ts and for the same reason: validate everything before
-// touching anything, throw a typed AppError the adapter maps to a status, and NEVER return a stored
-// value. What comes back describes a key — which provider, when it was set, its last few characters —
-// so the operator can tell one from another without the API ever being a way to read one back.
-//
-// Only an available provider may be keyed. That is the whole enforcement story for
-// <PROVIDER>_AVAILABLE: a withdrawn provider cannot be given a key here, and any key it already had
-// was destroyed at startup (purgeProviderKeysExcept). Without this check the switch would be
-// trivially defeated by pasting the key back in.
+// Operations for provider API keys: validate first, throw AppError, never return a stored value. Only an
+// offered provider may be keyed, which is what makes <PROVIDER>_AVAILABLE=false stick.
 import { AppError } from "@/lib/errors/appError";
 import { availableProviders, providerAvailabilityEnv, SUPPORTED_PROVIDERS } from "@/lib/agent/buildModel";
 import {
@@ -41,11 +32,8 @@ export interface ProviderKeyStatus {
   hint?: string;
 }
 
-// Two different mistakes, two different messages. Telling someone who typo'd a provider name that it
-// was "switched off by NOPE_AVAILABLE=false" sends them looking for a variable that does not exist;
-// telling someone who really did switch openai off that it is "unknown" hides the setting they
-// themselves wrote. The env var name comes from the registry rather than uppercasing the id, so it is
-// the var that actually governs the provider.
+// Separate messages for an unknown provider and a switched-off one, naming the env var that actually
+// governs it.
 function assertAvailable(provider: string): void {
   if (availableProviders().includes(provider)) return;
   if (!SUPPORTED_PROVIDERS.includes(provider)) {
