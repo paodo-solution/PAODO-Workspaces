@@ -1,6 +1,5 @@
-// Centre pane that displays workspace files with syntax highlighting and inline editing.
-// File-change / file-delete notifications arrive via the imperative handle, called by the
-// workspace page which owns the shared WebSocket. Data operations are handled by useFileContent.
+// Centre pane: syntax-highlighted viewing and editing. The workspace page pushes file events through the
+// imperative handle; data lives in useFileContent.
 "use client";
 
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
@@ -78,8 +77,7 @@ const FileViewer = forwardRef<FileViewerHandle, Props>(function FileViewer(
 
   const [showPreview, setShowPreview] = useState(false);
   useEffect(() => {
-    // The viewer stays mounted across file changes (including moves), so its local mode must follow
-    // the newly selected file type instead of relying on mount-time state.
+    // The viewer persists across file changes, so preview mode follows the new file's type.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowPreview(isMarkdown);
   }, [isMarkdown]);

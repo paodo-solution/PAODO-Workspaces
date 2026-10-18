@@ -1,9 +1,5 @@
-// Storage boundaries for every secret PAODO must be able to recover.
-//
-// Provider credentials and workspace-injected secrets have different trust boundaries: the app
-// needs both, while the workspace-facing credential proxy must never be able to decrypt provider
-// credentials. Each class therefore has its own encrypted vault AND its own master key, all outside
-// ordinary workspace data.
+// Provider keys and workspace secrets each get their own vault and master key outside workspace data, so the
+// proxy can never decrypt provider keys.
 import path from "path";
 import { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
 import { WORKSPACE_SECRET_VAULT_KEY_FILE, WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";

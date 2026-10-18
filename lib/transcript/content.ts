@@ -1,14 +1,5 @@
-// Flatten a provider message's content into text.
-//
-// Newer models return content as an array of typed blocks instead of a plain string, so every
-// consumer that wants the text of a message has to fold those blocks. Four places were folding them
-// independently — the streaming turn, the stored-history projection, the compaction summary, and the
-// dashboard's system-prompt view — which is three chances for them to disagree about what the same
-// message says.
-//
-// Deliberately dependency-free, no LangChain types: the reason the duplicate in
-// messageSerialization.ts existed at all was to keep that module off the agent runtime's import
-// chain, so a shared home is only usable if importing it stays free.
+// Flattens a provider message's content (string or typed blocks) into text, for every consumer. Free of
+// LangChain imports so messageSerialization.ts can use it.
 
 /** A text-bearing block, whatever else the provider attached to it. */
 function blockText(block: unknown): string {

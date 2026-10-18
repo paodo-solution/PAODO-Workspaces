@@ -91,9 +91,7 @@ export function iapAuthenticator(settings: IapSettings): UiAuthenticator {
     challenge: null,
     prime: () => settings.policy.jwks.refresh(),
     verify({ cookie, assertion, isUpgrade }) {
-      // The cookie is the /ws fallback only, for proxies that set no header on a handshake. Reading
-      // it on HTTP as well would make the proxy's cookie an ambient credential on every API route,
-      // leaving the CSRF guard as the only thing between a cross-site POST and a mutation.
+      // Cookie only as the /ws fallback; on HTTP it would be an ambient credential guarded only by CSRF checks.
       const fallback = isUpgrade && settings.cookie ? (readCookie(cookie, settings.cookie) ?? "") : "";
       const token = assertion || fallback;
       if (!token) return "absent";

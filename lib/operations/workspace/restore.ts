@@ -1,12 +1,5 @@
-// Roll a workspace's work-tree back to one of its snapshots.
-//
-// Separated from update.ts for the same reason delete.ts is: this is not a field write. It replaces
-// the files on disk with an older revision and keeps no copy of what was there, so it is the second
-// irreversible workspace operation and belongs beside the first rather than inside the receipt-
-// producing metadata path.
-//
-// The reset writes host files that bind-mount live into the container, so there is nothing to
-// restart afterwards — the running agent sees the restored tree on its next read.
+// Rolls a workspace back to a snapshot. Irreversible (no copy is kept), so it sits beside delete.ts rather
+// than in update.ts. Files are bind-mounted, so the running agent sees the result at once.
 import type { IWorkspaceVersionRestorer } from "@/lib/infra/interfaces";
 import { getVersioning } from "@/lib/infra/services";
 import { isSnapshotSha } from "@/lib/infra/git/sha";

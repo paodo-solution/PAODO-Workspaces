@@ -1,10 +1,5 @@
-// SQLite-backed registry of a workspace's conversations. Each workspace holds several
-// conversations the user can switch between; each conversation owns its replayable message state.
-//
-// History is loaded lazily and held in memory; the runner mutates the live BaseMessage[] in place,
-// and persist() snapshots it to SQLite (called by the run broker at run end). Persisting only at
-// run end keeps the committed history and the in-flight event buffer non-overlapping, which is
-// what makes live reconnect reconstruct cleanly (see runBroker.ts).
+// SQLite-backed conversations per workspace. History is loaded lazily, mutated in place by the runner, and
+// saved only at run end, which keeps it apart from the live event buffer (runBroker.ts).
 import type Database from "better-sqlite3";
 import type { BaseMessage, StoredMessage } from "@langchain/core/messages";
 import { createLogger } from "../infra/logger";
@@ -126,9 +121,7 @@ function notifyConversationsChanged(workspaceId: string): void {
   try {
     broadcastToWorkspace(workspaceId, JSON.stringify({ type: "conversations_changed" }));
   } catch (err) {
-    // Best-effort UI hint only: failures must never affect conversation persistence. Debug level
-    // because a disconnected client is routine — it is here only so a UI that has silently stopped
-    // refreshing leaves a trail to follow.
+    // Best-effort UI hint; debug level, since disconnected clients are routine.
     log.debug({ err, workspaceId }, "conversations_changed broadcast failed");
   }
 }

@@ -1,7 +1,5 @@
-// Permanent removal of a workspace and every resource keyed by its id. Kept apart from the read and
-// update operations because deletion is the only path that reaches all owned resources at once — and
-// the only one whose every step is audit-logged. The concrete cleanup plan is assembled at the HTTP
-// composition boundary; this module only owns deletion policy and ordering.
+// Permanent, audit-logged removal of a workspace and everything keyed by its id. The cleanup plan is wired
+// at the HTTP boundary; this owns policy and order.
 
 export interface DeleteWorkspaceResult {
   deleted: true;

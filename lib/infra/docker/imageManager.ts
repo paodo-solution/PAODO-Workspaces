@@ -1,6 +1,4 @@
-// Manages the lifecycle of the workspace Docker image: detects Dockerfile changes via
-// a content hash label and rebuilds the image when a change is detected.
-// Separated from ContainerManager so container lifecycle and image build concerns don't mix.
+// Rebuilds the workspace image when the Dockerfile's content hash (an image label) changes.
 import { readFile } from "fs/promises";
 import { hashDockerfile } from "./dockerfileHasher";
 import { createLogger } from "../logger";
@@ -45,10 +43,8 @@ export class ImageManager {
     log.info({ image: imageName }, "workspace image ready");
   }
 
-  // Returns the current Dockerfile hash without building anything. Read only when a container is
-  // being created, to label it with the image it was born from — a container that already exists is
-  // never compared against the current image, because drift from it is the whole point (see
-  // containerManager.persistence.test.ts).
+  // Read only when creating a container, to label it; existing containers are never compared, since drift is
+  // intended (containerManager.persistence.test.ts).
   async getCurrentHash(dockerfilePath: string): Promise<string | null> {
     return hashDockerfile(dockerfilePath);
   }

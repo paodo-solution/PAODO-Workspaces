@@ -1,6 +1,4 @@
-// The skills a workspace declares in .skills/. Read-only by design: enabling the MCP endpoint exposes
-// every declared skill as a tool, so the workspace agent decides that surface by authoring contracts
-// and there is nothing here for a caller to write.
+// Skills declared in .skills/. Read-only: the agent defines the MCP surface by writing skill files.
 import { getStore } from "@/lib/infra/services";
 import { loadSkills } from "@/lib/skills/store";
 import type { WorkspaceReader } from "./read";

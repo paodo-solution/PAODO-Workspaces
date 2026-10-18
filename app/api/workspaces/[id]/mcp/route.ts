@@ -1,8 +1,5 @@
-// Workspace MCP protocol endpoint (Streamable HTTP). External AI clients POST JSON-RPC here to
-// discover and call the skills the workspace declares as MCP tools. Authenticated by the workspace's
-// own bearer secret (credentialStore's "workspace-mcp" kind), NOT the site-wide Basic Auth — the path is exempted in
-// httpAuth.ts. Runs stateless with buffered JSON responses, so each POST is a self-contained
-// exchange and there is no server->client SSE channel (GET/DELETE therefore return 405).
+// Workspace MCP endpoint (Streamable HTTP, stateless JSON): exposes declared skills as tools. Uses the
+// workspace's own bearer key, not Basic Auth (exempt in httpAuth.ts); GET/DELETE answer 405.
 export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";
@@ -54,9 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (limited) return limited;
 
   if (!validate("workspace-mcp", id, bearer(req))) {
-    // Reachable by anyone on the internet — this is one of the two routes the public Caddy gateway
-    // forwards — so the caller decides how often it logs. Per-IP rate limiting above bounds a single
-    // source; the throttle is what bounds a flood spread across many.
+    // Publicly reachable: per-IP rate limits bound one source; the throttle bounds a distributed flood.
     const ip = getClientIp(req);
     const throttled = throttleLogWithSources("mcp_auth_unauthorized", ip);
     if (throttled) {

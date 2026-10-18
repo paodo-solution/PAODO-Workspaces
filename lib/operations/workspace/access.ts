@@ -1,12 +1,5 @@
-// The workspace's own inbound channels: the agent API key and the MCP bearer key. One file for both
-// because they are the same capability twice over.
-//
-// A channel has two independent axes: whether it is open (here) and whether it has a credential (the
-// credential routes' generate/rotate/revoke). Nothing in this file touches the second one — opening a
-// channel that has no key leaves it open and keyless, which the UI shows as "Key required".
-//
-// Egress does not gate these. A workspace with internetAccess off still answers on both channels, so
-// nothing here carries the `blockedBy` marker that third-party secrets do (see workspaceSecrets).
+// The workspace's inbound channels (API key, MCP key): open/closed lives here, keys in the credential routes.
+// Egress doesn't gate them, so there's no `blockedBy`.
 import { setEnabled, state, type CredentialState } from "@/lib/infra/security/credentialStore";
 import { WorkspaceUpdateError } from "./errors";
 

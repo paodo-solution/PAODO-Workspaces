@@ -1,10 +1,5 @@
-// Sweeps orphaned upload temp files out of WORKSPACES_ROOT. upload.ts cleans up its own temp
-// file when a request fails, but a process kill mid-upload (OOM, deploy, restart) skips that catch
-// block entirely and leaks the ".part" file forever — this is the janitor that reclaims it.
-//
-// Follows the same in-process tick convention as scheduler.ts and proxyReconciler.ts: a
-// globalSingleton timer, unref'd so it never holds the process open, with an in-flight guard so a
-// slow tick can't overlap the next one.
+// Reclaims ".part" upload temp files leaked when the process dies mid-upload. Same in-process tick as
+// scheduler.ts.
 import fs from "fs/promises";
 import path from "path";
 import { createLogger } from "../infra/logger";

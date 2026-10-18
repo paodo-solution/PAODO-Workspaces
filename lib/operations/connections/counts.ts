@@ -1,14 +1,5 @@
-// How connected each side of a link is, as numbers rather than as the links themselves.
-//
-// This rides on every workspace and drive read, so it is deliberately the cheap half of the answer.
-// What it exists to prevent is a caller — an agent especially — seeing no connection field at all and
-// concluding there are none: an absent field is silence, whereas `0` is a fact. The detail, including
-// the id a link is removed by and the dangling links no live resource can be reached from, belongs to
-// the connection listing.
-//
-// Both counts mean reachability, not rows. A pair connected twice counts once, because the question is
-// how many drives this workspace can address and how many workspaces it may call — and an end that no
-// longer exists counts zero times, because nothing can reach it.
+// Connection counts on every workspace and drive read, so `0` is stated rather than implied. They count
+// reachability: duplicates once, dead ends zero. Details live in the connection listing.
 import { getStore } from "@/lib/infra/services";
 import { getGraph, type GraphEdge } from "@/lib/agent/graph";
 import { getDrivesForWorkspace, listConnections, type DriveConnection } from "@/lib/drives/store";

@@ -1,10 +1,5 @@
-// One ceiling on what a spawned child process may materialize here, shared by dockerClient and
-// gitClient. Unbounded `stdout += d.toString()` throws RangeError past V8's ~536M char string limit,
-// and it throws from a "data" handler Node invokes directly — so it reaches server.ts's
-// uncaughtException guard, not the spawner's promise, and exits the instance.
-//
-// Shared rather than copied because a copy is how gitClient kept the bug after dockerClient was
-// capped. A safety floor, not a product limit: tools needing a meaningful bound set their own.
+// Shared output ceiling for dockerClient and gitClient: an unbounded `stdout +=` throws from a data handler and
+// crashes the instance. A safety floor; tools set tighter bounds.
 import type { ChildProcess } from "child_process";
 import { MAX_CAPTURE_BYTES } from "./limits";
 

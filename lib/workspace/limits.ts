@@ -1,6 +1,4 @@
-// Shared validation bounds for the workspace agent loop. The timeout is stored in minutes because
-// that is the unit exposed in the workspace UI; runtime code converts it to milliseconds only when
-// a run starts.
+// Agent-loop bounds. The timeout is stored in minutes, the UI's unit; runs convert it to ms.
 export const DEFAULT_MAX_RUN_MINUTES = 10;
 export const DEFAULT_MAX_ITERATIONS = 100;
 export const MAX_WORKSPACE_DESCRIPTION_LENGTH = 4_000;

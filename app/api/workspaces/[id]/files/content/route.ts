@@ -1,12 +1,5 @@
-// CRUD endpoint for individual file content within a workspace.
-// GET classifies and returns the file as text, image, or binary; PUT saves edited text content;
-// PATCH moves a batch of items into one directory and DELETE removes the file. Shared workspace
-// file modules do the work; the workspace backend adds a container
-// write-fallback for legacy root-owned files and a git snapshot.
-//
-// The container write-fallback covers PUT only; moving a legacy root-owned file still fails with a
-// "not writable" error rather than falling back. New agent writes are uid-1000-owned, so this only
-// affects files created before the non-root migration and not yet swept.
+// File content CRUD for a workspace (GET, PUT, PATCH move, DELETE) over the shared file modules, plus a git
+// snapshot and a PUT-only container fallback for old root-owned files.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -22,11 +15,8 @@ function backend(ws: Workspace): FileBackend {
   return {
     dir: ws.dir,
     logContext: { workspaceId: ws.id, route: "files/content" },
-    // Fallback for legacy root-owned files (created before the non-root migration, not yet swept):
-    // overwrite through the container. The Node snippet deliberately opens with r+ and no create,
-    // preserving the shared core's guarantee that a concurrent move cannot recreate an old path.
-    //
-    // relPath is already the container's own path space — /workspace is the same tree as ws.dir.
+    // Old root-owned files are overwritten through the container; r+ without create, so a concurrent move can't
+    // recreate the old path. relPath is already the container's path space.
     writeFallback: async (relPath, content) => {
       const overwriteExisting = [
         "const fs=require('fs');",

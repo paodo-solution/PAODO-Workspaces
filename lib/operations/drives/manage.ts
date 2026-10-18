@@ -1,13 +1,5 @@
-// Drive metadata use cases, shared by every trigger.
-//
-// The rule these own is that a drive named in a request has to exist for the request to mean
-// anything — and that saying so is the operation's job, not each route's. The store answers a missing
-// drive with `undefined` from update and `false` from delete, which is the right shape for a registry
-// and the wrong one for a caller: a delete that reports `{ deleted: false }` with a 200 is a failure
-// wearing a success's clothes, and the UI and the CLI were each left to decide what to make of it.
-//
-// Deps are injected the same way lib/operations/drives/connect.ts injects them, so these are testable
-// without touching disk and the store's own names never collide with the ones exported here.
+// Drive metadata operations: a named drive must exist, and saying so is the operation's job, not each route's.
+// Deps are injected (as in connect.ts) for testing.
 import { AppError, requireNonEmptyString, requireString } from "@/lib/errors/appError";
 import * as store from "@/lib/drives/store";
 import type { Drive } from "@/lib/drives/store";

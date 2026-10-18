@@ -12,9 +12,7 @@ export function atomicSaveJson(filePath: string, data: unknown): void {
   renameSync(tmp, filePath);
 }
 
-// Read a JSON file, returning `fallback` if it is missing or unparseable. The counterpart to
-// atomicSaveJson for the many stores that load a JSON blob at startup with a "start empty on miss"
-// policy. Stores needing to distinguish error kinds (e.g. ENOENT vs corrupt) keep their own read.
+// Reads JSON or returns `fallback` if missing or corrupt; stores needing to tell those apart read their own.
 export function readJson<T>(filePath: string, fallback: T): T {
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as T;

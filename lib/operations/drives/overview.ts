@@ -1,8 +1,5 @@
-// The complete trigger-neutral drive read, the mirror of lib/operations/workspace/overview.ts.
-//
-// Separate from manage.ts's getDrive because that one answers the registry's question — does this
-// drive exist, and what is it called — and is what update and delete resolve against. This answers a
-// caller's, and a caller reading one drive wants to know whether anything is using it.
+// Full drive read (mirror of workspace/overview.ts), including what uses it; manage.ts's getDrive is the bare
+// registry lookup.
 import { getDrive } from "./manage";
 import { driveConnectionCounts, type DriveConnectionCounts } from "../connections/counts";
 import type { Drive } from "@/lib/drives/store";

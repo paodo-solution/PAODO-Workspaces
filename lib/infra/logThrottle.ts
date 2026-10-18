@@ -1,22 +1,11 @@
-// Coarse throttle for the handful of log lines an unauthenticated caller can trigger at will.
-//
-// Rejection paths log before the caller has proven anything, so a scanner that keeps hammering an
-// endpoint after its rate limit is exhausted generates a line per request forever. Nothing is at
-// risk of filling the disk — Docker's json-file driver caps each service at 10 MB x 5 — but the cap
-// is the problem: a flood rotates real history out of the window in minutes, which is exactly when
-// you want to look at it.
-//
-// Deliberately *not* a hook on the logger. Call sites opt in only when repetitions add no evidence:
-// unauthenticated rejection floods and a known host-wide infrastructure failure retried by many
-// agent tools. Silently collapsing arbitrary application records would cost more than it saves.
+// Throttle for log lines unauthenticated callers can trigger at will, so a flood doesn't rotate real history
+// out of Docker's capped logs. Opt-in per call site, only where repeats add no evidence.
 
 type Window = { openedAt: number; suppressed: number; sources: Set<string> };
 
 const windows = new Map<string, Window>();
 
-// Cap on addresses remembered per window. The set exists to answer one question — is this one
-// persistent caller or a spread-out campaign — and hitting the cap already answers it. Storing every
-// address would hand an attacker the unbounded map this module exists to avoid.
+// Enough to tell one persistent caller from a campaign; more would be the unbounded map this avoids.
 const MAX_TRACKED_SOURCES = 20;
 
 /**

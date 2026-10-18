@@ -23,9 +23,7 @@ import { relativeEntryPath } from "./relpath";
 
 async function addDirToZip(zip: JSZip, sem: Semaphore, dirPath: string, zipPath: string) {
   const entries = await readTransferEntries(dirPath, sem);
-  // JSZip only materializes a folder when something is placed inside it, so a directory with no
-  // files anywhere beneath it would vanish from the archive. Add an explicit folder entry to keep
-  // empty directories (and dirs holding only empty subdirs) present in the download.
+  // JSZip only creates folders that hold files, so add empty directories explicitly.
   if (entries.length === 0) {
     zip.folder(zipPath);
     return;
@@ -122,9 +120,7 @@ export async function addSelectedToZip(
   );
 }
 
-// Stream the archive to the client as it's generated. generateInternalStream emits the zip in
-// chunks; we pump those into a web ReadableStream so the response can start flowing before
-// compression has finished, instead of awaiting a single in-memory buffer.
+// Streams the zip as it's generated, so the response starts before compression finishes.
 export function zipToStreamResponse(zip: JSZip, filename: string): Response {
   const internal = zip.generateInternalStream({
     type: "uint8array",

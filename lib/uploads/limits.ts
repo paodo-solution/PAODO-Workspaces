@@ -1,10 +1,5 @@
-// Single source of truth for the upload size limit. The server handler
-// (lib/uploads/upload.ts) enforces it; the browser hook (lib/client/hooks/useFileUpload.ts)
-// pre-checks the whole selection against it so an oversized file is reported before any bytes
-// leave the browser. Two copies of this number would drift and produce the confusing case where
-// the UI accepts a file the server then rejects with a 413.
-//
-// Keep this module free of server-only imports — it is bundled into the client.
+// The upload size limit, enforced by upload.ts and pre-checked by useFileUpload.ts, so the UI never accepts
+// what the server 413s. Client-bundled: no server-only imports.
 
 /**
  * Per-file ceiling, honoured by every path that accepts bytes. Transfers stream straight to disk and

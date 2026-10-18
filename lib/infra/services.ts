@@ -1,9 +1,5 @@
-// Service provider for stateful infra singletons. API routes and server.ts obtain services
-// through getStore()/getContainers() instead of importing concrete singletons directly — so
-// tests can swap in fakes via setServices().
-//
-// Leaf module: imports only the concrete infra. The agent layer must NOT import this file — it
-// receives store/containers via constructor/argument injection to stay cycle-free and pure.
+// Service provider for infra singletons (getStore/getContainers), swappable in tests via setServices(). The
+// agent layer must not import it; it gets them injected.
 import { defaultWorkspaceStore } from "@/lib/infra/workspace/registry";
 import { defaultContainerManager } from "./docker/defaultContainerManager";
 import { defaultWorkspaceVersioning } from "./git";

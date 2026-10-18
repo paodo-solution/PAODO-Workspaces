@@ -1,6 +1,4 @@
-// Encrypted vault containing only secrets intended for credential-proxy injection. The proxy gets
-// read-only access to this vault and its key; provider credentials live in a different vault/key
-// pair that is not mounted into the proxy at all.
+// Vault for proxy-injected secrets only; the proxy reads it and its key, never the provider-key vault.
 import { readFileSync } from "fs";
 import path from "path";
 import { atomicSaveJson } from "../jsonPersist";

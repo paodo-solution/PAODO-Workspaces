@@ -1,11 +1,5 @@
-// Per-workspace internet-access on/off policy, consulted by the credential proxy before any
-// tunnel/forward — the application-layer half of the "off means no egress at all" guarantee (the
-// other half is the workspace's Docker network being created --internal, see containerManager.ts).
-//
-// Persisted to disk (not just in-memory) because in production the proxy runs in a separate
-// sidecar PROCESS (docker-compose `credproxy`) with no shared memory with the app — same reason
-// workspaceSecretStore.ts exposes SECRET_STORE_FILE for proxyEntry.ts to poll. The app is the only
-// writer; the sidecar only ever reloads (the shared volume is mounted read-only there).
+// Per-workspace internet policy the proxy checks before any tunnel (defense in depth behind the --internal
+// network). On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
 import path from "path";
 import { readFileSync } from "fs";
 import { WORKSPACES_ROOT } from "../paths";

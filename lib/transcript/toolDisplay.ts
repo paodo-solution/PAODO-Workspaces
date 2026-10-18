@@ -1,9 +1,5 @@
-// How a tool call is described to a human: its display label and the one-line summary of its
-// arguments. Shared vocabulary, like ./message.ts — the live chat stream, the dashboard's execution
-// detail, and the server-side projection of stored history must all describe `file_read` the same
-// way, so the maps live in one place instead of being duplicated per surface.
-//
-// Deliberately dependency-free.
+// Tool labels and argument summaries shared by chat, dashboard and history projection, so every surface
+// describes a call the same way. Dependency-free.
 
 // Extend this map to support new tools without modifying dispatch logic (OCP).
 const TOOL_LABELS: Record<string, string> = {

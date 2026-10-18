@@ -1,9 +1,7 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 
-// Integration tier: tests that need real external systems (Docker, etc.).
-// Run with `npm run test:integration`. Kept separate from the unit suite so
-// `npm test` needs no Docker and stays fast on any machine / CI stage.
+// Integration tier for tests needing real Docker (`npm run test:integration`), so `npm test` stays fast.
 export default defineConfig({
   test: {
     environment: "node",

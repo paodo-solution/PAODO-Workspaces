@@ -1,10 +1,5 @@
-// Durable on-disk weight of one workspace, for the home-panel storage line.
-//
-// A workspace spreads across three directories: its /workspace tree (<root>/<id>), its durable
-// /home/dev (.homes/<id>), and its snapshot history (.versioning/<id>). Each is measured with `du`
-// (one C process, far faster than walking every file in Node); a directory that does not exist yet
-// counts as 0 rather than failing the request. Results are cached briefly so re-selecting a
-// workspace does not re-scan a large tree on every click.
+// A workspace's on-disk size: its tree, .homes/<id> and .versioning/<id>, via `du`, briefly cached; a missing
+// directory counts 0.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
