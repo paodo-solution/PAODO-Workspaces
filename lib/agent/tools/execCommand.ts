@@ -1,6 +1,5 @@
-// Agent tool that spawns a bash command in the workspace directory.
-// Streams stdout and stderr live to connected WebSocket clients so they appear in the console panel,
-// and returns the combined output to the agent as the tool result.
+// Agent tool that runs a bash command in the workspace, streaming output live to the console panel
+// and returning the combined output as the tool result.
 
 import { StructuredTool } from "@langchain/core/tools";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -30,9 +29,8 @@ function diagnoseStderr(stderr: string): string {
   if (!trimmed) return "";
   let out = `[stderr]: ${trimmed}`;
   if (trimmed.includes("no matching entries in passwd file")) {
-    // Deliberately does NOT suggest removing the container. Its writable layer holds everything
-    // installed in this workspace since it was created, and `docker rm` would destroy all of it to
-    // fix a user-lookup problem that is repairable in place.
+    // Never suggests removing the container: its writable layer holds every package installed here,
+    // and the fault is repairable in place.
     out +=
       "\n[setup] The container cannot resolve its runtime user. This is a container-level fault, not something you can fix from the shell — report it to the workspace owner. Do NOT suggest deleting or recreating the container: that would erase every package installed in this workspace.";
   } else if (trimmed.includes("Permission denied")) {
@@ -82,9 +80,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
     _runManager?: unknown,
     config?: RunnableConfig,
   ): Promise<string> {
-    // Refuse to even start a command — foreground or background — on a workspace that's already out
-    // of room. Unlike an HTTP upload there's no declared size for an arbitrary shell command, so this
-    // is a headroom gate ("is there still room at all"), not a size check.
+    // A headroom gate, not a size check: a shell command declares no size, so only refuse when already full.
     const space = await checkFreeSpace(this.workspaceDir, 0, RESERVED_FREE_BYTES);
     if (!space.ok) {
       this.log.warn(
@@ -94,9 +90,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
       return "Error: workspace is out of free disk space. Free up space (e.g. delete unneeded files) before running more commands.";
     }
 
-    // Background path: launch detached and return immediately. Deliberately skips the
-    // heartbeat/AbortController machinery below — a background process is fire-and-forget, so no
-    // silence/max timeout kill can ever reach it (that kill is exactly what broke servers before).
+    // Detached and fire-and-forget: the timeout and silence kills below must never reach a dev server.
     if (run_in_background) {
       try {
         const { taskId, logFile } = await this.backgroundExec(command);
@@ -112,13 +106,11 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         return `Error: failed to start background command\n${String(err)}`;
       }
     }
-    // The user's escape signal (threaded by the runner) and our own timeout/silence guards all
-    // converge on one AbortController. Aborting it triggers the real in-container process-group
-    // kill inside streamExec — there is no longer any "discard output but keep running" path.
+    // The user's escape and the timeout/silence guards share one AbortController, which makes streamExec
+    // kill the in-container process group.
     const userSignal = config?.signal;
     return new Promise<string>((resolve) => {
-      // Bounded, unlike the raw `stdout += text` this replaces — see execOutput.ts for what that
-      // cost. Output past the cap streams into a file in the container instead of into this heap.
+      // Bounded: output past the cap streams to a file in the container instead of this heap.
       const output = new ExecOutput(() => this.openOutputSink(randomUUID()));
       const startedAt = Date.now();
       let lastOutputAt = Date.now();
@@ -132,9 +124,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         settled = true;
         clearInterval(heartbeat);
         userSignal?.removeEventListener("abort", onUserAbort);
-        // Every exit lands here — normal completion, both timeout kills, the user's stop, and the
-        // failure path — so this is the one place that reliably closes the sink. A killed command
-        // would otherwise leave its `docker exec` drain running with nothing left to feed it.
+        // Every exit path lands here, so this is where the sink's `docker exec` drain is reliably closed.
         output.close();
         resolve(msg);
       };
@@ -147,14 +137,10 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         finish(`[killed] ${reason}`); // unblock the agent immediately
       };
 
-      // statfs is I/O, so the disk check below runs alongside (not inside) the synchronous
-      // timeout/silence checks each tick — guarded against overlap since a check can outlive one 5s
-      // interval.
+      // The async disk check can outlive one 5s tick, so it is guarded against overlap.
       let diskCheckInFlight = false;
 
-      // "Still running" is reassurance, not information — it only needs to be frequent while the
-      // user is still deciding whether the command hung. Past 30s of silence it backs off to every
-      // 30s, so a quiet 5-minute install prints ~15 lines instead of ~59.
+      // "Still running" every 5s for the first 30s of silence, then every 30s.
       let lastHeartbeatAt = 0;
 
       const heartbeat = setInterval(() => {
@@ -179,9 +165,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
           }
         }
 
-        // A long-running command (git clone, npm install, a build) can fill the disk after it
-        // already passed the pre-flight check above — this is the mid-run counterpart, reusing the
-        // exact same kill machinery as the timeout guards, just a distinct reason string.
+        // Mid-run counterpart of the pre-flight check: a clone or build can fill the disk while running.
         if (!diskCheckInFlight) {
           diskCheckInFlight = true;
           checkFreeSpace(this.workspaceDir, 0, RESERVED_FREE_BYTES)
@@ -200,8 +184,6 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         else userSignal.addEventListener("abort", onUserAbort, { once: true });
       }
 
-      // streamExec handles ensureContainer + docker exec; we route output and feed it the abort
-      // signal so a kill reaches the actual in-container process.
       this.streamExec(["/bin/bash", "-c", command], {
         signal: ctrl.signal,
         onStdout: (text) => {
@@ -220,15 +202,11 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         .then(({ code }) => {
           if (settled) return;
           this.broadcast(JSON.stringify({ type: "exec_done", exitCode: code }));
-          // Lead a non-zero exit with an explicit Error line so both the agent and the usage
-          // dashboard can tell the command failed — the combined output alone hides exit status.
-          // (code 0 and null/unknown exits are left as plain output, as before.)
+          // A leading Error line marks non-zero exits for the agent and the usage dashboard.
           const failed = typeof code === "number" && code !== 0;
           const errorLine = failed ? `Error: command exited with code ${code}` : "";
-          // Over the cap the streams are no longer held separately, so the result becomes the
-          // preview block plus the path — the exit-status line still leads it, as it does below.
-          // The stderr diagnosis runs on BOTH paths: why a command failed is the one thing the agent
-          // cannot recover by reading the saved file, since the guidance is ours, not the command's.
+          // Over the cap the result is a preview plus the file path. The stderr diagnosis is added either
+          // way, since it is our guidance and not in the saved file.
           const body = output.overflowed
             ? [output.overflowNotice(), diagnoseStderr(output.stderrText())]
             : [output.stdoutText().trim(), diagnoseStderr(output.stderrText())];
@@ -237,8 +215,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
         })
         .catch((err) => {
           if (settled) return;
-          // Lead with "Error:" so runner.classifyToolStatus tags this as a failure (red dot) —
-          // same convention as the non-zero exit path above.
+          // "Error:" prefix makes runner.classifyToolStatus mark it failed.
           finish(`Error: command execution failed\n${String(err)}`);
         });
     });
