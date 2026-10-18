@@ -1,6 +1,4 @@
-// Slim header above the chat: the active conversation's title with a dropdown to switch between
-// saved conversations (a pulsing dot marks one whose agent is currently running) and a button to
-// start a new one.
+// Chat header: conversation switcher (a pulsing dot marks a running one) and a new-conversation button.
 "use client";
 
 import { Spinner } from "@/components/shared/Spinner";

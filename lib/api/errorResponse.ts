@@ -83,11 +83,8 @@ export function appErrorResponse(error: unknown, request?: Request): NextRespons
   });
 }
 
-// A route's unexpected-failure branch is deliberately NOT factored out to sit alongside this. It
-// would have to make the log call, and errorLogContract.test.ts requires `event` and `outcome` to be
-// string literals at the site that emits them — so an operator can grep an event name straight to
-// the code that raises it. Every catch block therefore spells out its own two branches: the expected
-// AppError through appErrorResponse, then one literal log record and an opaque 500.
+// Unexpected failures aren't factored out here: errorLogContract.test.ts requires literal event/outcome at each
+// site, so every catch spells out appErrorResponse, then its own log line and a 500.
 
 /** Read the object-shaped JSON body expected by mutation routes, with the public failure contract. */
 export async function readJsonObject(request: Request): Promise<Record<string, unknown> | NextResponse<ApiErrorBody>> {

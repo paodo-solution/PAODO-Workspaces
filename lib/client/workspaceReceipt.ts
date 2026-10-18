@@ -1,7 +1,5 @@
-// The browser half of the workspace update receipt (lib/api/workspaceUpdateReceipt.ts). Every
-// mutation answers that one envelope, so every optimistic block adopts the server's confirmed values
-// through this function rather than restating the envelope in its own inline cast — five private
-// restatements of one shape is five places to miss when the shape moves.
+// Browser half of the workspace update receipt: every optimistic block adopts confirmed values through this one
+// function.
 import type { WorkspaceUpdateReceipt } from "@/lib/api/workspaceUpdateReceipt";
 
 export type { WorkspaceUpdateReceipt };

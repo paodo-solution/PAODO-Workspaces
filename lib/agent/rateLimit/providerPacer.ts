@@ -471,10 +471,8 @@ export class ProviderPacer {
     const requestSends = sendsForAxis(bucket.sends, bucket.requestsWindowStartedAt);
     const tokenSends = sendsForAxis(bucket.sends, bucket.tokensWindowStartedAt);
 
-    // pacedFetch may already have folded a Retry-After/reset header from this refusal into the
-    // bucket before the SDK turns the 429 response into an exception. Prefer that provider-owned
-    // deadline to our learned guess. An exact deadline needs no jitter here: admission is serialized
-    // when callers wake, and waking before Retry-After would only buy another refusal.
+    // Prefer a Retry-After that pacedFetch already folded in over our guess; no jitter, since waking earlier only
+    // earns another refusal.
     if (retryAt !== undefined) bucket.retryAt = retryAt;
     const responseWideRetry = bucket.retryAt !== undefined && bucket.retryAt > now ? bucket.retryAt : undefined;
     const requestExhausted =

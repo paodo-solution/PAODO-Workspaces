@@ -1,9 +1,5 @@
-// One HTTP representation for the shared workspace mutation result. Routes may translate their
-// request shape (`enabled` to `internetAccess`, for example), but successful writes all return this
-// receipt so UI, CLI and other callers observe the same authoritative server outcome.
-//
-// The receipt type is exported for the browser half (lib/client/workspaceReceipt.ts) to import as a
-// type, so the two ends of the wire cannot drift.
+// The single HTTP receipt for workspace mutations, so UI, CLI and others see the same outcome. Its type is
+// shared with lib/client/workspaceReceipt.ts.
 import { NextResponse } from "next/server";
 import { notFound } from "@/lib/api/guards";
 import { getStore } from "@/lib/infra/services";

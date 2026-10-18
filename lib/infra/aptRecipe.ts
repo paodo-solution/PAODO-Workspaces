@@ -1,15 +1,5 @@
-// The list of system packages a workspace has installed, so a rebuilt container can get them back.
-//
-// Everything else the agent installs — nvm, pyenv, npm, pip — lands in $HOME and rides the durable
-// /home/dev mount. apt is the exception: it writes to /usr, /etc and /var, which nothing mounts.
-//
-// Kept as the instruction, not the artifacts. Restoring files without dpkg's database, dependency
-// closure and postinst scripts gives a broken half-install, and a captured filesystem diff would
-// also pin every rebuilt workspace to the package versions current when it was first set up —
-// re-running apt-get against a newer base image installs the newer package instead.
-//
-// AptInstallTool is the only path to a system package (uid 1000, no setuid sudo, no-new-privileges),
-// so recording at that one call site is exact by construction, with nothing to diff or reconcile.
+// Records apt packages (the only installs outside the durable $HOME) so a rebuilt container can reinstall them.
+// Names, not files, so replays get current versions; AptInstallTool is the sole path, so the list is exact.
 import { workspaceAptRecipeFile } from "./paths";
 import { atomicSaveJson, readJson } from "./jsonPersist";
 import { createLogger } from "./logger";

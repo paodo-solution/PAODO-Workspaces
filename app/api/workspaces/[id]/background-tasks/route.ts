@@ -1,7 +1,5 @@
-// Read of a workspace's live background tasks, for the TopBar indicator. A safe GET: listBackgroundLive
-// rescans the container's pidfiles and prunes exited tasks (so a self-exited task clears promptly and
-// the indicator survives a reload/restart), with no task-killing side effect — the idle reaper owns
-// the cap. Trimmed to what the UI shows.
+// Live background tasks for the TopBar indicator: rescans and prunes exited tasks without killing any, trimmed
+// to what the UI shows.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";

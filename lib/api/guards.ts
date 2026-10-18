@@ -1,13 +1,5 @@
-// Shared preamble helpers for API route handlers.
-//
-// Before this module, every route hand-copied its own "look up the workspace, return 404 if
-// missing" and "check the rate limit, return 429 if exceeded" blocks — with five different 404
-// response shapes across the codebase. Routing everything through these helpers gives one error
-// contract and one place to change it.
-//
-// Usage narrows via `instanceof`:
-//   const ws = requireWorkspace(id);
-//   if (ws instanceof NextResponse) return ws;   // ws is now a Workspace
+// Route preamble helpers with one error contract (404, 429). Narrow with `instanceof`:
+// const ws = requireWorkspace(id); if (ws instanceof NextResponse) return ws;
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getStore } from "@/lib/infra/services";

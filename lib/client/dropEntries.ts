@@ -1,8 +1,7 @@
 import type { PathedFile } from "@/lib/client/hooks/useFileUpload";
 
-// Minimal shape of the (non-standard but universally supported) FileSystem entry API used by
-// drag-and-drop. A browser drop only exposes top-level dataTransfer.files, so descending into
-// dropped folders requires webkitGetAsEntry() + a directory reader.
+// The FileSystem entry API used by drag-and-drop: a drop only exposes top-level files, so folders need
+// webkitGetAsEntry() and a directory reader.
 interface FsEntry {
   isFile: boolean;
   isDirectory: boolean;

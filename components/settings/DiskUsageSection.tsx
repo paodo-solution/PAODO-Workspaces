@@ -1,8 +1,5 @@
-// Storage usage on the host VPS, as one section of the settings modal.
-//
-// Reads /api/settings/disk-usage, which measures the real mounted filesystem, so it works on any
-// provider with no provider-specific code. Outside the container the path is absent and the endpoint
-// reports available:false, which shows as an "unavailable" line rather than a bar.
+// Host disk usage from /api/settings/disk-usage (the real mount, any provider); shows "unavailable" outside
+// the container.
 "use client";
 
 import { useEffect, useState } from "react";

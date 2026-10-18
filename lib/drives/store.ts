@@ -1,16 +1,5 @@
-// Registry of shared drives and their connections to workspaces.
-//
-// A *drive* is a named shared directory on disk that can be connected to multiple workspaces so
-// their agents can exchange files. Drives are PASSIVE storage: their content lives at
-// data/.drives/<driveId>/ and is NEVER mounted into any container — only host-side fs touches it.
-// This keeps the security promise that only sandboxed workspaces execute code.
-//
-// Drive↔workspace connections are stored here, SEPARATELY from the agent-call graph
-// (workspaceGraph.ts), whose edges drive list_agents/call_agent and must stay a clean DAG.
-//
-// Accessors read fresh from disk on every call. The files are tiny, and reading fresh avoids the
-// stale-cache problem across Next.js module instances (the agent runner and the API routes may be
-// bundled separately), so a drive connected via the API is immediately visible to a new agent run.
+// Shared drives and their workspace connections. Content lives in data/.drives/<id>/, never mounted into a
+// container. Separate from the agent-call graph; read fresh from disk so every module instance agrees.
 import path from "path";
 import fs from "fs";
 import { rm } from "fs/promises";

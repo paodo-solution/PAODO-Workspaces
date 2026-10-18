@@ -26,9 +26,7 @@ interface UseDragResizeOptions {
  */
 export function useDragResize({ onMove, cursor = "col-resize", onDragChange }: UseDragResizeOptions): () => void {
   const dragging = useRef(false);
-  // Keep the latest callbacks in refs so passing inline closures doesn't re-subscribe the window
-  // listeners on every render (the listeners are registered once, on mount). Written in an effect,
-  // not during render — effects run long before any mouse event reads them.
+  // Latest callbacks in refs (written in an effect), so inline closures don't re-subscribe the listeners.
   const onMoveRef = useRef(onMove);
   const onDragChangeRef = useRef(onDragChange);
   useEffect(() => {

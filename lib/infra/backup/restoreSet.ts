@@ -1,6 +1,5 @@
-// Applies a full backup set back onto this deployment: the inverse of archiveSet. Verifies every
-// archive first, restores in dependency order (workspaces, database, drives, graph), then prunes any
-// workspace the set omits so the box ends up as the snapshot, not merged with what was there.
+// Inverse of archiveSet: verifies every archive, restores workspaces, database, drives, then graph, and prunes
+// workspaces the set omits so the box matches the snapshot.
 import path from "path";
 import { readFile } from "fs/promises";
 import { sha256File, verifyArchive, exists, deploymentName, removeTree } from "../archive/core";

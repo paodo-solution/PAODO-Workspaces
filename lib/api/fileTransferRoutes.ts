@@ -1,19 +1,5 @@
-// The HTTP shape of the streaming tar transfer, shared by the workspace and drive routes. Everything
-// here is transport: frame the archive, hand the body to the operation, and turn the result into a
-// status and a body. What a transfer means — the ignore contract, containment, the wire path space,
-// size limits and the error vocabulary — is lib/operations/files/transfer.ts.
-//
-// The browser's ZIP download and per-file upload remain separate UI transports, and that split is
-// deliberate rather than unfinished: streaming an archive out of a browser needs fetch request
-// streaming, which is not available everywhere, and the browser's upload wants the per-file retry and
-// progress that a single request cannot offer. Only the framing differs.
-//
-// One thing genuinely differs between the two spaces, and it is the reason `versioning` is a parameter
-// rather than something this module reaches for: a workspace is versioned, so a push that overwrote a
-// tree and left no revision behind is not the operation the caller asked for and fails the call. A
-// drive is passive host storage with no history at all, so there is no revision to fail over — the
-// caller is told that by `drive rm` being final, not by a snapshot that quietly does nothing. Passing
-// no versioning is therefore a statement about the space, not a shortcut.
+// HTTP transport for tar transfers (workspace and drive); the rules live in lib/operations/files/transfer.ts.
+// `versioning` is a parameter: workspaces fail a push that left no snapshot, drives have no history.
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
 import { appErrorResponse, errorResponse, requestIdOf, statusForCode } from "@/lib/api/errorResponse";

@@ -1,8 +1,5 @@
-// Parses a Server-Sent-Events response body into typed events. Producers emit each event as
-// a single `data: <json>\n\n` frame (see lib/api/workspaceRunStream.ts and the chat route), so the
-// transport contract is: split on newlines, keep the trailing partial line buffered across
-// chunks, take only `data: `-prefixed lines, JSON.parse the remainder, and silently skip any
-// malformed line. Generic over the event payload so each consumer names its own union.
+// Parses an SSE body into typed events: one `data: <json>` frame each, partial lines buffered across chunks,
+// malformed lines skipped.
 
 export async function* parseSseStream<T>(body: ReadableStream<Uint8Array>): AsyncGenerator<T> {
   const reader = body.getReader();

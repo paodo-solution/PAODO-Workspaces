@@ -1,6 +1,5 @@
-// Forward-only schema migrations, keyed on SQLite's user_version. Each migration runs once, in
-// order, inside one transaction — a throw anywhere rolls the whole upgrade back and leaves the
-// database on its previous version.
+// Forward-only migrations keyed on SQLite's user_version, all in one transaction, so a failure leaves the
+// previous version.
 import type Database from "better-sqlite3";
 import { baselineSchema } from "./001-baseline";
 import { toolCallIds } from "./002-tool-call-ids";

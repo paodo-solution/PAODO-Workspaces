@@ -1,19 +1,5 @@
-// Shared Server-Sent-Events plumbing for the two streaming endpoints: the UI chat route
-// (app/api/workspaces/[id]/chat) and the public agent routes. Both emit one
-// `data: <json>\n\n` frame per event, and both need the same defence against idle disconnects.
-//
-// Why the keepalive: these streams send bytes only when the agent emits an event, and a run can go
-// completely silent for a long time — the chat stream sends nothing between `tool_start` and
-// `tool_result`, while a single command may legally run for EXEC_MAX_TIMEOUT_MS (30 min). A
-// command's own output goes to the terminal WebSocket, not here, so it does nothing to keep this
-// connection warm. Proxies do not tolerate that silence (Cloudflare drops an idle stream in ~100s),
-// and because the run is owned by the run broker rather than the request, the agent would keep
-// working and finish while the viewer's connection was already dead — surfacing as a bogus
-// "Failed to reach server" in a tab whose task actually succeeded.
-//
-// The fix is a comment frame on a fixed interval. SSE comments carry no data and every consumer
-// here ignores any line that is not `data: ` (see lib/client/sse.ts), so this stays invisible to
-// clients and needs no protocol change.
+// SSE plumbing for the chat and public agent routes: one `data:` frame per event, plus a keepalive comment,
+// since proxies drop silent streams (~100s) while a tool call may run 30 min.
 
 export const SSE_HEADERS = {
   "Content-Type": "text/event-stream",

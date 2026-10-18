@@ -1,11 +1,5 @@
-// The vocabulary of connection ids, in one place: a prefix minted in one module and recognised in
-// another is two spellings waiting to disagree.
-//
-// A connection id says which graph it belongs to, because everything else in a connection is a UUID
-// too. One listed link prints three of them — the link's, the workspace's, the drive's — and an
-// unprefixed id is one a caller can only tell apart by remembering where it read it. Prefixed, a
-// wrong one is refused where it is typed, by name, instead of coming back as a lookup that found
-// nothing.
+// Connection id prefixes in one place. Prefixed ids name their graph, so a wrong one is refused by name instead
+// of failing a lookup silently.
 const PREFIX = {
   link: "link_",
   call: "call_",

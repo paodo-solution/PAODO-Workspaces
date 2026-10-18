@@ -1,14 +1,5 @@
-// Home page block for managing a workspace's MCP endpoint.
-// Enable/disable the MCP, mint a bearer key (shown once) and revoke it, and copy the connection URL
-// to paste into an external MCP client.
-//
-// The credential lifecycle and chrome are shared with the API-access block (useCredential /
-// CredentialPanel). What is genuinely MCP-specific — the exposed tool list and the connection URL —
-// lives here.
-//
-// The tool list is read-only by design: enabling the endpoint exposes every skill in .skills/, so
-// what is listed is whatever the workspace agent has declared. Showing it still matters — it is where
-// you see that the agent added or removed a tool your client depends on.
+// Home block for a workspace's MCP endpoint: toggle, key, connection URL, and the read-only list of exposed
+// skills (useful to spot a tool your client depends on disappearing).
 "use client";
 
 import CredentialPanel from "@/components/shared/CredentialPanel";

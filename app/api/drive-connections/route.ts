@@ -1,10 +1,5 @@
-// REST endpoint for drive↔workspace connections.
-// GET lists all connections; POST connects a drive to a workspace; DELETE removes a connection.
-// Kept separate from the agent-call graph so drive links never leak into list_agents/call_agent.
-//
-// Translation only: the referential-integrity checks and the field rules are
-// lib/operations/drives/connect.ts, so a later CLI or MCP adapter cannot establish a connection by
-// skipping them. What is left here is HTTP — reading the body, and turning an AppError into a status.
+// Drive↔workspace connections: GET, POST, DELETE; separate from the agent-call graph. HTTP translation only;
+// integrity rules in lib/operations/drives/connect.ts.
 import { NextResponse, type NextRequest } from "next/server";
 import { listConnections } from "@/lib/drives/store";
 import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/errorResponse";

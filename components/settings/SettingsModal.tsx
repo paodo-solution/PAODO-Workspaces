@@ -1,9 +1,4 @@
-// Instance-wide settings, behind the gear icon on the home page.
-//
-// The chrome only — each setting is its own section, so adding one does not touch the dialog. It was
-// CliAccessModal until provider API keys needed a home: both are deployment-level rather than
-// workspace-level, and a second gear icon for the second one would be a worse answer than a second
-// section.
+// Instance-wide settings dialog (gear icon). Chrome only: each setting is its own section.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";

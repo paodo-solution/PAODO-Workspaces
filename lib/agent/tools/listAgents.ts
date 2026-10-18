@@ -1,7 +1,5 @@
-// Tool that lists the agents reachable from this workspace via call_agent, with each
-// workspace's declared skills (read live from its .skills/ directory) so the calling agent
-// can fill in call_agent's skill + args without guessing. A reachable workspace with no
-// skills is shown explicitly so the caller knows it exists but is not callable.
+// list_agents: workspaces reachable via call_agent, with their live skills; ones without skills are listed as
+// not callable.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

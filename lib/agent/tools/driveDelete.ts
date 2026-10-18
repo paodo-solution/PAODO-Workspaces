@@ -1,7 +1,4 @@
-// Agent tool: delete a file or folder from a shared drive.
-// A drive is a plain live filesystem — newest wins, one file per path — so deletes are immediate
-// and unconfirmed, just like working on a real disk. Runs host-side (drives are never mounted
-// into a container). The old content is gone: there is no version history in v1.
+// drive_delete: removes a drive file or folder immediately, host-side. Drives have no history, so it's final.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

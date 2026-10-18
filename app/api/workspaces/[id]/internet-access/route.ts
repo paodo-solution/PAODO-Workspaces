@@ -1,11 +1,5 @@
-// REST endpoint for a workspace's internet-access toggle. GET returns current state; PATCH flips it.
-// PATCH also stops the running container so its network is torn down and rebuilt with the correct
-// --internal flag on next use (containerManager.ts) — the toggle only becomes a real network-layer
-// boundary once that happens, not merely once the setting is persisted.
-//
-// The wire name is `enabled` because this route is about one setting; the receipt names it
-// `internetAccess`, as every other trigger does. Validation is the shared validator rather than a
-// local typeof, so the rejection message is the same one a workspace PATCH or the CLI would produce.
+// Internet-access toggle: GET state, PATCH applies it to the running container via the shared update path.
+// Wire name `enabled`; the receipt says `internetAccess`, like every other trigger.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";

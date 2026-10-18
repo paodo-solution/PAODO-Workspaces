@@ -45,9 +45,8 @@ const mdComponents: Components = {
   ),
 };
 
-// One rendered transcript entry, memoized on the message object. The reducers in agentTranscript
-// replace only the message a delta touches, so a streaming repaint re-renders that one and no other
-// — without this, every repaint re-parsed the whole transcript's markdown.
+// Memoized per message object: reducers replace only the touched message, so a repaint re-renders just that
+// row's markdown.
 const MessageRow = memo(function MessageRow({ m }: { m: Message }) {
   if (m.role === "reasoning" || (m.role === "assistant" && m.thinking)) {
     const content = m.content?.trim();

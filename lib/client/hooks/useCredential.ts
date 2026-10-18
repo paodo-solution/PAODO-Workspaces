@@ -75,9 +75,8 @@ export function useCredential<TExtra extends object = Record<string, never>>(
       error: err instanceof Error ? err.message : fallback,
     });
 
-  // The initial GET runs through the shared async-resource (stale guard, retry). Its loading/error
-  // stay apart from `failure` (mutation errors, an inline banner): a failed first read replaces the
-  // panel body with a retry, while a failed toggle or mint leaves the controls in place beneath it.
+  // A failed first read replaces the panel with a retry; a failed mutation (`failure`) shows a banner above the
+  // controls.
   const resource = useAsyncResource<CredentialSnapshot & TExtra>(
     useCallback(
       (signal) => fetchJson<CredentialSnapshot & TExtra>(endpoint, signal, `Could not load ${feature}.`),

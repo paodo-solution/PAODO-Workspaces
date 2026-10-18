@@ -1,6 +1,4 @@
-// Shared-drive browser — a two-column file tree + viewer, mirroring the workspace file view.
-// Reuses FileTreePanel and FileViewer pointed at the drive file API (apiBase=/api/drives/<id>).
-// Drives are passive storage, so there is no chat, console, or socket here.
+// Drive browser: FileTreePanel and FileViewer on the drive file API. Passive storage, so no chat or socket.
 "use client";
 
 import { use, useState, useEffect, useRef, useCallback } from "react";

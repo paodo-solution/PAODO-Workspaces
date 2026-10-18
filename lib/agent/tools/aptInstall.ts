@@ -1,16 +1,5 @@
-// Agent tool that installs system (apt) packages into the workspace container.
-//
-// The agent's shell runs as a non-root user (uid 1000) and cannot `apt-get install` directly. This
-// tool is the single, auditable channel for system packages: it runs apt-get AS ROOT via
-// execAsRoot (docker exec -u 0 from the app server). To keep it from becoming an arbitrary
-// root shell, package names are strictly validated and passed as separate argv, so no shell
-// metacharacters, paths, or local .deb installs are possible — only named packages (optionally
-// pinned `name=version`) from the image's configured apt repositories. The one command here that
-// does go through a shell (discardAptDownloads) is a fixed string with nothing interpolated into it.
-//
-// Being that single channel is also what makes the install recoverable: every system package a
-// workspace has passes through here, so recording them on success yields an exact recipe to replay
-// into a rebuilt container — see aptRecipe.ts for why the packages themselves cannot be kept.
+// The one channel for system packages: apt-get as root via execAsRoot, with names strictly validated and passed
+// as argv (no shell, paths or .debs). Successes are recorded for replay (aptRecipe.ts).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

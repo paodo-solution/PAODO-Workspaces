@@ -1,14 +1,5 @@
-// Agent tool for rolling the workspace files back to a previous snapshot mid-run — so a bad
-// attempt can be discarded and retried from a known-good state instead of stacking fixes on top.
-//
-// This tool is a SIGNAL only, like compact_context: a tool's _call receives just its args and
-// returns a string — it has no handle to the platform versioning history, which is deliberately
-// outside the agent's reach. The runner reads this tool call and performs the actual restore
-// (versioning.restore → reset --hard) AFTER the turn commits, where it can't race a concurrent
-// file write in the same tool batch. See lib/agent/runner.ts.
-//
-// Restores FILES only — it cannot undo external side effects (a sent email, a called API). The
-// rollback is itself visible in history (the "(current)" marker moves to the restored snapshot).
+// A signal tool (like compact_context): the runner performs the restore after the turn commits, out of the
+// agent's reach. Restores files only, never external side effects.
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

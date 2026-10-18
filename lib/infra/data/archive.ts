@@ -1,6 +1,5 @@
-// Captures the application database and the workspace registry as one verifiable archive. Holds no
-// credentials by design: the vaults live in their own volumes, and `.credentials.json` sits beside
-// these files in the data root but is deliberately never a member.
+// Archives the app database and workspace registry together. Never includes credentials: vaults live in their
+// own volumes, and `.credentials.json` is deliberately excluded.
 import { mkdtemp, copyFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";

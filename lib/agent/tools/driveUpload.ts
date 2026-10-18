@@ -105,9 +105,7 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
     if (typeof resolved === "string") return { error: resolved };
     if (!resolved.relPath) return { error: "Error: a destination file path within the drive is required" };
 
-    // Same ceiling as drive_download, applied to the workspace side. The workspace directory is a
-    // host volume, so this read lands in the app's heap exactly as a drive read does — the container
-    // is not in the path and none of its limits apply.
+    // Same ceiling as drive_download: the workspace volume is read host-side, into the app's heap.
     const content = await readFileBounded(srcAbs, MAX_DRIVE_TRANSFER_BYTES, {
       missing: `Error: workspace file not found: ${sourceLabel}`,
       isDirectory: `Error: "${sourceLabel}" is a directory, not a file`,

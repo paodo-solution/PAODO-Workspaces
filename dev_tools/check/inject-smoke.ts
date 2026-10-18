@@ -1,12 +1,5 @@
-// Injection smoke check — proves the DIP refactor's payoff without any test framework.
+// Smoke check that injected fakes reach routes and tools with no Docker and no global leakage.
 // Run: npx tsx dev_tools/check/inject-smoke.ts
-//
-// It constructs an isolated WorkspaceStore (fresh Map, no-op persistence) and a hand-written
-// fake IContainerManager, wires them through setServices() + the agent tool seam, and asserts:
-//   1. getStore()/getContainers() return the injected fakes (route-layer seam works).
-//   2. A real file tool (FileReadTool) runs against the fake container — ZERO Docker spawned.
-//   3. The production global store is untouched — ZERO shared/global state leakage.
-// When a test framework is later chosen, this ports directly into a real test.
 import { WorkspaceStore, defaultWorkspaceStore } from "../../lib/infra/workspace/registry";
 import type { Workspace } from "../../lib/workspace/types";
 import { getStore, getContainers, setServices, resetServices } from "../../lib/infra/services";

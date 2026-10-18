@@ -1,10 +1,5 @@
-// Agent tool that invokes a declared skill on another workspace's agent.
-// Structured calls only — the free-form `message` field is removed: the caller names a
-// skill (`skill`) and supplies typed `args`; all contract enforcement (authz, input/output
-// validation, correction retries) lives in executeSkill, which runs the callee in-process
-// with a fresh, isolated conversation.
-// Only works when a directed edge exists from the caller workspace to the target workspace
-// in the Agent Graph (data/.workspace-graph.json).
+// call_agent: invokes a declared skill on another workspace with typed args; executeSkill enforces the contract.
+// Needs a directed edge in the Agent Graph (data/.workspace-graph.json).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";

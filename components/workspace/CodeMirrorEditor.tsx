@@ -1,7 +1,5 @@
-// CodeMirror 6 editor used by FileViewer for the source/editing view. CodeMirror virtualises its
-// own viewport and highlights incrementally (Lezer), so huge files (10k+ lines) open, scroll, and
-// edit cheaply — replacing the previous hand-rolled textarea + highlight overlay. Theme + syntax
-// colours are tuned to match the app's GitHub-light palette (app/globals.css).
+// CodeMirror 6 editor for FileViewer: virtualized and incrementally highlighted, so 10k+ line files stay
+// cheap. Colours match the app palette (app/globals.css).
 "use client";
 
 import { useMemo } from "react";

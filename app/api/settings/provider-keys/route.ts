@@ -1,10 +1,5 @@
-// The deployment's LLM provider API keys — GET lists their status. Writes live on the
-// [provider] route beneath this one.
-//
-// Deliberately absent from platformAccessPolicy.ts, so the instance CLI token cannot reach it. That
-// is a narrower line than it looks: the CLI *is* allowed to know which providers can authenticate,
-// via `hasKey` on GET /api/models. What it may not see is what this route adds — the masked hint and
-// the set-date — because a hint is a partial disclosure of the value itself.
+// Lists provider key status (writes are on [provider]). Kept out of platformAccessPolicy.ts: the CLI may know
+// `hasKey` (via /api/models) but not the hint, a partial disclosure.
 export const runtime = "nodejs";
 
 import { type NextRequest, NextResponse } from "next/server";

@@ -1,9 +1,7 @@
 "use client";
 
-// Ambient TopBar text (sibling of SchedulePanel) that flashes purple while background tasks run in
-// the workspace container. Presence signal only — no button, no modal, nothing when idle. Start and
-// explicit stop arrive instantly via `poke` (a background_tasks_changed socket push); the poll below
-// is only a backstop for a task that exits on its own (which pushes nothing).
+// TopBar text that pulses while background tasks run. Socket pushes report starts and stops; the poll only
+// catches tasks that exit on their own.
 import { useCallback, useEffect, useState } from "react";
 
 const POLL_MS = 8000;
