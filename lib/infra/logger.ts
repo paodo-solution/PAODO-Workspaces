@@ -1,25 +1,13 @@
-// Shared pino logger. Call createLogger(context) for a child scoped to a module, or
-// createAuditLogger(context) for one whose lines are tagged as security events.
-//
-// Everything goes to stdout as JSON and nothing is written to disk. Docker's json-file driver
-// (docker-compose.yml) already captures, caps and rotates stdout, so a durable log file would mean
-// re-implementing all of that — a dir to pre-create, container uid ownership, logrotate, and a flush
-// on every exit path — for a file nobody reads. `docker logs paodo_ws-app-1` is the log.
-//
-// Node builtins are imported by bare specifier, not with the `node:` prefix. instrumentation.node.ts
-// reaches this module, so Next compiles it with webpack, and webpack rejects `node:`-scheme builtins
-// in that entry ("Unhandled scheme") — which failed every dev-server request with a 500.
+// Shared pino logger: JSON to stdout only, which Docker captures and rotates (`docker logs paodo_ws-app-1`).
+// Bare builtin specifiers, not `node:`: webpack bundles this via instrumentation.node.ts and rejects that scheme.
 import { AsyncLocalStorage } from "async_hooks";
 import pino from "pino";
 import { runtimeMode } from "./runtimeMode";
 
 const level = process.env.LOG_LEVEL ?? (runtimeMode.hotReload ? "debug" : "info");
 
-// Routine records are buffered and drained asynchronously so Docker stdout backpressure cannot
-// block the Node.js event loop on every request. The cap prevents a stalled Docker log reader from
-// turning the buffer into unbounded process memory; SonicBoom drops new records after the cap and
-// resumes once the destination drains. Fatal calls synchronously drain the existing buffer before
-// enqueueing their record, and exitAfterLogs() drains that final record immediately before exit.
+// Async and capped, so stdout backpressure neither blocks the event loop nor grows memory (records past the
+// cap are dropped). Fatal records drain synchronously; see logMethod and exitAfterLogs.
 const destination = pino.destination({
   fd: 1,
   sync: false,
@@ -33,11 +21,8 @@ const destination = pino.destination({
 
 type LogContext = Record<string, unknown>;
 
-// Field-name redaction below protects structured bindings, but credentials also turn up inside
-// strings: provider errors echo an API key, command stderr contains an authenticated URL, or an
-// Error stack repeats its message. Keep those diagnostics while replacing the credential-shaped
-// portion. These patterns deliberately require an auth label or a well-known token prefix; broad
-// "long string" matching would destroy hashes, workspace ids, and other useful context.
+// Credentials inside strings (echoed keys, authenticated URLs). Patterns need an auth label or known token
+// prefix, so hashes and ids survive.
 const credentialPatterns: Array<[RegExp, string]> = [
   [
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
@@ -65,9 +50,8 @@ function sanitizeError(value: unknown): unknown {
   if (typeof serialized === "string") return sanitizeLogText(serialized);
   if (serialized === null || typeof serialized !== "object") return serialized;
 
-  // pino-std-serializers returns an ErrorLike object with a custom prototype, so handle its public
-  // fields explicitly instead of sending it through the plain-object guard below. Object.entries
-  // intentionally omits Pino's raw-error symbol, which points back to the unsanitized Error.
+  // ErrorLike has a custom prototype, so copy its fields here; Object.entries skips Pino's raw-error symbol,
+  // which points back to the unsanitized Error.
   const copy: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(serialized)) copy[key] = sanitizeLogValue(item);
   return copy;
@@ -108,7 +92,7 @@ const defaultOutcomes: Record<number, string> = {
   60: "process_exit",
 };
 
-/** Turn a human message into the stable fallback event used by legacy call sites. */
+/** Turn a human message into the fallback event for call sites that set none. */
 function eventFromMessage(message: string | undefined, level: number): string {
   const event = (message ?? "")
     .normalize("NFKD")
@@ -123,14 +107,8 @@ function eventFromMessage(message: string | undefined, level: number): string {
   return /^[a-z]/.test(event) ? event : `log_${event}`;
 }
 
-/**
- * Ensure every emitted record has the same query contract.
- *
- * Error/fatal call sites still carry explicit, semantic event/outcome pairs (enforced by
- * errorLogContract.test.ts). Existing explicit fields at any level always win. The fallback keeps
- * older info/warn/debug calls queryable immediately; those call sites can be promoted to more
- * specific semantic outcomes over time without changing the wire shape.
- */
+/** Give every record an event and outcome; explicit fields win. Error and fatal call sites must set their
+ * own (errorLogContract.test.ts). */
 function applyLogContract(args: unknown[], level: number): unknown[] {
   const message = args.find((arg): arg is string => typeof arg === "string");
   const defaults = {
@@ -144,17 +122,14 @@ function applyLogContract(args: unknown[], level: number): unknown[] {
   return [defaults, ...args];
 }
 
-// The custom server and Next.js route bundles can evaluate this module separately while sharing
-// one Node.js global. Keep the AsyncLocalStorage there so every logger instance sees the request
-// context established at the HTTP boundary.
+// On the global so the server and Next route bundles, which load this module separately, share request context.
 const g = globalThis as typeof globalThis & { _paodoLogContext?: AsyncLocalStorage<LogContext> };
 const logContext = (g._paodoLogContext ??= new AsyncLocalStorage<LogContext>());
 
 const root = pino(
   {
     level,
-    // The credential proxy means third-party API keys pass through this process. A token reaching a
-    // log line is a real leak, so redaction stays even though everything else here got cut.
+    // Third-party API keys pass through this process (credential proxy), so a logged token is a real leak.
     redact: {
       paths: [
         "password",
@@ -178,18 +153,14 @@ const root = pino(
       },
     },
     hooks: {
-      // Sanitize both bindings and the message itself before Pino serializes them. In particular,
-      // Error.message and Error.stack are non-enumerable, so the explicit `err` serializer above
-      // first runs Pino's standard Error serializer and then scrubs the resulting strings.
+      // Sanitizes bindings and message before serialization (Error fields are scrubbed by the `err` serializer).
       logMethod(args, method, level) {
-        // Make room for a fatal record in the bounded async buffer. This is intentionally the only
-        // log level that may block; callers use it when the process is already about to terminate.
+        // Fatal alone may block: drain the buffer to make room, since the process is about to exit.
         if (level === 60) {
           try {
             destination.flushSync();
           } catch {
-            // Best effort: Pino will still attempt to enqueue the fatal record below. The eventual
-            // exit must not be prevented just because stdout itself is broken.
+            // Best effort: a broken stdout must not prevent the exit.
           }
         }
         const sanitized = args.map((arg) => sanitizeLogValue(arg));
@@ -199,11 +170,8 @@ const root = pino(
     // Pino may mutate the object returned by mixin, so never hand it the stored object directly.
     mixin: () => ({ ...(logContext.getStore() ?? {}) }),
   },
-  // Plain JSON on stdout in every environment. Pretty-printing is deliberately not wired in here:
-  // pino-pretty pulls node:stream through pino-abstract-transport, and because this module is
-  // reachable from instrumentation.ts, Next tries to bundle it and the dev server fails every
-  // request with "Can't resolve 'stream'". Pipe through `npm run dev | npx pino-pretty` instead.
-  //
+  // No pino-pretty: Next would bundle its node:stream and break the dev server. Pipe through
+  // `npx pino-pretty` instead.
   destination,
 );
 
@@ -211,15 +179,8 @@ export function createLogger(context: string) {
   return root.child({ context });
 }
 
-/**
- * Logger for security events — auth failures, rate limits, credential access. Same stream as
- * everything else; the `audit: true` tag is what separates them, so filtering is
- * `docker logs paodo_ws-app-1 | jq 'select(.audit)'`.
- *
- * Note this means LOG_LEVEL applies to audit events too: setting it above `info` will silence the
- * low-severity ones (an API-key rotation) while leaving the warnings. That is the accepted cost of
- * one stream instead of two.
- */
+/** Security-event logger, tagged `audit: true` on the same stream (`jq 'select(.audit)'`). LOG_LEVEL
+ * applies too, so a level above `info` hides low-severity audit events. */
 export function createAuditLogger(context: string) {
   return root.child({ context, audit: true });
 }
