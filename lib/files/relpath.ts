@@ -1,21 +1,5 @@
-// The one path space the file API speaks: relative to the root of whatever it is serving —
-// a workspace or a drive — POSIX-separated, that root spelled "".
-//
-// It used to speak two. The file tree served absolute host paths, the browser handed them straight
-// back, and PUT alone also accepted a relative path (the old backend.lexicalFilePath). That works
-// while the only client is a UI that treats the string as an opaque row key, but it makes the host's
-// directory layout part of the public contract — the same layout lib/operations/workspace/read.ts
-// deliberately keeps out of WorkspaceDetails — and it leaves an external client no way to name a file
-// at all, since it cannot know the host dir. One space, chosen here, and the host path stays private
-// to the server.
-//
-// This module is lexical only: it decides what a caller is allowed to *say*, not what exists on disk.
-// The filesystem half — realpath'ing away a symlink that points out of the tree — is
-// ./containment.ts resolveContained, and both run on every request. A lexical check alone would pass
-// "escape/passwd" where `escape` is a symlink to /etc.
-//
-// Callers in lib/operations/files/paths.ts turn these failures into AppError; kept separate so this
-// stays a pure function of its input and can be tested without a workspace or an HTTP request.
+// The file API's only path space: POSIX, relative to the workspace or drive root (spelled ""), so host paths
+// stay private. Lexical only; symlink escapes are caught by ./containment.ts, which also runs on every request.
 
 import path from "path";
 
@@ -64,10 +48,8 @@ function normalizeClientPath(clientPath: string): string {
     reject(clientPath, "Paths must be relative to the root, not absolute");
   }
 
-  // normalize collapses "a//b", "./a" and "a/b/../c"; it leaves a leading ".." in place, which is
-  // exactly the escape we then refuse. It also preserves a trailing slash, so "src/" and "src" would
-  // otherwise be two different identity keys for one directory — strip it before anything reads the
-  // result, including the root check below ("./" normalizes to "./", not ".").
+  // normalize leaves a leading ".." (refused below) and a trailing slash, stripped so "src/" and "src"
+  // are one key (and "./" reaches the root check as ".").
   const normalized = path.posix.normalize(trimmed).replace(/\/$/, "");
   if (normalized === "" || normalized === ".") return "";
   if (normalized === ".." || normalized.startsWith("../")) {

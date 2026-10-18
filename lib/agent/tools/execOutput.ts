@@ -1,16 +1,5 @@
-// Bounds how much of a command's output the app holds in memory, and preserves the rest on disk.
-//
-// execCommand used to do `stdout += chunk` with no ceiling. That is not a safe operation: past V8's
-// maximum string length (~536M chars) the `+=` throws RangeError, and it throws from inside the
-// Docker stream's "data" handler — a callback Node invokes directly, not something on the promise
-// chain execCommand catches. So it escaped to process.on("uncaughtException") in server.ts, which
-// fatal()s by design, taking down every workspace, WebSocket session and in-flight run on the
-// instance. A command printing a binary or a verbose build log got there in under a second, and none
-// of the container limits applied: the memory was in the app, not the container.
-//
-// The cap makes that unreachable. The spill file is what stops the cap from losing anything: past
-// the cap the output keeps streaming into a file inside the container, where the agent's own shell
-// can grep or tail it — the same place background task logs already live.
+// Caps command output held in memory (unbounded, a RangeError in a stream handler would crash the whole
+// instance). Past the cap, output streams to a file in the container that the agent can grep or tail.
 
 import type { OutputSink } from "../../infra/interfaces";
 import { MAX_INLINE_BYTES, PREVIEW_BYTES, STDERR_SAMPLE_BYTES, formatOutputBytes } from "../../infra/limits";
@@ -55,9 +44,8 @@ export class ExecOutput {
       return;
     }
 
-    // Retain the WHOLE crossing chunk before deciding to spill. Truncating it here instead would
-    // drop the bytes between the cap and the chunk boundary, and those bytes would then be missing
-    // from the file too — the one place the output is supposed to survive intact.
+    // Keep the WHOLE crossing chunk before spilling, or the bytes past the cap would be missing from the
+    // file too.
     this.ordered.push(buf);
     (stream === "stdout" ? this.stdoutKept : this.stderrKept).push(buf);
     this.inlineBytes += buf.length;

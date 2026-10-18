@@ -1,13 +1,5 @@
-// Decouples a live agent run from any single HTTP request. A run is started once and driven in a
-// detached loop; its events are buffered and fanned out to any number of subscribers (the SSE
-// stream of whoever is currently watching). This is what lets a user close their tab mid-run and,
-// on return, re-attach and watch the same run continue live — and why a brief disconnect no longer
-// kills anything. Only an explicit stop() ends a run.
-//
-// One run at a time per (workspace, conversation). The buffer holds every event since the run
-// started, so a late subscriber first replays the buffer (catching up) and then receives live
-// events. Conversations persist only at run end, so the committed history and this buffer never
-// overlap — the reconnect path reconstructs from "saved history before the run" + "this buffer".
+// Runs outlive HTTP requests: one detached run per (workspace, conversation), its events buffered and fanned
+// out, so a late subscriber replays then follows live. Only stop() ends a run; history saves at run end.
 import type { BaseMessage } from "@langchain/core/messages";
 import { runAgent, type AgentEvent } from "./runner";
 import type { RunAgentOptions } from "./runner";
@@ -242,11 +234,8 @@ export function startRun(params: StartRunParams): {
       publish({ type: "error", code: "CANCELLED", message: USER_STOPPED_CONVERSATION_MESSAGE });
       publish({ type: "done" });
     };
-    // Last resort for a run that died without saying so. runAgent turns everything raised inside
-    // its loop into an error event, but whatever throws *before* that loop — loading the workspace
-    // config, building the model for a selection the provider no longer accepts — escapes to the
-    // catch below. That used to log and stop there: no error event, no `done`, so the stream hung
-    // open and the conversation showed a prompt that was apparently ignored.
+    // For throws before runAgent's loop (config load, model build): without an error event and `done`, the
+    // stream would hang open on an apparently ignored prompt.
     const publishFailure = (message: string, status: AgentRunStatus = "failed") => {
       if (sentDone) return;
       publish({ type: "error", message });

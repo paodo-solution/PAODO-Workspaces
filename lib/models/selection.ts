@@ -73,15 +73,8 @@ export function defaultEffortFor(vocabulary: ModelVocabulary, model: string): Re
  * The selection a workspace that has never picked one runs and displays: the first available
  * provider, its first model, that model's default effort.
  *
- * `providers` arrives already filtered and already ordered by the caller — availability is an .env
- * question, and answering it needs the provider registry, which pulls the LLM SDKs and cannot be
- * imported here (see this module's header). So the rule lives here, where it is testable and safe to
- * import from a client component, and the environment lookup stays in lib/agent/buildModel.ts.
- *
- * All three fields are empty when nothing is available — a deployment that has switched every
- * provider off. Startup no longer refuses in that state (it cannot: keys are entered in the app, so
- * refusing to boot would make the screen that fixes it unreachable), so this is a state the running
- * app has to render. An empty picker and a run that stops naming the reason are both truthful.
+ * `providers` comes filtered and ordered by lib/agent/buildModel.ts, keeping the LLM SDKs out of this
+ * client-safe module. All fields are empty when every provider is off, which the app must render.
  */
 export function firstAvailableSelection(
   providers: readonly string[],

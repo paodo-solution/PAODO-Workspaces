@@ -1,18 +1,5 @@
-// Keeps the live rate table current in the running server, so nobody has to remember to run
-// `npm run update-pricing` and redeploy.
-//
-// Why this has to happen in the live process rather than at build time: a turn's USD cost is frozen
-// when the turn is written (lib/usage/record.ts), so a rate that has gone stale is not a display bug
-// a later refresh repairs — it is permanently wrong in the database. Every hour the app runs on a
-// stale rate produces records that can never be corrected. The vendored ./model-pricing.json is only
-// a seed for the very first boot.
-//
-// Follows the same in-process tick convention as scheduler.ts, proxyReconciler.ts and
-// uploads/sweeper.ts: a globalSingleton timer, unref'd so it never holds the process open, with an
-// in-flight guard so a slow tick can't overlap the next one.
-//
-// Failures are logged and swallowed. A refresh that cannot reach the network leaves the previous
-// rates in force, which is the correct outcome — pricing must never be able to take the app down.
+// Refreshes model rates in the live server: a turn's USD cost is frozen when written, so stale rates are
+// permanently wrong. Same in-process tick as scheduler.ts; failures keep the previous rates.
 import { writeFileSync, readFileSync, renameSync } from "fs";
 import path from "path";
 import { createLogger } from "../infra/logger";
@@ -29,14 +16,8 @@ const DEFAULT_TICK_MS = 24 * 60 * 60_000;
 // not so often that a sustained upstream outage becomes a request flood.
 const RETRY_MS = 30 * 60_000;
 
-// Lives on the data volume, which survives a redeploy — so a restart comes back on the rates last
-// fetched rather than falling back to whatever the image was built with. This is deliberately NOT
-// the vendored lib/models/model-pricing.json: that file is source, tracked in git, and read-only at
-// runtime in the container.
-//
-// Dot-prefixed like every other app-owned file in this root (.workspaces.json, .cron-schedules.json,
-// .paodo.db, …). That convention is load-bearing: workspace directories are plain joins of the root
-// and a workspace id, so an undotted name shares a namespace with them.
+// On the data volume so a redeploy keeps the last fetched rates (the vendored JSON is read-only source).
+// Dot-prefixed because undotted names in this root share a namespace with workspace directories.
 const CACHE_FILE = path.join(WORKSPACES_ROOT, ".model-pricing-cache.json");
 
 type RefresherState = { timer: NodeJS.Timeout | null; retryTimer: NodeJS.Timeout | null; running: boolean };
@@ -114,8 +95,7 @@ function carryForward(catalog: Catalog, failedSources: readonly VendoredEntry["s
 async function tick(): Promise<void> {
   if (state.running) return;
   state.running = true;
-  // Any outcome leaving the catalog short of a healthy fetch. A partial refresh used to return early
-  // and skip the retry below — the same gap as a hard failure, but reported as success.
+  // Any outcome short of a healthy fetch, including a partial refresh, gets the retry below.
   let retry = false;
   try {
     const { catalog, filled, unpriced, sourceFailures } = await buildCatalog();

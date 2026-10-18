@@ -272,17 +272,8 @@ function providerAvailable(availabilityEnv: string, env: Record<string, string |
 }
 
 /**
- * The providers this deployment offers: every supported one .env has named.
- *
- * DELIBERATELY SAYS NOTHING ABOUT KEYS. It used to also require an API key in .env, which made one
- * list serve two questions — "what may be chosen" and "what can authenticate" — and that conflation
- * is what made a keyless deployment show an empty picker. A provider is offered whether or not
- * anyone has entered its key; whether it can actually run is `hasProviderKey`, asked separately and
- * answered at conversation start.
- *
- * Drives the UI provider picker, GET /api/models, and which providers may be given a key at all.
- * That last one is what gives the switch teeth: a withdrawn provider cannot be keyed, and any key it
- * already had is purged at startup (purgeProviderKeysExcept).
+ * The providers this deployment offers: every supported one .env names, key or not (that is
+ * `hasProviderKey`). Drives the picker, GET /api/models, and which providers may hold a key at all.
  */
 export function availableProviders(env: Record<string, string | undefined> = process.env): string[] {
   return Object.entries(PROVIDERS)

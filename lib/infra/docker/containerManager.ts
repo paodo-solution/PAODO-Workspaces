@@ -567,7 +567,7 @@ export class ContainerManager implements IContainerManager {
         "workspace container created with capacity guardrails",
       );
 
-      // Legacy workspaces from when the agent ran as root hold root-owned files; hand the tree back to
+      // Workspaces created when the agent ran as root hold root-owned files; hand the tree back to
       // uid 1000 so the agent and app can manage it. Idempotent and cheap.
       stage = "repair_workspace_ownership";
       const chown = await this.docker.exec(containerName(workspaceId), ["chown", "-R", "1000:1000", "/workspace"], {

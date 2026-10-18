@@ -1,8 +1,5 @@
-// In-process sweep that lazily reclaims per-workspace Docker networks. stop() empties a workspace's
-// network on idle but no longer deletes it inline: deleting the bridge reloads the host's firewall
-// and routing, which briefly disrupts unrelated egress (the Cloudflare tunnel would blip). Emptied
-// networks therefore accumulate; this loop removes the ones that have stayed empty across a grace
-// window. sweepManagedNetworks() is idempotent and self-throttling, so the tick is cheap and safe.
+// Lazily reclaims workspace networks that stop() emptied: deleting a bridge inline reloads host routing and
+// blips the Cloudflare tunnel. sweepManagedNetworks() is idempotent, so the tick is cheap.
 import { getContainers } from "../services";
 import { createLogger } from "../logger";
 import { globalSingleton } from "../globalSingleton";

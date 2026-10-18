@@ -118,7 +118,7 @@ const logCall: ModelCallObserver = (record) => {
 };
 
 // The slice of LangChain this module uses, satisfied by both a chat model and the Runnable bindTools
-// returns. That mismatch is why the call path used to be typed `any`.
+// returns.
 interface StreamingChatModel {
   stream(messages: BaseMessage[], options?: { signal?: AbortSignal }): Promise<AsyncIterable<AIMessageChunk>>;
   invoke(messages: BaseMessage[], options?: { signal?: AbortSignal }): Promise<AIMessageChunk>;

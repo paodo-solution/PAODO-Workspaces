@@ -1,12 +1,5 @@
-// Basic-authenticated settings endpoint used by the home-page CLI access modal.
-//
-// Deliberately absent from platformAccessPolicy.ts: the CLI token must never reach the route that
-// mints or rotates it, so this endpoint stays UI-administrator-only. Uses the same credential handlers
-// as the workspace API-key and MCP endpoints, with no subject since the token is instance-wide.
-//
-// PATCH no longer mints on first enable the way the old bespoke handler did. Enabling a channel and
-// creating a key are separate steps here, exactly as they already were for the API key and the MCP
-// key — one flow for all three instead of a special case for this one.
+// CLI token settings, UI-admin only: kept out of platformAccessPolicy.ts so the CLI token can't reach the
+// route that mints it. Same credential handlers as the API-key and MCP endpoints (enable and create are separate).
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";

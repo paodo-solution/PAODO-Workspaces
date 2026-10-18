@@ -1,12 +1,5 @@
-// Shared file-tree walker for the workspace and drive file-panel routes.
-// Recursively walks a directory, skipping whatever the shared ignore contract excludes (./ignore.ts).
-// Kept here, shared and tested once, rather than copy-pasted into each route.
-//
-// The depth cap is the panel's, not the filesystem's: it exists so one pathological tree cannot make
-// the file panel's single JSON response unbounded, and it is a named option rather than a literal
-// buried in the recursion, because the panel's budget is not every caller's. A client that navigates
-// asks for one level and lists again to descend (the CLI's `paodo <workspace|drive> file ls`); one that must see the
-// whole tree passes Infinity and gets it. Both are `?depth=` on the tree route.
+// File-tree walker for workspace and drive routes, skipping what ./ignore.ts excludes. The default depth
+// cap bounds the panel's response; other callers pass their own `?depth=` (one level, or Infinity).
 import path from "path";
 import { createLogger } from "@/lib/infra/logger";
 import { readListingEntries, readTransferEntries } from "./entries";
@@ -15,11 +8,7 @@ import { openFileLimiter, type Semaphore } from "./fdLimit";
 export interface TreeNode {
   name: string;
   type: "file" | "directory";
-  /**
-   * Workspace-relative, POSIX-separated — the one path space the file API speaks (./relpath.ts).
-   * It used to be the absolute host path, which made the server's directory layout part of the wire
-   * contract and left a non-browser client no way to name a file at all.
-   */
+  /** Workspace-relative, POSIX-separated — the one path space the file API speaks (./relpath.ts). */
   path: string;
   children?: TreeNode[];
   /**

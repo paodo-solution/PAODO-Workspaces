@@ -1,10 +1,5 @@
-// Shared HTTP shape for the three credential-management endpoints (workspace API key, workspace MCP
-// key, CLI/platform token). Each used to spell out its own POST/DELETE/PATCH over its own store;
-// the verbs are identical, so they live here once and the routes stay thin adapters.
-//
-// GET is deliberately NOT generic: each endpoint returns different extras (publicBaseUrl, available
-// skills), so abstracting it would cost more than it saves. Every GET spreads the shared operation's
-// credential state instead, which keeps the wire shape identical without pretending the responses are the same.
+// Shared POST/DELETE/PATCH for the three credential endpoints (workspace API key, MCP key, CLI token).
+// GET stays per-route because each returns different extras; they all spread the same credential state.
 import { NextResponse } from "next/server";
 import type { CredentialKind, CredentialSubject } from "@/lib/infra/security/credentialStore";
 import { issueCredential, revokeCredential, setCredentialEnabled } from "@/lib/operations/credentials/manage";
@@ -135,14 +130,8 @@ export function credentialHandlers<P>(
         if (subject instanceof Response) return subject;
         const operation = await readCredentialOperation(request);
         if (operation instanceof Response) return operation;
-        // Both operations write the same kind of record; naming which one you meant is what stops a
-        // rotation from landing on a channel the caller thought was empty, and a generation from
-        // silently replacing a key someone is still using. This is the one moment the plaintext
-        // exists outside the caller's client, and no-store keeps it out of any intermediary cache.
-        //
-        // Answers with both axes, in the same words and beside the same context DELETE uses. Handing
-        // back a bare `{ plain }` made the one receipt a caller cannot ask for twice the only one that
-        // said nothing about whether the key it carries is currently accepted.
+        // Naming generate vs rotate stops either one from hitting a slot the caller misjudged. no-store keeps
+        // the one-time plaintext out of caches; the reply carries both axes, like DELETE's.
         const issued = issueCredential(kind, subject, operation);
         const keyFieldName = options.keyField || "plain";
         return NextResponse.json(
@@ -164,18 +153,8 @@ export function credentialHandlers<P>(
       try {
         const subject = await subjectFor(request, context);
         if (subject instanceof Response) return subject;
-        // Refused when the slot is already empty, the same condition rotate refuses on: a success that
-        // destroyed nothing reads exactly like one that destroyed a live key, so a caller clearing a
-        // leak cannot tell whether this request is what ended it. The cost is that a retry after a
-        // dropped response now answers 409 rather than confirming the key is gone — read the channel
-        // back to tell that apart from a key that was never there.
-        // Independent of the enabled flag either way: revoking is how a leaked credential is destroyed,
-        // so it must never depend on the channel being open.
-        // Reports both axes afterwards rather than a bare ok, because revoking moves only one of them.
-        // Destroying the last key leaves the channel open and keyless — reachable, and rejecting
-        // everything — and a caller that got `{ ok: true }` had to ask a second time to find that out.
-        // The timestamps stay out: they describe the key that was just destroyed, so a revocation
-        // receipt is the one place they can only mislead.
+        // 409 on an empty slot, so a caller clearing a leak knows this request destroyed it. Works whether or
+        // not the channel is enabled; replies with both axes but no timestamps (they'd describe the dead key).
         const after = revokeCredential(kind, subject);
         return NextResponse.json(
           { ok: true, [axisFields.access]: after.enabled, [axisFields.hasKey]: after.hasKey, ...subjectFacts(subject) },

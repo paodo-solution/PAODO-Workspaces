@@ -125,10 +125,8 @@ const ARCHIVE_SUFFIXES = [".tar.gz", ".tar"];
 
 /**
  * Resolves the destination. A path ending in `suffix` is the archive itself; anything else is a
- * directory that gets a generated filename, whether or not it exists yet — so a destination that has
- * not been created cannot silently become a file named after the folder that was meant. Asking for
- * the wrong archive suffix is an error rather than a directory of that name, which is the shape the
- * mistake used to take. Never overwrites: clobbering a good backup with a failed one is designed out.
+ * directory (existing or not) that gets a generated filename. A wrong archive suffix is an error.
+ * Never overwrites, so a failed backup can't clobber a good one.
  */
 export async function resolveDestination(dest: string, suffix: string, fileName: () => string): Promise<string> {
   const resolved = path.resolve(dest);

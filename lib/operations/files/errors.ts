@@ -1,17 +1,5 @@
-// One place that turns a filesystem errno into the public error vocabulary.
-//
-// Every file failure used to leave here as a 400 carrying `err.message`. Two things were wrong with
-// that. A program could not tell them apart — a full disk, a permission failure, a directory named
-// where a file was expected and a genuinely malformed request all arrived as INVALID_REQUEST, so a CLI
-// or an agent had nothing to branch on and no way to know whether retrying could ever work. And
-// `err.message` is written by libuv, which appends the path it failed on: "EACCES: permission denied,
-// open '/data/workspaces/ada/notes.md'". That is the host layout, in a response, on a route whose whole
-// point is that the host layout is private.
-//
-// So the message is built here from the caller's own relative path, and the errno picks the code. An
-// errno with no entry is deliberately NOT given a 4xx: the caller logs it and answers an opaque 500,
-// because guessing that an unrecognised failure is the client's fault is how a server bug gets
-// reported as a user error.
+// Maps filesystem errnos to public error codes, with messages built from the caller's relative path (libuv's
+// would leak the host path). An unknown errno is not guessed as a 4xx: the caller logs it and answers 500.
 
 import { AppError, type AppErrorCode } from "@/lib/errors/appError";
 

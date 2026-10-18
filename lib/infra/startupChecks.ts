@@ -6,9 +6,8 @@ import { randomUUID } from "crypto";
 import { workspaceRegistryFile } from "./paths";
 
 /**
- * The app orchestrates workspaces through volume-subpath mounts, which only resolve when its own
- * state lives on that named volume. Running without one used to be a supported host mode; it no
- * longer is, so an unset name is a misconfiguration to fail on rather than a second code path.
+ * Workspaces are mounted as volume subpaths, which only resolve when the app's state lives on that
+ * named volume, so an unset name is a misconfiguration.
  */
 export function assertWorkspacesVolumeConfigured(volume: string | null): asserts volume is string {
   if (!volume) throw new Error("WORKSPACES_VOLUME_NAME is unset — the app runs only against the workspaces volume");

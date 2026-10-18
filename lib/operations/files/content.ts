@@ -1,14 +1,5 @@
-// File content operations for a workspace or a drive: read one entry, overwrite one text file, remove
-// one entry. HTTP-agnostic on purpose — these take a root directory and a wire-space relative path,
-// return plain values, and throw AppError.
-//
-// They used to be Request -> Response (the old lib/files/content.ts), which meant the only way to
-// read a file was to build an HTTP request. That blocked three things this shape allows: a directory
-// transfer, which is N of these calls and cannot synthesize N fake Requests; testing the rules
-// without a server; and reuse by an agent tool, which has no Request to hand over.
-//
-// The transport concerns that genuinely belong to HTTP — status codes, raw byte responses, logging —
-// stay in lib/api/fileContentRoutes.ts.
+// Read, overwrite and remove file entries in a workspace or drive. HTTP-agnostic (plain values, AppError)
+// so transfers and agent tools can reuse them; the HTTP side is lib/api/fileContentRoutes.ts.
 
 import fs from "fs/promises";
 import path from "path";

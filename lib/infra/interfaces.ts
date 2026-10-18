@@ -1,9 +1,5 @@
-// Abstractions for the two stateful infra singletons (workspace registry + container
-// lifecycle). Consumers depend on these interfaces rather than the concrete singletons so
-// that tests and the agent layer can inject isolated instances. Production keeps the
-// default singletons via lib/infra/services.ts.
-//
-// Type-only imports below are erased at compile time.
+// Interfaces for the two stateful infra singletons (workspace registry, container lifecycle), so tests and
+// the agent layer can inject isolated instances. Production wires them in lib/infra/services.ts.
 import type { Workspace } from "../workspace/types";
 import type { ReasoningEffort } from "../models/llmSelection";
 import type { DockerResult, DockerStdin } from "./docker/dockerClient";
@@ -107,11 +103,8 @@ export interface IWorkspaceVersioning extends IAgentWorkspaceVersioning {
   isGitAvailable(): Promise<boolean>;
 }
 
-// The container manager exposes three separable roles. They're split into role interfaces (ISP) so a
-// consumer can depend on just the capability it uses — a tool that only kills a background task takes
-// IBackgroundTasks, not the whole 12-method surface, and its tests mock three methods instead of
-// twelve. The concrete ContainerManager implements all three; IContainerManager is their union, kept
-// for the composition root (buildTools) and the services registry, which legitimately wire the lot.
+// Three role interfaces so consumers depend only on what they use (e.g. IBackgroundTasks). IContainerManager
+// is their union, for the composition root (buildTools) and the services registry.
 
 /** Container lifecycle: create/warm, stop, remove, workspace-dir teardown, and the boot-time
  *  credential-proxy reattach. Everything that manages a container's existence, not what runs inside it. */
@@ -125,7 +118,7 @@ export interface IContainerLifecycle {
   reattachProxyNetworks(): Promise<void>;
   /** Re-arm the task-aware idle reaper for every running container after an app restart. */
   resumeIdleReapers(): Promise<void>;
-  /** Lazily reclaim per-workspace networks that stop() emptied but no longer deletes inline. */
+  /** Lazily reclaim per-workspace networks that stop() emptied. */
   sweepManagedNetworks(graceMs?: number): Promise<void>;
   /** A run has begun/ended for a workspace — keeps its container warm for the run's whole duration. */
   noteRunStart(workspaceId: string): void;
