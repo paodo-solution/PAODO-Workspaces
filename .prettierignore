@@ -15,6 +15,5 @@ playwright.config.ts
 
 # Generated or machine-maintained files
 package-lock.json
-dev_tools/viz/graph.html
 doc/images/
 *.pem
