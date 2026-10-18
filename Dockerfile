@@ -3,10 +3,8 @@
 # build tools remain available as a fallback for unsupported architectures.
 FROM node:24-trixie-slim AS builder
 WORKDIR /app
-# Pin npm to the exact version package-lock.json is generated with: regenerate it with
-# `npx npm@11.20.0 install`, not whatever npm happens to be local. The image's bundled npm drifts, and
-# npm majors lay out nested optional deps (e.g. Tailwind's oxide-wasm @emnapi packages) differently —
-# an npm-11 lock fails `npm ci` under npm 10 with "EUSAGE ... Missing from lock file".
+# Every stage that runs npm pins one exact version, so each deploy installs identically. The bundled npm
+# drifts, and package.json's devEngines only enforces the major (any npm 11) on developer machines.
 RUN npm install -g npm@11.20.0
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
@@ -23,6 +21,8 @@ RUN npm run build && npm prune --omit=dev
 # neither can drift from the other: same OS packages, same mount points, same user, same command.
 FROM node:24-trixie-slim AS runtime-base
 WORKDIR /app
+# Same pinned npm as the builder, so the CMD's npx and in-container scripts run the exact same version.
+RUN npm install -g npm@11.20.0
 
 # Docker CLI is required — the app spawns workspace containers through the socket proxy. git is
 # required by workspace version history. docker-cli comes from Debian's own repositories, without
@@ -47,7 +47,6 @@ CMD ["npx", "tsx", "server.ts"]
 # Stage 3: development runner. Carries no source — docker-compose.dev.yml mounts the working tree
 # over /app — and keeps dev dependencies installed because nothing is prebuilt here.
 FROM runtime-base AS dev
-RUN npm install -g npm@11.20.0
 # The same native-build fallback the builder carries, for the same unsupported-architecture case.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
