@@ -1,5 +1,5 @@
 // Zips a selection of tree-relative paths. Pins: empty directories survive (JSZip drops them otherwise), an
-// unhonourable path is reported not dropped, and names keep the selection's own folders but no empty ancestry.
+// unhonourable path is reported not dropped, and names drop shared parents but keep folders that tell entries apart.
 
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import fs from "fs";

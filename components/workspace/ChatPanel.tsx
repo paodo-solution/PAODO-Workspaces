@@ -236,8 +236,8 @@ export default function ChatPanel({
       if (initialConversation.running) attachLive(initialConversation.userInput);
       return detach;
     }
-    // Stale-response guarding lives inside the hook now, keyed off the same detach() that runs here
-    // on switch — so an in-flight load can no longer paint into the wrong conversation.
+    // Stale-response guarding lives inside the hook, keyed off the same detach() that runs here on
+    // switch, so an in-flight load cannot paint into the wrong conversation.
     loadConversation();
     return detach;
   }, [workspaceId, conversationId, hydrate, attachLive, loadConversation, reset, detach, initialConversation]);

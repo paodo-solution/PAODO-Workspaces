@@ -64,8 +64,8 @@ describe("partitionByIgnore", () => {
     },
   );
 
-  // The file tree has always hidden .git, so before the contract was unified a folder upload sent a
-  // .git the UI then refused to show. Both directions now agree it does not travel.
+  // The file tree hides .git, so uploads and downloads must agree it does not travel; otherwise a folder
+  // upload sends a .git the UI then refuses to show.
   it("excludes the workspace's own git metadata", () => {
     const { included, excluded } = partitionByIgnore([entry(".git/objects/ab/cdef"), entry("README.md")]);
     expect(included).toEqual([entry("README.md")]);

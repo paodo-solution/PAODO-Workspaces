@@ -62,8 +62,8 @@ describe("files/upload POST — path containment", () => {
     expect(fs.existsSync(ESCAPE_TARGET)).toBe(false);
   });
 
-  // Refused for being absolute, not for where it points: an absolute path that happened to land
-  // inside the workspace used to be accepted, which left ?path= speaking two path spaces at once.
+  // Refused for being absolute, not for where it points: accepting an absolute path that lands inside
+  // the workspace would leave ?path= speaking two path spaces at once.
   it("rejects an upload whose ?path is absolute", async () => {
     const res = await post(`?path=${encodeURIComponent(ESCAPE_TARGET)}`, { body: "PWNED" });
 

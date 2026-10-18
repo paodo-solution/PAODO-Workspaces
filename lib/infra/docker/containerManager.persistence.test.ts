@@ -22,7 +22,7 @@ const workspaceDeps: ContainerWorkspaceDependencies = {
 };
 
 // Docker mock reporting an EXISTING container whose image label deliberately disagrees with the
-// current Dockerfile hash — the exact condition that used to trigger a rebuild.
+// current Dockerfile hash — the exact condition that must NOT trigger a rebuild.
 function makeDocker(status: "running" | "stopped") {
   const calls: string[][] = [];
   const execCalls: { args: string[]; opts?: Record<string, unknown> }[] = [];

@@ -177,7 +177,7 @@ describe("buildRunEnv — proxy wiring gated on the CA", () => {
   });
 });
 
-// Now a per-command decision rather than one frozen at container creation, so switching internet
+// A per-command decision rather than one frozen at container creation, so switching internet
 // off takes effect on the very next command without touching the container.
 describe("buildExecEnv — internetAccess off", () => {
   it("emits no secret token env, even with secrets configured", () => {

@@ -1,5 +1,5 @@
 // Transport half only; the query rules are tested with the workspace route. Pins that a drive reaches them
-// (this route once called buildTree directly) and that an unknown drive is a 404, not an empty listing.
+// (rather than calling buildTree directly) and that an unknown drive is a 404, not an empty listing.
 import { describe, expect, it, vi, afterAll } from "vitest";
 import fs from "fs";
 

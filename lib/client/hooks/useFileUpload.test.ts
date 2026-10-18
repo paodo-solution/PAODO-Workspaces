@@ -43,8 +43,8 @@ describe("runUploadQueue", () => {
   });
 
   it("skips a 500 on one file and still uploads every other file", async () => {
-    // The bug this replaces: a single non-413 failure used to abort the batch, so a whole folder was
-    // dropped over one bad file. Now the failing file is set aside and the rest all go up.
+    // One non-413 failure must not abort the batch, or a whole folder is lost over one bad file: the
+    // failing file is set aside and the rest still go up.
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("broken.txt")) return jsonResponse(500, { error: "internal error" });
       return jsonResponse(200, { ok: true });

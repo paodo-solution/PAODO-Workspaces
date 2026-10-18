@@ -1,4 +1,4 @@
-// Caps can only be set at `docker run` and containers are never recreated, so a missing cap lasts forever.
+// Caps can only be set at `docker run` and containers are never recreated, so a cap missed at creation never applies.
 // --pids-limit matters most: one fork bomb would exhaust the host's pid_max and stop every `docker exec`.
 import { describe, it, expect } from "vitest";
 import { ContainerManager } from "./containerManager";

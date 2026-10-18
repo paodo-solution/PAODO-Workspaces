@@ -44,8 +44,8 @@ const PUBLIC_API_RE = /^\/api\/workspaces\/[^/]+\/agent(?:\/stop)?$/;
 const PUBLIC_MCP_RE = /^\/api\/workspaces\/[^/]+\/mcp$/;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// "ok": UI credential verified (the only result that may mint a session cookie). "platform": instance token
-// verified for this method/path; "forbidden": verified, route not shared. "exempt": route checks its own.
+// "ok": UI credential verified (the only result that may mint a session cookie); "platform": instance token
+// verified for this method/path; "forbidden": verified, route not shared; "exempt": route checks its own.
 export type AuthResult = "ok" | "platform" | "exempt" | "challenge" | "unauthorized" | "forbidden" | "blocked";
 // Takes only the secret: the platform credential is instance-wide, and the route allowlist decides
 // what it may reach.

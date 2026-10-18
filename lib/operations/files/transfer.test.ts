@@ -130,7 +130,7 @@ describe("tar transfers", () => {
   });
 
   // Containment passes this link (it points inside), so the push landed on its target, destroying a file the
-  // receipt never named while reporting the link overwritten. Both directions refuse now.
+  // receipt never named while reporting the link overwritten. Both directions must refuse.
   it("refuses a destination that resolves through a symlink rather than following it", async () => {
     fs.writeFileSync(path.join(SOURCE, "link.txt"), "new");
     fs.writeFileSync(path.join(DEST, "real.txt"), "secret");

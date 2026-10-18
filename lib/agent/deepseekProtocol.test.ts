@@ -69,8 +69,8 @@ describe("deepseek reasoning replay", () => {
     expect(assistantWithTools(sent)?.reasoning_content).toBe("I should read the file first.");
   });
 
-  // Every provider's reasoning is stored now. What is SENT must stay what it was when only the
-  // replaying providers stored any: theirs goes out, reasoning kept for display does not.
+  // Every provider's reasoning is stored, but what is SENT must not change: a replaying provider's
+  // reasoning goes out, reasoning kept only for display does not.
   it.each(["deepseek", "mistral"])("replays reasoning a replaying provider (%s) wrote", async (author) => {
     const sent = await sentMessages(thinkingTurn("call_a", "Read first.", author));
 

@@ -20,8 +20,8 @@ describe("buildSystemPrompt", () => {
   });
 
   it("renders the display name verbatim (not derived from a path)", () => {
-    // The directory is keyed by an opaque id now, so the name is passed in directly; a value with a
-    // space would be impossible if the prompt were still basename-ing a filesystem path.
+    // The directory is keyed by an opaque id, so the name is passed in directly; deriving it from a
+    // path's basename could never yield a value with a space.
     const out = text(buildSystemPrompt("Invoice Agent", NO_CACHE));
     expect(out).toContain("Workspace name: Invoice Agent");
   });

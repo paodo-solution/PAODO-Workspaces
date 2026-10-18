@@ -64,8 +64,7 @@ describe.each(KINDS)("$kind — validate fails closed", ({ kind, prefix, subject
   });
 
   it("denies the CORRECT key once the channel is disabled", () => {
-    // The headline case: toggling access off must lock the door even for a caller holding a
-    // once-valid key.
+    // The case that matters most: turning access off must lock out even a caller holding a once-valid key.
     const target = subject("disabled");
     const plain = issue(kind, target);
     expect(validate(kind, target, plain)).toBe(true); // sanity: works while enabled
@@ -117,8 +116,8 @@ describe.each(KINDS)("$kind — validate authorizes the legitimate case", ({ kin
     expect(validate(kind, target, plain)).toBe(true);
   });
 
-  // Mint is the credential axis, the flag the access axis; if mint opened the channel, issuing a key in advance
-  // would silently expose it.
+  // Minting must not open the channel, or a key issued in advance would go live before anyone chose to
+  // expose it.
   it("leaves the channel's enabled flag untouched", () => {
     const closed = subject("mint-keeps-closed");
     setEnabled(kind, closed, false);

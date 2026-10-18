@@ -78,7 +78,7 @@ describe("file tools wire the workspace containment guard", () => {
       });
 
       // The prompt calls the working directory /workspace, so the agent addresses files that way.
-      // The guard used to reject it alongside real escapes, costing a turn on every first write.
+      // The guard must not mistake it for an escape, or every first write costs the agent a turn.
       it("reaches the container for the container's own /workspace form", async () => {
         await call("/workspace/src/index.ts");
         expect(exec).toHaveBeenCalled();

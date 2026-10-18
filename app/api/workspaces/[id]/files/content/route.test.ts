@@ -186,7 +186,7 @@ describe("files/content GET — a window of lines", () => {
 });
 
 // ?raw=1's Content-Type is all a streaming client has: `paodo file cat` uses it to refuse binary on a terminal,
-// and one octet-stream for both types is what let a PNG through.
+// and serving text and binary alike as octet-stream is what let a PNG through.
 describe("files/content GET — what ?raw=1 says the bytes are", () => {
   const raw = (name: string) => GET(new Request(`http://x/api/files/content?path=${name}&raw=1`), ctx);
   const mediaType = async (name: string) => (await raw(name)).headers.get("content-type");

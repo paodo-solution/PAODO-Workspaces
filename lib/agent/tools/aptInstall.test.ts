@@ -1,4 +1,4 @@
-// apt's download cache must not outlive its install: containers now live as long as the workspace, so .debs
+// apt's download cache must not outlive its install: containers live as long as the workspace, so .debs
 // and `apt-get update` indexes (re-fetched every call anyway) would otherwise pile up forever.
 import { describe, it, expect } from "vitest";
 import { AptInstallTool } from "./aptInstall";

@@ -130,8 +130,8 @@ describe("DELETE /api/workspaces/[id]", () => {
       error: "failed to delete workspace",
     });
 
-    // The crux: the registry entry survives a failed delete, so the workspace is still listed and
-    // the user can delete again. Previously it was removed first and the retry became a no-op.
+    // The crux: the registry entry survives a failed delete, so the workspace stays listed and the user
+    // can delete again; removing the entry first would turn that retry into a no-op.
     expect(h.calls).not.toContain("registry");
     expect(h.deleteWorkspace).not.toHaveBeenCalled();
   });

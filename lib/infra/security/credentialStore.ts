@@ -16,7 +16,8 @@ export type CredentialKind = "workspace-api" | "workspace-mcp" | "platform";
 /** Workspace id for the per-workspace kinds; null for the instance-wide platform token. */
 export type CredentialSubject = string | null;
 
-/** What callers may see. Deliberately has no hash field, so no route can leak one. */
+// A channel has two independent axes, the access flag (`enabled`) and the key; a key works only while both
+// are set. This is what callers may see: there is deliberately no hash field, so no route can leak one.
 export interface CredentialState {
   enabled: boolean;
   hasKey: boolean;

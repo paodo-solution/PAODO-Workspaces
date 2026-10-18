@@ -137,8 +137,8 @@ describe("deleting a drive", () => {
     await expect(deleteDrive("drive-1", deps())).resolves.toEqual({ deleted: true });
   });
 
-  // The store answers `false` for a missing drive, which the route relayed as 200 `deleted: false`. Like
-  // workspace DELETE, this is now a 404.
+  // The store answers `false` for a missing drive; like workspace DELETE, that must surface as a 404, not
+  // as 200 `deleted: false`.
   it("refuses a drive that does not exist instead of reporting deleted: false", async () => {
     await expect(deleteDrive("gone", deps())).rejects.toThrowError(notFound);
   });

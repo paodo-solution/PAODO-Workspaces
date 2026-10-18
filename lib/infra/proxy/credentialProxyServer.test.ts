@@ -25,7 +25,7 @@ import { CredentialProxy } from "./credentialProxy";
 import { ensureCA, deriveProxySecret } from "./proxyCA";
 import { setInternetAccessPolicy } from "./internetAccessPolicy";
 
-// Every connection now needs a verified workspace identity, so set the HMAC key behind verifyProxySecret once,
+// Every connection needs a verified workspace identity, so set the HMAC key behind verifyProxySecret once,
 // before any test runs.
 beforeAll(() => {
   ensureCA(mkdtempSync(path.join(tmpdir(), "proxy-server-test-ca-")));
@@ -270,8 +270,8 @@ describe("CredentialProxy internet-access policy", () => {
   });
 
   it("refuses an unauthenticated connection outright (no Proxy-Authorization header)", async () => {
-    // The original bypass: with no header, auth was null and the off-check (keyed on auth.wsId) was skipped. Now
-    // an unverified connection is refused before that check.
+    // The original bypass: with no header, auth was null and the off-check (keyed on auth.wsId) was skipped.
+    // An unverified connection must be refused before that check runs.
     const stub = net.createServer((sock) => sock.write("HELLO"));
     cleanups.push(() => stub.close());
     const stubPort = await listeningPort(stub);
@@ -290,8 +290,8 @@ describe("CredentialProxy internet-access policy", () => {
   });
 
   it("refuses a connection that claims another workspace's id with a wrong/guessed secret (spoofed identity)", async () => {
-    // The other half: an id never toggled off defaults to enabled, so a claimed wsId with an unverified secret
-    // once passed. Now the identity must verify first, whoever it claims to be.
+    // The other half: an id never toggled off defaults to enabled, so a claimed wsId would pass on that alone.
+    // The identity must verify first, whoever it claims to be.
     const stub = net.createServer((sock) => sock.write("HELLO"));
     cleanups.push(() => stub.close());
     const stubPort = await listeningPort(stub);

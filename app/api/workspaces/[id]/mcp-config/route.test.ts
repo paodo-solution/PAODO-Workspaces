@@ -1,5 +1,5 @@
 // Only credentialStore is mocked for writes, since the credential is all this endpoint writes; the
-// "workspace-mcp" kind keeps it from managing the agent key or the CLI token.
+// "workspace-mcp" kind keeps it from touching the agent key or the CLI token.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -145,8 +145,8 @@ describe("workspace MCP configuration route", () => {
     expect(h.mint).toHaveBeenCalledWith("workspace-mcp", "ws-1");
     const revoked = await DELETE(request("DELETE"), ctx());
     expect(revoked.status).toBe(200);
-    // This channel names its own axes, not the API key's — the receipt has to be readable next to the
-    // workspace projection, where both channels appear side by side.
+    // Fields are named for this channel (workspaceMcpAccess), not the API key's, because the workspace
+    // projection shows both channels side by side.
     expect(await revoked.json()).toEqual({
       ok: true,
       workspaceMcpAccess: true,

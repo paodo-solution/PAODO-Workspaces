@@ -126,8 +126,8 @@ describe("workspace update body contract", () => {
     expect(h.renames).toEqual([]);
   });
 
-  // A wrong-typed value is a 400, asserted by status and code. These used to 500, as `.trim()` on a number
-  // threw a non-AppError; only `description` was guarded, which hid the gap.
+  // A wrong-typed value must be a 400 by status and code, not a 500 from `.trim()` on a number. Every field
+  // is covered, since guarding only `description` once hid the gap.
   it("rejects a wrong-typed value as a caller error rather than a server failure", async () => {
     const cases: Array<[string, unknown]> = [
       ["name", { name: 123 }],

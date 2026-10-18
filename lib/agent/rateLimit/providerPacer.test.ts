@@ -159,7 +159,7 @@ describe("ProviderPacer — admission", () => {
     const { pacer, slept, at } = testPacer();
 
     // One cold send fills the token allowance, which the provider says reopens in 3s, well before the 60s ledger.
-    // The old code slept to the reset, then another 57s.
+    // The pacer must wait those 3s, not sleep to the reset and then the ledger's remaining 57s.
     const first = await pacer.acquire(TOKENS);
     pacer.settle(TOKENS, { limitTokens: 25_000, remainingTokens: 0, resetTokensAt: at() + 3_000 });
     first.release();
@@ -199,7 +199,7 @@ describe("ProviderPacer — admission", () => {
 });
 
 describe("ProviderPacer — concurrent callers", () => {
-  // The headline case. Without the local decrement every caller reads the same `remaining` and they
+  // The case the pacer exists for. Without the local decrement every caller reads the same `remaining` and they
   // all send; with it, exactly as many go as the bucket holds and the rest queue.
   it("admits exactly the bucket's worth of six simultaneous callers", async () => {
     const { pacer } = testPacer();

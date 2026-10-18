@@ -71,8 +71,8 @@ describe("workspace API key route", () => {
     expect(await invalid.json()).toMatchObject({ ok: false, code: "INVALID_REQUEST" });
   });
 
-  // Opening the channel used to mint a key and return the plaintext; no caller flipping the flag should be
-  // handed a read-once secret it did not ask for.
+  // Opening the channel must not mint a key, or a caller flipping the flag receives a read-once secret it
+  // never asked for and may discard.
   it("opens the channel without minting a key", async () => {
     const res = await PATCH(request("PATCH", JSON.stringify({ enabled: true })), ctx());
     expect(await res.json()).toEqual({
@@ -152,12 +152,12 @@ describe("workspace API key route", () => {
     const revoked = await DELETE(request("DELETE"), ctx());
     expect(revoked.status).toBe(200);
     expect(h.revoke).toHaveBeenCalledWith("workspace-api", "ws-1");
-    // Neither verb touched the other axis.
+    // Neither verb touched the access flag.
     expect(h.setEnabled).not.toHaveBeenCalled();
   });
 
-  // Revocation refuses on the same condition as rotation. A revoke that destroyed nothing used to answer 200, so an
-  // operator clearing a leak could not tell whether this request ended it.
+  // Revocation refuses on the same condition as rotation: a revoke that destroys nothing must not answer 200, or
+  // an operator clearing a leak cannot tell whether this request ended it.
   it("refuses revocation when there is no key to destroy", async () => {
     h.state = { enabled: true, hasKey: false, createdAt: null, lastUsedAt: null };
 
@@ -172,7 +172,7 @@ describe("workspace API key route", () => {
     expect(h.revoke).not.toHaveBeenCalled();
   });
 
-  // The cost of that refusal, pinned on purpose: revocation is not idempotent, so a caller retrying after a dropped
+  // The accepted cost of that refusal: revocation is not idempotent, so a caller retrying after a dropped
   // response must read the channel back rather than expect a repeated 200.
   it("destroys the key once and refuses the repeat", async () => {
     h.state = { enabled: true, hasKey: true, createdAt: "2026-01-01T00:00:00.000Z", lastUsedAt: null };

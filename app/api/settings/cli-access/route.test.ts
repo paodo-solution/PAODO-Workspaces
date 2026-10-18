@@ -122,8 +122,8 @@ describe("/api/settings/cli-access", () => {
   });
 
   it("DELETE revokes the token immediately — the PRD's revocation requirement", async () => {
-    // The old bespoke platform-token store had no revoke at all; it could only be disabled, leaving
-    // the hash on disk. This pins that revocation now exists and takes effect at once.
+    // Disabling the channel leaves the hash on disk, so revocation must destroy it and take effect
+    // on the very next request.
     await patch({ enabled: true });
     const { plain } = (await (await post("generate")).json()) as {
       plain: string;
