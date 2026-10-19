@@ -2,6 +2,7 @@
 // CredentialPanel with the MCP block.
 "use client";
 
+import CopyField from "@/components/shared/CopyField";
 import CredentialPanel from "@/components/shared/CredentialPanel";
 import { useCredential } from "@/lib/client/hooks/useCredential";
 
@@ -38,14 +39,7 @@ export default function ApiAccessBlock({ wsId }: { wsId: string }) {
       onRevoke={credential.revoke}
       onDismissPlaintext={credential.dismissPlaintext}
     >
-      {(credential.hasKey || credential.plaintext) && (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text">API endpoint</span>
-          <code className="font-mono text-[12px] font-medium leading-[1.5] text-text bg-white px-2 py-1 rounded border border-border min-w-0 break-all">
-            {url}
-          </code>
-        </div>
-      )}
+      {(credential.hasKey || credential.plaintext) && <CopyField label="API endpoint" value={url} />}
     </CredentialPanel>
   );
 }
