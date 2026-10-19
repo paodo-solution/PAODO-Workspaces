@@ -12,7 +12,8 @@ interface Props {
   onToggle: () => void;
   allowlist: DomainAllowlist;
   onToggleDomainRestriction: () => void;
-  onChangeAllowedDomains: (domains: string[]) => void;
+  onAddAllowedDomain: (domain: string) => void;
+  onRemoveAllowedDomain: (domain: string) => void;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
@@ -23,7 +24,8 @@ export default function InternetAccessBlock({
   onToggle,
   allowlist,
   onToggleDomainRestriction,
-  onChangeAllowedDomains,
+  onAddAllowedDomain,
+  onRemoveAllowedDomain,
   loading = false,
   error = false,
   onRetry,
@@ -55,7 +57,8 @@ export default function InternetAccessBlock({
           enabled={allowlist.restricted}
           domains={allowlist.domains}
           onToggle={onToggleDomainRestriction}
-          onChangeDomains={onChangeAllowedDomains}
+          onAddDomain={onAddAllowedDomain}
+          onRemoveDomain={onRemoveAllowedDomain}
         />
       )}
 

@@ -12,11 +12,11 @@ interface Props {
   enabled: boolean;
   domains: string[];
   onToggle: () => void;
-  /** Receives the whole new list. */
-  onChangeDomains: (domains: string[]) => void;
+  onAddDomain: (domain: string) => void;
+  onRemoveDomain: (domain: string) => void;
 }
 
-export default function DomainAllowlistBlock({ enabled, domains, onToggle, onChangeDomains }: Props) {
+export default function DomainAllowlistBlock({ enabled, domains, onToggle, onAddDomain, onRemoveDomain }: Props) {
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const draftValid = isValidDomain(draft);
@@ -24,7 +24,7 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
   const saveDraft = () => {
     if (!draftValid) return;
     const domain = normalizeDomain(draft);
-    if (!domains.includes(domain)) onChangeDomains([...domains, domain]);
+    if (!domains.includes(domain)) onAddDomain(domain);
     cancelDraft();
   };
 
@@ -32,8 +32,6 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
     setDraft("");
     setAdding(false);
   };
-
-  const removeDomain = (domain: string) => onChangeDomains(domains.filter((d) => d !== domain));
 
   return (
     <div className="flex flex-col gap-4 border-t border-border pt-4">
@@ -62,7 +60,7 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
                 disabled
                 aria-label={`Allowed domain ${domain}`}
               />
-              <RemoveButton label={`Remove ${domain}`} onClick={() => removeDomain(domain)} />
+              <RemoveButton label={`Remove ${domain}`} onClick={() => onRemoveDomain(domain)} />
             </div>
           ))}
           {adding && (
@@ -89,9 +87,7 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
               + Add domain
             </button>
           )}
-          {domains.length === 0 && (
-            <p className="text-xs text-danger m-0">No allowed domain is set</p>
-          )}
+          {domains.length === 0 && <p className="text-xs text-danger m-0">No allowed domain is set</p>}
         </div>
       )}
     </div>

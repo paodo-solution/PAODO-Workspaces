@@ -58,7 +58,10 @@ Decision
    should be named to the user rather than retried.
 8. **Updates.** `domainRestriction` and `allowedDomains` join the shared update path, so UI, REST,
    CLI and MCP all go through it. The list holds at most 100 valid domains, normalized and
-   deduplicated, and either field can be sent alone. The registry is written first, then the
+   deduplicated, and either field can be sent alone. `addAllowedDomains` and `removeAllowedDomains`
+   change the list in place (combinable, but not with `allowedDomains`), and the app uses them too,
+   so two clients editing at once never overwrite each other. The list is read again right before
+   the write, and every list change reports the saved list back. The registry is written first, then the
    policy file; if the policy write fails, the registry is rolled back. The container is never
    touched.
 

@@ -49,7 +49,15 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   },
   allowedDomains: {
     type: "string[]",
-    rule: `at most ${MAX_ALLOWED_DOMAINS} hostnames, each matched exactly (vercel.com does not cover api.vercel.com); replaces the whole list`,
+    rule: `at most ${MAX_ALLOWED_DOMAINS} hostnames, each matched exactly (vercel.com does not cover api.vercel.com); replaces the whole list; not combinable with add/removeAllowedDomains; the receipt reports the saved list after any list change`,
+  },
+  addAllowedDomains: {
+    type: "string[]",
+    rule: `hostnames appended to the saved list unless already there; combinable with removeAllowedDomains; the list stays at most ${MAX_ALLOWED_DOMAINS}`,
+  },
+  removeAllowedDomains: {
+    type: "string[]",
+    rule: "hostnames dropped from the saved list; one not listed is a no-op; a domain can't be both added and removed",
   },
   workspaceApiAccess: { type: "boolean" },
   workspaceMcpAccess: { type: "boolean" },

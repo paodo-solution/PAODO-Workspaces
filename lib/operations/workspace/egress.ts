@@ -41,11 +41,11 @@ export function validateDomainRestriction(value: unknown): boolean {
   return value;
 }
 
-/** Normalized and deduplicated, in the caller's order. */
-export function validateAllowedDomains(value: unknown): string[] {
-  if (!Array.isArray(value)) throw new WorkspaceUpdateError("allowedDomains must be a list of domains");
+/** Normalized and deduplicated, in the caller's order. `field` names the input in errors. */
+export function validateAllowedDomains(value: unknown, field = "allowedDomains"): string[] {
+  if (!Array.isArray(value)) throw new WorkspaceUpdateError(`${field} must be a list of domains`);
   if (value.length > MAX_ALLOWED_DOMAINS) {
-    throw new WorkspaceUpdateError(`allowedDomains takes at most ${MAX_ALLOWED_DOMAINS} domains`);
+    throw new WorkspaceUpdateError(`${field} takes at most ${MAX_ALLOWED_DOMAINS} domains`);
   }
   const domains: string[] = [];
   for (const raw of value) {
@@ -58,16 +58,37 @@ export function validateAllowedDomains(value: unknown): string[] {
   return domains;
 }
 
-/** Merges validated changes over the saved allowlist, so either field can be sent alone. */
+/** Validated changes to the allowlist: a whole new list (`domains`), or domains to add and remove. */
+export interface DomainAllowlistChanges {
+  restricted?: boolean;
+  domains?: string[];
+  add?: string[];
+  remove?: string[];
+}
+
+// Checked before any write: a replacement with add/remove, or one domain both added and removed, is ambiguous.
+export function validateDomainListEdit(changes: DomainAllowlistChanges): void {
+  if (changes.domains !== undefined && (changes.add !== undefined || changes.remove !== undefined)) {
+    throw new WorkspaceUpdateError("send allowedDomains alone, or addAllowedDomains/removeAllowedDomains, not both");
+  }
+  const both = (changes.add ?? []).filter((domain) => changes.remove?.includes(domain));
+  if (both.length > 0) throw new WorkspaceUpdateError(`added and removed at once: ${both.join(", ")}`);
+}
+
+/** Merges validated changes over the saved allowlist: removals drop out, additions go last, absent ones are no-ops. */
 export function resolveDomainAllowlist(
   saved: DomainAllowlist | undefined,
-  changes: { restricted?: boolean; domains?: string[] },
+  changes: DomainAllowlistChanges,
 ): { previous: DomainAllowlist; next: DomainAllowlist } {
   const previous = saved ?? { restricted: false, domains: [] };
-  return {
-    previous,
-    next: { restricted: changes.restricted ?? previous.restricted, domains: changes.domains ?? previous.domains },
-  };
+  const kept = changes.domains ?? previous.domains.filter((domain) => !changes.remove?.includes(domain));
+  const domains = [...kept, ...(changes.add ?? []).filter((domain) => !kept.includes(domain))];
+  if (domains.length > MAX_ALLOWED_DOMAINS) {
+    throw new WorkspaceUpdateError(
+      `the allowlist holds at most ${MAX_ALLOWED_DOMAINS} domains; this makes ${domains.length}`,
+    );
+  }
+  return { previous, next: { restricted: changes.restricted ?? previous.restricted, domains } };
 }
 
 // Registry, proxy policy and network are one boundary: if the proxy or the network rebuild fails, all

@@ -56,6 +56,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     internetAccess?: boolean;
     domainRestriction?: boolean;
     allowedDomains?: string[];
+    addAllowedDomains?: string[];
+    removeAllowedDomains?: string[];
     workspaceApiAccess?: boolean;
     workspaceMcpAccess?: boolean;
   };
@@ -100,6 +102,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.internetAccess !== undefined ? { internetAccess: body.internetAccess } : {}),
       ...(body.domainRestriction !== undefined ? { domainRestriction: body.domainRestriction } : {}),
       ...(body.allowedDomains !== undefined ? { allowedDomains: body.allowedDomains } : {}),
+      ...(body.addAllowedDomains !== undefined ? { addAllowedDomains: body.addAllowedDomains } : {}),
+      ...(body.removeAllowedDomains !== undefined ? { removeAllowedDomains: body.removeAllowedDomains } : {}),
       ...(body.workspaceApiAccess !== undefined ? { workspaceApiAccess: body.workspaceApiAccess } : {}),
       ...(body.workspaceMcpAccess !== undefined ? { workspaceMcpAccess: body.workspaceMcpAccess } : {}),
       // Omitted fields are forwarded as omitted, not as "": the operation resolves each missing one
