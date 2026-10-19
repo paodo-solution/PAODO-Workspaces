@@ -2,8 +2,9 @@
 // be issued before opening or revoked after closing. Says "key": "secret" means env-var secrets on this page.
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AsyncState } from "./AsyncState";
+import CredentialConfirm, { type CredentialAction } from "./CredentialConfirm";
 import CredentialReveal from "./CredentialReveal";
 import { Switch } from "./Switch";
 
@@ -27,8 +28,8 @@ interface CredentialPanelProps {
   /** Issues the channel's first credential. Offered only while it has none. */
   onGenerate: () => void;
   /** Replaces the existing credential. Offered only while it has one. */
-  onRotate: () => void;
-  onRevoke: () => void;
+  onRotate: () => Promise<void>;
+  onRevoke: () => Promise<void>;
   onDismissPlaintext: () => void;
   /** Channel-specific content rendered while enabled, above the controls (MCP's tools and URL). */
   children?: ReactNode;
@@ -53,6 +54,13 @@ export default function CredentialPanel({
   onDismissPlaintext,
   children,
 }: CredentialPanelProps) {
+  const [confirming, setConfirming] = useState<CredentialAction | null>(null);
+
+  const runConfirmed = async () => {
+    await (confirming === "rotate" ? onRotate() : onRevoke());
+    setConfirming(null);
+  };
+
   if (loading || loadError) {
     return (
       <div className="flex flex-col mt-4 border border-border rounded-card p-[16px_18px] bg-bg-tint">
@@ -105,16 +113,25 @@ export default function CredentialPanel({
 
       {hasKey && !plaintext && (
         <div className="flex items-center gap-2.5">
-          <button className="linkbtn" onClick={onRotate} disabled={busy}>
+          <button className="linkbtn" onClick={() => setConfirming("rotate")} disabled={busy}>
             Rotate
           </button>
-          <button className="linkbtn text-danger" onClick={onRevoke} disabled={busy}>
+          <button className="linkbtn text-danger" onClick={() => setConfirming("revoke")} disabled={busy}>
             Revoke
           </button>
         </div>
       )}
 
       {plaintext && <CredentialReveal plaintext={plaintext} onDismiss={onDismissPlaintext} />}
+
+      {confirming && (
+        <CredentialConfirm
+          action={confirming}
+          busy={busy}
+          onConfirm={() => void runConfirmed()}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
     </div>
   );
 }

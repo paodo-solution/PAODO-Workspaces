@@ -88,7 +88,7 @@ export function useProviderKeys(load: boolean) {
       try {
         const res = await fetch(`${ENDPOINT}/${encodeURIComponent(provider)}`, { method: "DELETE" });
         if (!res.ok) {
-          setError((await readApiError(res, "Could not remove the key.")).error);
+          setError((await readApiError(res, "Could not revoke the key.")).error);
           return;
         }
         refresh();
