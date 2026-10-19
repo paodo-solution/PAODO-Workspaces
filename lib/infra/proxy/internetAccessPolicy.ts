@@ -32,13 +32,19 @@ function entryFor(enabled: boolean, allowlist?: DomainAllowlist): Entry | undefi
   return domains ? [...domains] : undefined;
 }
 
-export function setInternetAccessPolicy(wsId: string, enabled: boolean, allowlist?: DomainAllowlist): void {
-  const entry = entryFor(enabled, allowlist);
+function putEntry(wsId: string, entry: Entry | undefined): void {
   if (entry === undefined) delete store[wsId];
   else store[wsId] = entry;
+}
+
+// A failed save restores the old entry, or the next save for any workspace would persist this one anyway.
+export function setInternetAccessPolicy(wsId: string, enabled: boolean, allowlist?: DomainAllowlist): void {
+  const previous = store[wsId];
+  putEntry(wsId, entryFor(enabled, allowlist));
   try {
     atomicSaveJson(FILE, store);
   } catch (err) {
+    putEntry(wsId, previous);
     log.error(
       { event: "internet_access_policy_save_failed", outcome: "policy_change_not_persisted", err, wsId },
       "failed to persist internet-access policy",

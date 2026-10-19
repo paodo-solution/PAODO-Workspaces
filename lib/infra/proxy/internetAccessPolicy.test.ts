@@ -92,6 +92,40 @@ describe("setInternetAccessPolicy with a domain allowlist", () => {
   });
 });
 
+describe("setInternetAccessPolicy when the save fails", () => {
+  const onDisk = () => JSON.parse(fs.readFileSync(INTERNET_ACCESS_POLICY_FILE, "utf-8"));
+  // A directory where atomicSaveJson writes its temp file makes the save throw.
+  const blockSave = () => fs.mkdirSync(INTERNET_ACCESS_POLICY_FILE + ".tmp", { recursive: true });
+  const unblockSave = () => fs.rmSync(INTERNET_ACCESS_POLICY_FILE + ".tmp", { recursive: true, force: true });
+
+  afterEach(unblockSave);
+
+  it("keeps the previous entry in memory and throws", () => {
+    setInternetAccessPolicy("ws-failed", true, { restricted: true, domains: ["api.vercel.com"] });
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed", true)).toThrow();
+    expect(allowedDomainsFor("ws-failed")).toEqual(["api.vercel.com"]);
+  });
+
+  it("never persists the failed change with a later save of another workspace", () => {
+    setInternetAccessPolicy("ws-failed-later", false);
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed-later", true)).toThrow();
+    unblockSave();
+    setInternetAccessPolicy("ws-other-save", false);
+    expect(onDisk()["ws-failed-later"]).toBe(false);
+  });
+
+  it("restores the absence of an entry for a workspace that had none", () => {
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed-new", false)).toThrow();
+    unblockSave();
+    setInternetAccessPolicy("ws-other-save-2", false);
+    expect(onDisk()).not.toHaveProperty("ws-failed-new");
+    expect(isInternetAccessEnabled("ws-failed-new")).toBe(true);
+  });
+});
+
 describe("checkAccess", () => {
   it("refuses everything while internet access is off, host or not", () => {
     setInternetAccessPolicy("ws-check-off", false, { restricted: true, domains: ["api.vercel.com"] });
