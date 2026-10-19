@@ -30,19 +30,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = await readJsonObject(req);
   if (body instanceof Response) return body;
 
-  if (body.enabled === undefined && body.domainRestriction === undefined && body.allowedDomains === undefined) {
+  // Values pass through unchecked: updateWorkspace validates each and skips undefined ones, like a workspace PATCH.
+  const input = {
+    internetAccess: body.enabled as boolean | undefined,
+    domainRestriction: body.domainRestriction as boolean | undefined,
+    allowedDomains: body.allowedDomains as string[] | undefined,
+  };
+  if (Object.values(input).every((value) => value === undefined)) {
     return errorResponse("INVALID_REQUEST", "send at least one of: enabled, domainRestriction, allowedDomains", {
       request: req,
     });
   }
 
   try {
-    // Values pass through unchecked: updateWorkspace validates each, so this route refuses like a workspace PATCH.
-    const result = await updateWorkspace(id, {
-      ...(body.enabled !== undefined ? { internetAccess: body.enabled as boolean } : {}),
-      ...(body.domainRestriction !== undefined ? { domainRestriction: body.domainRestriction as boolean } : {}),
-      ...(body.allowedDomains !== undefined ? { allowedDomains: body.allowedDomains as string[] } : {}),
-    });
+    const result = await updateWorkspace(id, input);
     // Past the guard above, a missing workspace means it was deleted mid-request.
     if (!result) return notFound(req, `workspace ${id}`);
     return receiptResponse(result);
