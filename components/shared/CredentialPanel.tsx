@@ -2,7 +2,8 @@
 // be issued before opening or revoked after closing. Says "key": "secret" means env-var secrets on this page.
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useConfirm } from "@/lib/client/hooks/useConfirm";
 import { AsyncState } from "./AsyncState";
 import CredentialConfirm, { type CredentialAction } from "./CredentialConfirm";
 import CredentialReveal from "./CredentialReveal";
@@ -54,12 +55,7 @@ export default function CredentialPanel({
   onDismissPlaintext,
   children,
 }: CredentialPanelProps) {
-  const [confirming, setConfirming] = useState<CredentialAction | null>(null);
-
-  const runConfirmed = async () => {
-    await (confirming === "rotate" ? onRotate() : onRevoke());
-    setConfirming(null);
-  };
+  const confirmation = useConfirm<CredentialAction>((action) => (action === "rotate" ? onRotate() : onRevoke()));
 
   if (loading || loadError) {
     return (
@@ -113,10 +109,10 @@ export default function CredentialPanel({
 
       {hasKey && !plaintext && (
         <div className="flex items-center gap-2.5">
-          <button className="linkbtn" onClick={() => setConfirming("rotate")} disabled={busy}>
+          <button className="linkbtn" onClick={() => confirmation.ask("rotate")} disabled={busy}>
             Rotate
           </button>
-          <button className="linkbtn text-danger" onClick={() => setConfirming("revoke")} disabled={busy}>
+          <button className="linkbtn text-danger" onClick={() => confirmation.ask("revoke")} disabled={busy}>
             Revoke
           </button>
         </div>
@@ -124,12 +120,12 @@ export default function CredentialPanel({
 
       {plaintext && <CredentialReveal plaintext={plaintext} onDismiss={onDismissPlaintext} />}
 
-      {confirming && (
+      {confirmation.pending && (
         <CredentialConfirm
-          action={confirming}
+          action={confirmation.pending}
           busy={busy}
-          onConfirm={() => void runConfirmed()}
-          onCancel={() => setConfirming(null)}
+          onConfirm={() => void confirmation.confirm()}
+          onCancel={confirmation.cancel}
         />
       )}
     </div>

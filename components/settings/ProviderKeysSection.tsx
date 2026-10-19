@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import ConfirmModal from "@/components/shared/ConfirmModal";
+import { useConfirm } from "@/lib/client/hooks/useConfirm";
 import { useProviderKeys, type ProviderKeyStatus } from "@/lib/client/hooks/useProviderKeys";
 import { useReadyOnce } from "@/lib/client/hooks/useReadyOnce";
 
@@ -22,11 +23,18 @@ function providerLabel(provider: string): string {
   return `${name} API key`;
 }
 
+type KeyAction = "replace" | "revoke";
+
 interface PendingConfirm {
   provider: string;
-  action: "replace" | "revoke";
+  action: KeyAction;
   hint: string;
 }
+
+const CONFIRM_COPY: Record<KeyAction, { verb: string; busy: string; outcome: string }> = {
+  replace: { verb: "Replace", busy: "Replacing…", outcome: "will be overwritten by the new one and can't be restored." },
+  revoke: { verb: "Revoke", busy: "Revoking…", outcome: "will be deleted and can't be restored." },
+};
 
 /** "Aug 15, 2026" — day-and-month order spelled out, since 15/08 and 08/15 are both readings of the same key. */
 function formatSetDate(iso: string): string {
@@ -43,7 +51,6 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
   // Which blocks have their field open. A keyless provider is always open — entering the first key is
   // the only thing it is for — so this only ever tracks keys being deliberately replaced.
   const [replacing, setReplacing] = useState<Record<string, boolean>>({});
-  const [confirming, setConfirming] = useState<PendingConfirm | null>(null);
 
   const setDraft = (provider: string, value: string) => setDrafts((d) => ({ ...d, [provider]: value }));
   const setReplacingRow = (provider: string, on: boolean) => setReplacing((r) => ({ ...r, [provider]: on }));
@@ -60,13 +67,6 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
     if (await save(provider, draft)) cancel(provider);
   };
 
-  // A first key saves directly; replacing one overwrites a key that can't be restored, so it asks first.
-  const submit = (entry: ProviderKeyStatus) => {
-    if (!drafts[entry.provider]?.trim()) return;
-    if (entry.hasKey) setConfirming({ provider: entry.provider, action: "replace", hint: entry.hint ?? "" });
-    else void saveDraft(entry.provider);
-  };
-
   const removeKey = async (provider: string) => {
     await remove(provider);
     // The provider becomes keyless, and a keyless provider shows its field — so drop any half-typed
@@ -74,12 +74,20 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
     cancel(provider);
   };
 
-  const runConfirmed = async () => {
-    if (!confirming) return;
-    if (confirming.action === "replace") await saveDraft(confirming.provider);
-    else await removeKey(confirming.provider);
-    setConfirming(null);
+  const confirmation = useConfirm<PendingConfirm>(({ provider, action }) =>
+    action === "replace" ? saveDraft(provider) : removeKey(provider),
+  );
+  const askConfirm = (entry: ProviderKeyStatus, action: KeyAction) =>
+    confirmation.ask({ provider: entry.provider, action, hint: entry.hint ?? "" });
+
+  // A first key saves directly; replacing one overwrites a key that can't be restored, so it asks first.
+  const submit = (entry: ProviderKeyStatus) => {
+    if (!drafts[entry.provider]?.trim()) return;
+    if (entry.hasKey) askConfirm(entry, "replace");
+    else void saveDraft(entry.provider);
   };
+
+  const { pending } = confirmation;
 
   const renderProvider = (entry: ProviderKeyStatus) => {
     const working = busy === entry.provider;
@@ -144,7 +152,7 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
             )}
             <button
               className="linkbtn text-danger"
-              onClick={() => setConfirming({ provider: entry.provider, action: "revoke", hint: entry.hint ?? "" })}
+              onClick={() => askConfirm(entry, "revoke")}
               disabled={working}
             >
               {working && !editing ? "Working…" : "Revoke"}
@@ -168,22 +176,19 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
 
       <div className="mt-5 flex flex-col gap-6">{providers.map(renderProvider)}</div>
 
-      {confirming && (
+      {pending && (
         <ConfirmModal
-          title={`${confirming.action === "replace" ? "Replace" : "Revoke"} ${providerLabel(confirming.provider)}`}
-          confirmLabel={confirming.action === "replace" ? "Replace" : "Revoke"}
-          busyLabel={confirming.action === "replace" ? "Replacing…" : "Revoking…"}
-          busy={busy === confirming.provider}
-          onConfirm={() => void runConfirmed()}
+          title={`${CONFIRM_COPY[pending.action].verb} ${providerLabel(pending.provider)}`}
+          confirmLabel={CONFIRM_COPY[pending.action].verb}
+          busyLabel={CONFIRM_COPY[pending.action].busy}
+          busy={busy === pending.provider}
+          onConfirm={() => void confirmation.confirm()}
           onCancel={() => {
-            if (confirming.action === "replace") cancel(confirming.provider);
-            setConfirming(null);
+            if (pending.action === "replace") cancel(pending.provider);
+            confirmation.cancel();
           }}
         >
-          The current key <b className="text-text">••••{confirming.hint}</b>{" "}
-          {confirming.action === "replace"
-            ? "will be overwritten by the new one and can't be restored."
-            : "will be deleted and can't be restored."}
+          The current key <b className="text-text">••••{pending.hint}</b> {CONFIRM_COPY[pending.action].outcome}
         </ConfirmModal>
       )}
     </section>
