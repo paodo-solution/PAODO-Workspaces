@@ -14,7 +14,6 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [domainBlurred, setDomainBlurred] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/workspaces/${wsId}/env-vars`)
@@ -72,7 +71,6 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
 
   const remove = async (secretName: string) => {
     await fetch(`/api/workspaces/${wsId}/env-vars/${encodeURIComponent(secretName)}`, { method: "DELETE" });
-    setConfirmDelete(null);
     setSecrets((prev) => prev.filter((s) => s.name !== secretName));
   };
 
@@ -91,25 +89,14 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
                 <span className="shrink-0">{s.name}</span>
                 {s.domains?.length ? <span className="truncate">→ {s.domains.join(", ")}</span> : null}
               </div>
-              {confirmDelete === s.name ? (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(s.name)}>
-                    Delete
-                  </button>
-                  <button className="linkbtn" onClick={() => setConfirmDelete(null)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70 shrink-0"
-                  aria-label={`Remove ${s.name}`}
-                  onClick={() => setConfirmDelete(s.name)}
-                >
-                  ×
-                </button>
-              )}
+              <button
+                type="button"
+                className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70 shrink-0"
+                aria-label={`Remove ${s.name}`}
+                onClick={() => remove(s.name)}
+              >
+                ×
+              </button>
             </div>
           ))}
         </div>
