@@ -64,6 +64,12 @@ describe("setInternetAccessPolicy with a domain allowlist", () => {
     expect(allowedDomainsFor("ws-restricted")).toEqual(["api.vercel.com"]);
   });
 
+  it("writes nothing for a restriction with no domains yet, which enforces nothing", () => {
+    setInternetAccessPolicy("ws-empty", true, { restricted: true, domains: [] });
+    expect(onDisk()).not.toHaveProperty("ws-empty");
+    expect(allowedDomainsFor("ws-empty")).toBeNull();
+  });
+
   it("writes nothing for a kept list while the restriction is off", () => {
     setInternetAccessPolicy("ws-kept", true, { restricted: false, domains: ["api.vercel.com"] });
     expect(onDisk()).not.toHaveProperty("ws-kept");

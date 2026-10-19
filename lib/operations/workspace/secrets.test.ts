@@ -146,6 +146,21 @@ describe("listing third-party secrets", () => {
     expect(result[0]).not.toHaveProperty("blockedBy");
   });
 
+  it("marks a secret blocked when the allowlist restricts away every one of its hosts", () => {
+    const read = () => [
+      { name: "VERCEL_TOKEN", createdAt: "2026-08-03T00:00:00.000Z", domains: ["api.vercel.com"] },
+      { name: "OPENAI_KEY", createdAt: "2026-08-03T00:00:00.000Z", domains: ["api.openai.com"] },
+    ];
+    const restricted = {
+      ...offline,
+      internetAccess: true,
+      domainAllowlist: { restricted: true, domains: ["api.vercel.com"] },
+    };
+    const result = listWorkspaceSecrets("ws-1", lookup(restricted), secretStore({ read }));
+    expect(result[0]).not.toHaveProperty("blockedBy");
+    expect(result[1]).toMatchObject({ name: "OPENAI_KEY", blockedBy: "domainAllowlist" });
+  });
+
   it("lists no secrets for an unknown workspace instead of reading the secret store", () => {
     const read = () => {
       throw new Error("must not read secrets for a workspace that does not exist");

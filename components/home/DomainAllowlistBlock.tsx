@@ -19,6 +19,8 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
   const [adding, setAdding] = useState(false);
   const [draftBlurred, setDraftBlurred] = useState(false);
   const draftValid = isValidDomain(draft);
+  // An empty list enforces nothing, so "On" stays grey until a domain is added.
+  const enforcing = enabled && domains.length > 0;
 
   const saveDraft = () => {
     if (!draftValid) {
@@ -43,7 +45,7 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
       <div className="flex items-center justify-between">
         <div className="min-w-0">
           <span className="text-ms font-semibold text-text">Restrict to allowed domains</span>
-          <span className={`text-xs ml-2 ${enabled ? "text-select" : "text-text-3"}`}>{enabled ? "On" : "Off"}</span>
+          <span className={`text-xs ml-2 ${enforcing ? "text-select" : "text-text-3"}`}>{enabled ? "On" : "Off"}</span>
         </div>
         <Switch
           checked={enabled}

@@ -7,6 +7,7 @@ import { atomicSaveJson, readJson } from "../jsonPersist";
 import { globalSingleton } from "../globalSingleton";
 import { createLogger } from "../logger";
 import type { DomainAllowlist } from "../../workspace/types";
+import { enforcedDomains } from "../../workspace/domain";
 
 const log = createLogger("internetAccessPolicy");
 // Lives inside .proxy-ca/ so the sidecar can mount that one directory rather than the whole
@@ -23,11 +24,12 @@ type Store = Record<string, Entry>;
 // everywhere below (never reassigned) so all instances keep seeing the same state.
 const store: Store = globalSingleton<Store>("internetAccessPolicy", () => readJson<Store>(FILE, {}));
 
-// Off wins over the allowlist, and a list kept while not restricted writes nothing, so re-enabling
-// internet access brings back exactly the restriction the workspace had.
+// Off wins over the allowlist; a list that enforces nothing (not restricted, or empty) writes nothing.
+// Re-enabling internet access therefore brings back exactly the restriction the workspace had.
 function entryFor(enabled: boolean, allowlist?: DomainAllowlist): Entry | undefined {
   if (!enabled) return false;
-  return allowlist?.restricted ? [...allowlist.domains] : undefined;
+  const domains = enforcedDomains(allowlist);
+  return domains ? [...domains] : undefined;
 }
 
 export function setInternetAccessPolicy(wsId: string, enabled: boolean, allowlist?: DomainAllowlist): void {

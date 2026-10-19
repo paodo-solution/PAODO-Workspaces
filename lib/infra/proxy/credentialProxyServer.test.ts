@@ -349,10 +349,12 @@ describe("CredentialProxy domain allowlist", () => {
     expect(stub.connections()).toBe(0);
   });
 
-  it("refuses everything while restricted to an empty list", async () => {
+  it("restricts nothing while the list is empty", async () => {
     const stub = await countingStub();
     setInternetAccessPolicy(WS, true, { restricted: true, domains: [] });
-    expect(await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`)).toContain("403");
+    expect(await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`)).toContain(
+      "200 Connection Established",
+    );
   });
 
   it("refuses a plain-HTTP forward to an unlisted host", async () => {

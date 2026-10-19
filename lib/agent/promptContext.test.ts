@@ -109,4 +109,53 @@ describe("buildWorkspacePromptInputs", () => {
     const { secretsInfo } = buildWorkspacePromptInputs("ws1", dir);
     expect(secretsInfo).toContain("VERCEL_TOKEN → api.vercel.com");
   });
+
+  describe("domain allowlist", () => {
+    const restricted = (domains: string[]) => ({
+      internetAccess: true,
+      domainAllowlist: { restricted: true, domains },
+    });
+
+    it("lists the allowed hosts and tells the agent to name a refused host instead of retrying", () => {
+      getWorkspace.mockReturnValue(restricted(["api.vercel.com", "registry.npmjs.org"]));
+      const { networkInfo } = buildWorkspacePromptInputs("ws1", dir);
+      expect(networkInfo).toContain("# Internet access — RESTRICTED");
+      expect(networkInfo).toContain("- api.vercel.com\n- registry.npmjs.org");
+      expect(networkInfo).toContain("matched exactly");
+      expect(networkInfo).toContain("tell the user which exact host to add");
+    });
+
+    it("keeps the open-internet text while the list is empty, since nothing is enforced yet", () => {
+      getWorkspace.mockReturnValue(restricted([]));
+      const { networkInfo } = buildWorkspacePromptInputs("ws1", dir);
+      expect(networkInfo).toContain("This workspace has internet access.");
+      expect(networkInfo).not.toContain("RESTRICTED");
+    });
+
+    it("keeps the open-internet text while a kept list isn't restricted", () => {
+      getWorkspace.mockReturnValue({
+        internetAccess: true,
+        domainAllowlist: { restricted: false, domains: ["a.com"] },
+      });
+      const { networkInfo } = buildWorkspacePromptInputs("ws1", dir);
+      expect(networkInfo).toContain("This workspace has internet access.");
+      expect(networkInfo).not.toContain("RESTRICTED");
+    });
+
+    it("keeps the disabled text when internet is off, whatever the allowlist says", () => {
+      getWorkspace.mockReturnValue({ ...restricted(["api.vercel.com"]), internetAccess: false });
+      expect(buildWorkspacePromptInputs("ws1", dir).networkInfo).toContain("# Internet access — DISABLED");
+    });
+
+    it("marks a secret whose host the allowlist omits", () => {
+      getWorkspace.mockReturnValue(restricted(["api.vercel.com"]));
+      listSecretMeta.mockReturnValue([
+        { name: "VERCEL_TOKEN", domains: ["api.vercel.com"], createdAt: "2026-01-01" },
+        { name: "OPENAI_KEY", domains: ["api.openai.com"], createdAt: "2026-01-01" },
+      ]);
+      const { secretsInfo } = buildWorkspacePromptInputs("ws1", dir);
+      expect(secretsInfo).toContain("- VERCEL_TOKEN → api.vercel.com\n");
+      expect(secretsInfo).toContain("- OPENAI_KEY → api.openai.com (blocked: api.openai.com not allowed)");
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { createLogger } from "../infra/logger";
 import { getDrivesForWorkspace, formatDriveLine } from "@/lib/drives/store";
 import { listSecretMeta } from "../infra/security/workspaceSecretStore";
 import { getContainers, getStore } from "../infra/services";
+import { enforcedDomains } from "../workspace/domain";
 
 const log = createLogger("promptContext");
 
@@ -30,10 +31,24 @@ function readAgentsMd(workspaceDir: string): string | undefined {
   }
 }
 
-// Always present, on or off: the agent should never guess its network access.
+// Hosts a restricted workspace may reach, or null when nothing is enforced (an empty list included).
+function allowedDomains(workspaceId: string): string[] | null {
+  return enforcedDomains(getStore().getWorkspace(workspaceId)?.domainAllowlist);
+}
+
+function buildRestrictedNetworkInfo(domains: string[]): string {
+  return `# Internet access — RESTRICTED
+Only these hosts are reachable, matched exactly (subdomains and redirect targets like www. need their own entry):
+${domains.map((d) => `- ${d}`).join("\n")}
+Any other host, package registries included, gets a proxy 403. Don't retry it; tell the user which exact host to add.`;
+}
+
+// Always present, on, restricted or off: the agent should never guess its network access.
 function buildNetworkInfo(workspaceId: string): string {
   const ws = getStore().getWorkspace(workspaceId);
   const enabled = ws ? (ws.internetAccess ?? true) : false;
+  const restricted = enabled ? allowedDomains(workspaceId) : null;
+  if (restricted) return buildRestrictedNetworkInfo(restricted);
   return enabled
     ? `# Internet access
 This workspace has internet access. \`http_get\` fetches public URLs; \`apt_install\` installs system packages; \`npm\`/\`pip3\`/\`git\` work normally from execute_command.`
@@ -62,7 +77,14 @@ function buildSecretsInfo(workspaceId: string): string | undefined {
   if (!enabled) return undefined;
   const secrets = listSecretMeta(workspaceId);
   if (!secrets.length) return undefined;
-  const lines = secrets.map((s) => `- ${s.name} → ${s.domains.join(", ")}`).join("\n");
+  const allowed = allowedDomains(workspaceId);
+  const lines = secrets
+    .map((s) => {
+      const blocked = allowed ? s.domains.filter((d) => !allowed.includes(d)) : [];
+      const note = blocked.length ? ` (blocked: ${blocked.join(", ")} not allowed)` : "";
+      return `- ${s.name} → ${s.domains.join(", ")}${note}`;
+    })
+    .join("\n");
   return `# Available Secrets
 These are injected into your shell environment as opaque proxy tokens — use them directly and never print them. The credential proxy swaps in the real value only on outgoing HTTPS requests to the listed hosts, so reference the variable normally:
 ${lines}

@@ -43,7 +43,10 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   maxIterations: { type: "int", rule: `${MIN_MAX_ITERATIONS}-${MAX_MAX_ITERATIONS}` },
   maxRunMinutes: { type: "int", rule: `${MIN_MAX_RUN_MINUTES}-${MAX_MAX_RUN_MINUTES}` },
   internetAccess: { type: "boolean" },
-  domainRestriction: { type: "boolean", rule: "while true, the container reaches only allowedDomains" },
+  domainRestriction: {
+    type: "boolean",
+    rule: "while true and allowedDomains is non-empty, the container reaches only allowedDomains",
+  },
   allowedDomains: {
     type: "string[]",
     rule: `at most ${MAX_ALLOWED_DOMAINS} hostnames, each matched exactly (vercel.com does not cover api.vercel.com); replaces the whole list`,

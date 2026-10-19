@@ -18,6 +18,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { useWorkspaces } from "@/lib/client/hooks/useWorkspaces";
 import { useWorkspaceDescription } from "@/lib/client/hooks/useWorkspaceDescription";
 import { useWorkspaceInternetAccess } from "@/lib/client/hooks/useWorkspaceInternetAccess";
+import { enforcedDomains } from "@/lib/workspace/domain";
 import { useWorkspaceDetails } from "@/lib/client/hooks/useWorkspaceDetails";
 import { useWorkspaceStorage } from "@/lib/client/hooks/useWorkspaceStorage";
 import { SPINNER_DELAY_MS, useDelayed } from "@/lib/client/hooks/useDelayed";
@@ -490,7 +491,7 @@ export default function HomePage() {
                   <EnvVarsBlock
                     key={`env-${selected.id}`}
                     wsId={selected.id}
-                    allowedDomains={domainRestriction ? allowedDomains : null}
+                    allowedDomains={enforcedDomains({ restricted: domainRestriction, domains: allowedDomains })}
                   />
                 )}
               </div>

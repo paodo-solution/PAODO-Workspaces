@@ -80,6 +80,7 @@ export class WorkspaceStore implements IWorkspaceStore {
   private hydrate(records: WorkspaceRecord[]): void {
     for (const r of records) {
       const dir = path.join(WORKSPACES_ROOT, r.id);
+      const allowlistReadable = this.checkDomainAllowlist(r);
       this.workspaces.set(r.id, {
         id: r.id,
         name: r.name,
@@ -91,21 +92,21 @@ export class WorkspaceStore implements IWorkspaceStore {
         llmProvider: r.llmProvider,
         llmModel: r.llmModel,
         reasoningEffort: r.reasoningEffort,
-        internetAccess: r.internetAccess ?? true,
-        domainAllowlist: this.loadDomainAllowlist(r),
+        internetAccess: allowlistReadable ? (r.internetAccess ?? true) : false,
+        domainAllowlist: allowlistReadable ? r.domainAllowlist : undefined,
       });
     }
   }
 
-  // Fails closed for this workspace only: an unreadable allowlist reaches nothing until the owner resaves
-  // it, while every other workspace keeps working.
-  private loadDomainAllowlist(r: WorkspaceRecord): DomainAllowlist | undefined {
-    if (r.domainAllowlist === undefined || isDomainAllowlist(r.domainAllowlist)) return r.domainAllowlist;
+  // Fails closed for this workspace only: an unreadable allowlist turns its internet access off until the
+  // owner resets it, while every other workspace keeps working. An empty list would allow everything.
+  private checkDomainAllowlist(r: WorkspaceRecord): boolean {
+    if (r.domainAllowlist === undefined || isDomainAllowlist(r.domainAllowlist)) return true;
     log.error(
-      { event: "workspace_domain_allowlist_malformed", outcome: "restricted_to_nothing", workspaceId: r.id },
-      "workspace domain allowlist is malformed — restricting it to no domains",
+      { event: "workspace_domain_allowlist_malformed", outcome: "internet_access_disabled", workspaceId: r.id },
+      "workspace domain allowlist is malformed — turning its internet access off",
     );
-    return { restricted: true, domains: [] };
+    return false;
   }
 
   private save(): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidDomain, normalizeDomain } from "./domain";
+import { enforcedDomains, isValidDomain, normalizeDomain } from "./domain";
 
 describe("normalizeDomain", () => {
   it("reduces a pasted URL to its bare lowercase hostname", () => {
@@ -19,5 +19,14 @@ describe("isValidDomain", () => {
     for (const domain of ["", "localhost", "example", "not a host", "api_example.com", "10.0.0.1", "*.vercel.com"]) {
       expect(isValidDomain(domain)).toBe(false);
     }
+  });
+});
+
+describe("enforcedDomains", () => {
+  it("enforces a restricted list only once it has a domain", () => {
+    expect(enforcedDomains({ restricted: true, domains: ["api.vercel.com"] })).toEqual(["api.vercel.com"]);
+    expect(enforcedDomains({ restricted: true, domains: [] })).toBeNull();
+    expect(enforcedDomains({ restricted: false, domains: ["api.vercel.com"] })).toBeNull();
+    expect(enforcedDomains(undefined)).toBeNull();
   });
 });

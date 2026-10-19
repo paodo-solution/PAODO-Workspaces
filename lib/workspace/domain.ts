@@ -23,6 +23,11 @@ export function isValidDomain(input: string): boolean {
   return DOMAIN_RE.test(normalizeDomain(input));
 }
 
+/** The hosts actually enforced, or null when unrestricted: an empty list doesn't restrict anything yet. */
+export function enforcedDomains(allowlist: DomainAllowlist | undefined): string[] | null {
+  return allowlist?.restricted && allowlist.domains.length > 0 ? allowlist.domains : null;
+}
+
 /** Shape check for an allowlist read off disk or the wire; domain format is checked separately. */
 export function isDomainAllowlist(value: unknown): value is DomainAllowlist {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

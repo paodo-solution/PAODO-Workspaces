@@ -31,7 +31,7 @@ describe("WorkspaceStore domainAllowlist", () => {
     expect(store.getWorkspace("w1")?.domainAllowlist?.domains).toEqual(["api.vercel.com"]);
   });
 
-  it("restricts only the workspace whose saved allowlist is malformed to no domains", () => {
+  it("turns internet off for only the workspace whose saved allowlist is malformed", () => {
     const store = new WorkspaceStore({
       load: () => [
         { ...legacy, domainAllowlist: { restricted: "yes" } as never },
@@ -39,7 +39,8 @@ describe("WorkspaceStore domainAllowlist", () => {
       ],
       persist: vi.fn(),
     });
-    expect(store.getWorkspace("w1")?.domainAllowlist).toEqual({ restricted: true, domains: [] });
+    expect(store.getWorkspace("w1")).toMatchObject({ internetAccess: false, domainAllowlist: undefined });
+    expect(store.getWorkspace("w2")?.internetAccess).toBe(true);
     expect(store.getWorkspace("w2")?.domainAllowlist).toEqual({ restricted: true, domains: ["api.vercel.com"] });
   });
 
