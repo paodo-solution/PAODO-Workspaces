@@ -1,14 +1,20 @@
-// Domain allowlist section of InternetAccessBlock, shown only while internet access is on. UI only for now:
-// the state is local and nothing enforces it yet.
+// Domain allowlist section of InternetAccessBlock, shown only while internet access is on. The saved state
+// comes from useWorkspaceInternetAccess; only the domain being typed is local.
 "use client";
 
 import { useState } from "react";
 import { Switch } from "@/components/shared/Switch";
 import { DOMAIN_FORMAT_ERROR, isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
 
-export default function DomainAllowlistBlock() {
-  const [enabled, setEnabled] = useState(false);
-  const [domains, setDomains] = useState<string[]>([]);
+interface Props {
+  enabled: boolean;
+  domains: string[];
+  onToggle: () => void;
+  /** Receives the whole new list. */
+  onChangeDomains: (domains: string[]) => void;
+}
+
+export default function DomainAllowlistBlock({ enabled, domains, onToggle, onChangeDomains }: Props) {
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [draftBlurred, setDraftBlurred] = useState(false);
@@ -20,7 +26,7 @@ export default function DomainAllowlistBlock() {
       return;
     }
     const domain = normalizeDomain(draft);
-    setDomains((prev) => (prev.includes(domain) ? prev : [...prev, domain]));
+    if (!domains.includes(domain)) onChangeDomains([...domains, domain]);
     cancelDraft();
   };
 
@@ -30,7 +36,7 @@ export default function DomainAllowlistBlock() {
     setAdding(false);
   };
 
-  const removeDomain = (domain: string) => setDomains((prev) => prev.filter((d) => d !== domain));
+  const removeDomain = (domain: string) => onChangeDomains(domains.filter((d) => d !== domain));
 
   return (
     <div className="flex flex-col gap-4 border-t border-border pt-4">
@@ -42,7 +48,7 @@ export default function DomainAllowlistBlock() {
         <Switch
           checked={enabled}
           onChange={() => {
-            setEnabled((v) => !v);
+            onToggle();
             cancelDraft();
           }}
           ariaLabel={enabled ? "Stop restricting to allowed domains" : "Restrict to allowed domains"}

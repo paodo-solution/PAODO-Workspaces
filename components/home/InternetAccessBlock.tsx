@@ -9,12 +9,26 @@ import DomainAllowlistBlock from "./DomainAllowlistBlock";
 interface Props {
   enabled: boolean;
   onToggle: () => void;
+  domainRestriction: boolean;
+  allowedDomains: string[];
+  onToggleDomainRestriction: () => void;
+  onChangeAllowedDomains: (domains: string[]) => void;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
 }
 
-export default function InternetAccessBlock({ enabled, onToggle, loading = false, error = false, onRetry }: Props) {
+export default function InternetAccessBlock({
+  enabled,
+  onToggle,
+  domainRestriction,
+  allowedDomains,
+  onToggleDomainRestriction,
+  onChangeAllowedDomains,
+  loading = false,
+  error = false,
+  onRetry,
+}: Props) {
   if (loading || error) {
     return (
       <div className="flex flex-col mt-4 border border-border rounded-card p-[16px_18px] bg-bg-tint">
@@ -37,7 +51,14 @@ export default function InternetAccessBlock({ enabled, onToggle, loading = false
         />
       </div>
 
-      {enabled && <DomainAllowlistBlock />}
+      {enabled && (
+        <DomainAllowlistBlock
+          enabled={domainRestriction}
+          domains={allowedDomains}
+          onToggle={onToggleDomainRestriction}
+          onChangeDomains={onChangeAllowedDomains}
+        />
+      )}
 
       {!enabled && (
         <p className="m-0 text-xs text-text-3">
