@@ -1,5 +1,6 @@
 // Domain format shared by secrets' allowed domains and the internet allowlist. Pure, so the browser
 // checks a domain with the same rule the server enforces.
+import type { DomainAllowlist } from "./types";
 
 const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
@@ -20,4 +21,11 @@ export function normalizeDomain(input: string): string {
 /** True when `input` normalizes to a public hostname (no IP, no single label like "localhost"). */
 export function isValidDomain(input: string): boolean {
   return DOMAIN_RE.test(normalizeDomain(input));
+}
+
+/** Shape check for an allowlist read off disk or the wire; domain format is checked separately. */
+export function isDomainAllowlist(value: unknown): value is DomainAllowlist {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { restricted, domains } = value as Record<string, unknown>;
+  return typeof restricted === "boolean" && Array.isArray(domains) && domains.every((d) => typeof d === "string");
 }

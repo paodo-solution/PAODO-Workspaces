@@ -16,4 +16,13 @@ export interface Workspace {
   reasoningEffort?: ReasoningEffort;
   /** Whether the workspace container is permitted to route traffic to the internet. */
   internetAccess: boolean;
+  /** Absent means unrestricted. Kept while `restricted` is off, so turning it back on restores the list. */
+  domainAllowlist?: DomainAllowlist;
+}
+
+// Hosts the container may reach while internet access is on, matched exactly. Restricted with an
+// empty list reaches nothing.
+export interface DomainAllowlist {
+  restricted: boolean;
+  domains: string[];
 }

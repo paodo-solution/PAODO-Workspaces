@@ -1,6 +1,6 @@
 // Interfaces for the two stateful infra singletons (workspace registry, container lifecycle), so tests and
 // the agent layer can inject isolated instances. Production wires them in lib/infra/services.ts.
-import type { Workspace } from "../workspace/types";
+import type { DomainAllowlist, Workspace } from "../workspace/types";
 import type { ReasoningEffort } from "../models/llmSelection";
 import type { DockerResult, DockerStdin } from "./docker/dockerClient";
 import type { BackgroundTask } from "./docker/backgroundTaskManager";
@@ -28,6 +28,7 @@ export interface IWorkspaceStore extends IWorkspaceCatalog {
   setWorkspaceDescription(id: string, description: string): boolean;
   setWorkspaceLlm(id: string, sel: { provider: string; model: string; reasoningEffort: ReasoningEffort }): boolean;
   setWorkspaceInternetAccess(id: string, enabled: boolean): boolean;
+  setWorkspaceDomainAllowlist(id: string, allowlist: DomainAllowlist): boolean;
   // Clear the stored model choice of every workspace pointed at a provider outside `allowed`, and
   // report what was cleared. Startup's counterpart to purgeProviderKeysExcept.
   clearWithdrawnLlmSelections(allowed: readonly string[]): Array<{ workspaceId: string; provider: string }>;

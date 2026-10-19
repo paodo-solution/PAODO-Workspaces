@@ -91,6 +91,7 @@ function configOf(workspace: Workspace): WorkspaceArchiveManifest["config"] {
     maxIterations: workspace.maxIterations,
     maxRunMinutes: workspace.maxRunMinutes,
     internetAccess: workspace.internetAccess,
+    domainAllowlist: workspace.domainAllowlist,
   };
 }
 

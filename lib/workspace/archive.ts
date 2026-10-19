@@ -1,4 +1,5 @@
 import type { ReasoningEffort } from "../models/llmSelection";
+import type { DomainAllowlist } from "./types";
 import { MANIFEST_MEMBER, type ArchiveManifest } from "../archive/manifest";
 
 export const CONFIG_MEMBER = "config.json";
@@ -32,6 +33,8 @@ export interface WorkspaceArchiveManifest extends ArchiveManifest {
     maxIterations: number;
     maxRunMinutes: number;
     internetAccess: boolean;
+    /** Absent in archives written before the allowlist existed, and for unrestricted workspaces. */
+    domainAllowlist?: DomainAllowlist;
   };
   image: ArchiveImage;
   /** What was deliberately left out, so a restore can explain the gaps rather than hide them. */

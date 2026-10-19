@@ -5,13 +5,14 @@ import { createLogger, createAuditLogger } from "../logger";
 import { atomicSaveJson, readJson } from "../jsonPersist";
 import { scaffoldWorkspaceDir } from "./scaffold";
 import { validateWorkspaceName, normalizeForUniqueness, WorkspaceNameError } from "../../workspace/name";
+import { isDomainAllowlist } from "../../workspace/domain";
 import { defaultWorkspaceVersioning } from "../git";
 import { WORKSPACES_ROOT, workspaceRegistryFile } from "../paths";
 import type { IWorkspaceStore } from "../interfaces";
 import type { ReasoningEffort } from "../../models/llmSelection";
 import { setInternetAccessPolicy } from "../proxy/internetAccessPolicy";
 import { DEFAULT_MAX_ITERATIONS, DEFAULT_MAX_RUN_MINUTES, normalizeMaxRunMinutes } from "../../workspace/limits";
-import type { Workspace } from "../../workspace/types";
+import type { DomainAllowlist, Workspace } from "../../workspace/types";
 import { assertWorkspaceRegistryRecords } from "../startupChecks";
 export type { Workspace } from "../../workspace/types";
 
@@ -30,6 +31,7 @@ interface WorkspaceRecord {
   llmModel?: string;
   reasoningEffort?: ReasoningEffort;
   internetAccess?: boolean;
+  domainAllowlist?: DomainAllowlist;
 }
 
 const REGISTRY_FILE = workspaceRegistryFile();
@@ -90,8 +92,20 @@ export class WorkspaceStore implements IWorkspaceStore {
         llmModel: r.llmModel,
         reasoningEffort: r.reasoningEffort,
         internetAccess: r.internetAccess ?? true,
+        domainAllowlist: this.loadDomainAllowlist(r),
       });
     }
+  }
+
+  // Fails closed for this workspace only: an unreadable allowlist reaches nothing until the owner resaves
+  // it, while every other workspace keeps working.
+  private loadDomainAllowlist(r: WorkspaceRecord): DomainAllowlist | undefined {
+    if (r.domainAllowlist === undefined || isDomainAllowlist(r.domainAllowlist)) return r.domainAllowlist;
+    log.error(
+      { event: "workspace_domain_allowlist_malformed", outcome: "restricted_to_nothing", workspaceId: r.id },
+      "workspace domain allowlist is malformed — restricting it to no domains",
+    );
+    return { restricted: true, domains: [] };
   }
 
   private save(): void {
@@ -106,6 +120,7 @@ export class WorkspaceStore implements IWorkspaceStore {
       llmModel: w.llmModel,
       reasoningEffort: w.reasoningEffort,
       internetAccess: w.internetAccess,
+      domainAllowlist: w.domainAllowlist,
     }));
     this.persistFn(records);
   }
@@ -289,6 +304,18 @@ export class WorkspaceStore implements IWorkspaceStore {
     ws.internetAccess = enabled;
     this.saveUpdate(id, "set_internet_access");
     audit.info({ wsId: id, enabled, event: "workspace_internet_access_toggled" }, "internet access toggled");
+    return true;
+  }
+
+  setWorkspaceDomainAllowlist(id: string, allowlist: DomainAllowlist): boolean {
+    const ws = this.workspaces.get(id);
+    if (!ws) return false;
+    ws.domainAllowlist = { restricted: allowlist.restricted, domains: [...allowlist.domains] };
+    this.saveUpdate(id, "set_domain_allowlist");
+    audit.info(
+      { wsId: id, ...ws.domainAllowlist, event: "workspace_domain_allowlist_changed" },
+      "domain allowlist changed",
+    );
     return true;
   }
 
