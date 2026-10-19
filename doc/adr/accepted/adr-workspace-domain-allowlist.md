@@ -65,9 +65,9 @@ Decision
 Consequences
 
 - Exact matching makes the user find out every host a task uses. A git clone from GitHub, for
-  example, needs `github.com`, `codeload.github.com` and `objects.githubusercontent.com`. For now
-  the refusal log and the agent's prompt cover this; a "recently refused hosts" list in the UI
-  would make it much easier.
+  example, needs only `github.com`, but a repository archive needs `codeload.github.com` and a
+  release file needs `objects.githubusercontent.com`. For now the refusal log and the agent's
+  prompt cover this; a "recently refused hosts" list in the UI would make it much easier.
 - The allowlist limits where the agent can go, not what it does there. An allowed host is still a
   way for data to leave, and a host that serves anyone's content (`github.com`,
   `raw.githubusercontent.com`, package registries) is a way for anyone's content to reach the
