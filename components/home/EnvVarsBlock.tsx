@@ -109,13 +109,14 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
 
       {!showForm ? (
         <button
-          className="btn btn-sm self-start"
+          type="button"
+          className="linkbtn px-0 text-primary self-start"
           onClick={() => {
             resetForm();
             setShowForm(true);
           }}
         >
-          Add a secret
+          + Add secret
         </button>
       ) : (
         <div className="flex flex-col gap-3 bg-white border border-border rounded-ctrl p-[12px_14px]">
@@ -140,20 +141,20 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
           </label>
 
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-text">Allowed hosts</span>
+            <span className="text-xs font-medium text-text">Allowed domains</span>
             <div className="flex flex-col gap-2">
-              {domains.map((host, idx) => (
+              {domains.map((domain, idx) => (
                 <div className="flex items-center gap-2" key={idx}>
                   <input
                     className="input input-sm font-mono flex-1"
-                    value={host}
+                    value={domain}
                     onChange={(e) => setDomainValue(idx, e.target.value)}
                   />
                   {domains.length > 1 && (
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm px-2 text-text-3"
-                      aria-label="Remove host"
+                      className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70"
+                      aria-label="Remove domain"
                       onClick={() => removeDomainField(idx)}
                     >
                       ×
@@ -162,8 +163,8 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
                 </div>
               ))}
             </div>
-            <button type="button" className="linkbtn text-primary mt-1 self-start" onClick={addDomainField}>
-              + Add host
+            <button type="button" className="linkbtn px-0 text-primary mt-1 self-start" onClick={addDomainField}>
+              + Add domain
             </button>
           </div>
 
