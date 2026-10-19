@@ -28,6 +28,12 @@ export function enforcedDomains(allowlist: DomainAllowlist | undefined): string[
   return allowlist?.restricted && allowlist.domains.length > 0 ? allowlist.domains : null;
 }
 
+/** A secret's hosts the allowlist refuses; empty when nothing is enforced. */
+export function blockedHosts(secretDomains: string[], allowlist: DomainAllowlist | undefined): string[] {
+  const allowed = enforcedDomains(allowlist);
+  return allowed ? secretDomains.filter((d) => !allowed.includes(d)) : [];
+}
+
 /** Shape check for an allowlist read off disk or the wire; domain format is checked separately. */
 export function isDomainAllowlist(value: unknown): value is DomainAllowlist {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

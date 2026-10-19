@@ -1,12 +1,10 @@
 "use client";
 
-import { Fragment, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { ThirdPartySecret } from "@/lib/operations/workspace/secrets";
 import { DOMAIN_FORMAT_ERROR, isValidDomain } from "@/lib/workspace/domain";
 
-// `allowedDomains` is null while the workspace isn't restricted; otherwise secrets whose hosts it omits are
-// flagged, since the proxy refuses those hosts before any key could be injected.
-export default function EnvVarsBlock({ wsId, allowedDomains }: { wsId: string; allowedDomains: string[] | null }) {
+export default function EnvVarsBlock({ wsId }: { wsId: string }) {
   const [secrets, setSecrets] = useState<ThirdPartySecret[]>([]);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
@@ -84,38 +82,33 @@ export default function EnvVarsBlock({ wsId, allowedDomains }: { wsId: string; a
 
       {secrets.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          {secrets.map((s) => {
-            const unreachable = allowedDomains ? s.domains.filter((d) => !allowedDomains.includes(d)) : [];
-            return (
-              <Fragment key={s.name}>
-                <div className="flex items-center justify-between gap-2 text-ms bg-white border border-border rounded-ctrl px-2.5 py-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <code className="font-mono text-xs text-text shrink-0">{s.name}</code>
-                    {s.domains?.length ? (
-                      <span className="text-xs text-text-muted truncate">→ {s.domains.join(", ")}</span>
-                    ) : null}
-                  </div>
-                  {confirmDelete === s.name ? (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button className="btn btn-danger btn-sm" onClick={() => remove(s.name)}>
-                        Delete
-                      </button>
-                      <button className="linkbtn" onClick={() => setConfirmDelete(null)}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button className="linkbtn text-danger shrink-0" onClick={() => setConfirmDelete(s.name)}>
-                      Delete
-                    </button>
-                  )}
+          {secrets.map((s) => (
+            <div
+              key={s.name}
+              className="flex items-center justify-between gap-2 text-ms bg-white border border-border rounded-ctrl px-2.5 py-1.5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <code className="font-mono text-xs text-text shrink-0">{s.name}</code>
+                {s.domains?.length ? (
+                  <span className="text-xs text-text-muted truncate">→ {s.domains.join(", ")}</span>
+                ) : null}
+              </div>
+              {confirmDelete === s.name ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button className="btn btn-danger btn-sm" onClick={() => remove(s.name)}>
+                    Delete
+                  </button>
+                  <button className="linkbtn" onClick={() => setConfirmDelete(null)}>
+                    Cancel
+                  </button>
                 </div>
-                {unreachable.length > 0 && (
-                  <p className="m-0 text-xs text-text-3">Not in allowed domains: {unreachable.join(", ")}</p>
-                )}
-              </Fragment>
-            );
-          })}
+              ) : (
+                <button className="linkbtn text-danger shrink-0" onClick={() => setConfirmDelete(s.name)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

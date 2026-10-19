@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enforcedDomains, isValidDomain, normalizeDomain } from "./domain";
+import { blockedHosts, enforcedDomains, isValidDomain, normalizeDomain } from "./domain";
 
 describe("normalizeDomain", () => {
   it("reduces a pasted URL to its bare lowercase hostname", () => {
@@ -28,5 +28,19 @@ describe("enforcedDomains", () => {
     expect(enforcedDomains({ restricted: true, domains: [] })).toBeNull();
     expect(enforcedDomains({ restricted: false, domains: ["api.vercel.com"] })).toBeNull();
     expect(enforcedDomains(undefined)).toBeNull();
+  });
+});
+
+describe("blockedHosts", () => {
+  it("lists the secret's hosts a restricted allowlist leaves out", () => {
+    const allowlist = { restricted: true, domains: ["github.com"] };
+    expect(blockedHosts(["github.com", "api.github.com"], allowlist)).toEqual(["api.github.com"]);
+    expect(blockedHosts(["github.com"], allowlist)).toEqual([]);
+  });
+
+  it("blocks nothing when no restriction is enforced", () => {
+    expect(blockedHosts(["api.github.com"], { restricted: true, domains: [] })).toEqual([]);
+    expect(blockedHosts(["api.github.com"], { restricted: false, domains: ["github.com"] })).toEqual([]);
+    expect(blockedHosts(["api.github.com"], undefined)).toEqual([]);
   });
 });

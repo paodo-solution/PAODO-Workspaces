@@ -6,7 +6,7 @@ import { createLogger } from "../infra/logger";
 import { getDrivesForWorkspace, formatDriveLine } from "@/lib/drives/store";
 import { listSecretMeta } from "../infra/security/workspaceSecretStore";
 import { getContainers, getStore } from "../infra/services";
-import { enforcedDomains } from "../workspace/domain";
+import { blockedHosts, enforcedDomains } from "../workspace/domain";
 
 const log = createLogger("promptContext");
 
@@ -77,10 +77,9 @@ function buildSecretsInfo(workspaceId: string): string | undefined {
   if (!enabled) return undefined;
   const secrets = listSecretMeta(workspaceId);
   if (!secrets.length) return undefined;
-  const allowed = allowedDomains(workspaceId);
   const lines = secrets
     .map((s) => {
-      const blocked = allowed ? s.domains.filter((d) => !allowed.includes(d)) : [];
+      const blocked = blockedHosts(s.domains, ws?.domainAllowlist);
       const note = blocked.length ? ` (blocked: ${blocked.join(", ")} not allowed)` : "";
       return `- ${s.name} → ${s.domains.join(", ")}${note}`;
     })

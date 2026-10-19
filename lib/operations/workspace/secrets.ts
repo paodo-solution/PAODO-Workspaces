@@ -7,7 +7,7 @@ import {
   setSecret,
   RESERVED_SECRET_NAMES,
 } from "@/lib/infra/security/workspaceSecretStore";
-import { enforcedDomains, isValidDomain } from "@/lib/workspace/domain";
+import { blockedHosts, isValidDomain } from "@/lib/workspace/domain";
 import { WorkspaceUpdateError, WorkspaceUpdateFailure } from "./errors";
 import type { WorkspaceLookup } from "./read";
 import type { Workspace } from "@/lib/workspace/types";
@@ -55,11 +55,8 @@ type SecretBlocker = "internetAccess" | "domainAllowlist";
 // A missing workspace reads as no egress. Spread in, so the key is absent when nothing blocks.
 function blockedFor(workspace: Workspace | undefined, domains: string[]): { blockedBy?: SecretBlocker } {
   if (!workspace?.internetAccess) return { blockedBy: "internetAccess" };
-  const allowed = enforcedDomains(workspace.domainAllowlist);
-  if (allowed && !domains.some((d) => allowed.includes(d))) {
-    return { blockedBy: "domainAllowlist" };
-  }
-  return {};
+  const blocked = blockedHosts(domains, workspace.domainAllowlist);
+  return blocked.length > 0 && blocked.length === domains.length ? { blockedBy: "domainAllowlist" } : {};
 }
 
 function defaultSecretStore(): SecretStore & SecretDeleter {
