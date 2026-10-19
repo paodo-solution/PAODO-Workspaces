@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   workspace: { id: "ws-1", name: "Alpha", internetAccess: false } as Record<string, unknown>,
   setWorkspaceInternetAccess: vi.fn(),
+  setWorkspaceDomainAllowlist: vi.fn(),
   setInternetAccessPolicy: vi.fn(),
   applyInternetAccess: vi.fn(async () => {}),
 }));
@@ -22,11 +23,12 @@ vi.mock("@/lib/infra/services", () => ({
   getStore: () => ({
     getWorkspace: () => h.workspace,
     setWorkspaceInternetAccess: h.setWorkspaceInternetAccess,
+    setWorkspaceDomainAllowlist: h.setWorkspaceDomainAllowlist,
   }),
   getContainers: () => ({ applyInternetAccess: h.applyInternetAccess }),
 }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
 
 const ctx = () => ({ params: Promise.resolve({ id: "ws-1" }) });
 const request = (body?: unknown) =>
@@ -43,6 +45,10 @@ beforeEach(() => {
     return true;
   });
   h.setInternetAccessPolicy.mockReset();
+  h.setWorkspaceDomainAllowlist.mockReset().mockImplementation((_id: string, allowlist: unknown) => {
+    h.workspace.domainAllowlist = allowlist;
+    return true;
+  });
   h.applyInternetAccess.mockReset().mockImplementation(async () => {});
 });
 
@@ -122,5 +128,40 @@ describe("PATCH /api/workspaces/[id]/internet-access", () => {
     expect(h.setWorkspaceInternetAccess).toHaveBeenNthCalledWith(2, "ws-1", false);
     expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(1, "ws-1", true, undefined);
     expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(2, "ws-1", false, undefined);
+  });
+});
+
+describe("domain allowlist through /internet-access", () => {
+  it("GET reports an unrestricted workspace with an empty list", async () => {
+    const res = await GET(new Request("http://x/api/workspaces/ws-1/internet-access") as never, ctx());
+    expect(await res.json()).toEqual({ enabled: false, domainRestriction: false, allowedDomains: [] });
+  });
+
+  it("PATCH saves the list and the restriction, enforces them at the proxy, and leaves the network alone", async () => {
+    h.workspace.internetAccess = true;
+    const res = await PATCH(request({ domainRestriction: true, allowedDomains: ["API.vercel.com"] }), ctx());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      workspaceId: "ws-1",
+      applied: { domainRestriction: true, allowedDomains: ["api.vercel.com"] },
+    });
+    const allowlist = { restricted: true, domains: ["api.vercel.com"] };
+    expect(h.setWorkspaceDomainAllowlist).toHaveBeenCalledWith("ws-1", allowlist);
+    expect(h.setInternetAccessPolicy).toHaveBeenCalledWith("ws-1", true, allowlist);
+    expect(h.applyInternetAccess).not.toHaveBeenCalled();
+  });
+
+  it("PATCH refuses an invalid domain with the shared envelope and writes nothing", async () => {
+    const res = await PATCH(request({ allowedDomains: ["localhost"] }), ctx());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, code: "WORKSPACE_UPDATE_INVALID" });
+    expect(h.setWorkspaceDomainAllowlist).not.toHaveBeenCalled();
+  });
+
+  it("PATCH refuses a body with none of its fields", async () => {
+    const res = await PATCH(request({}), ctx());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, code: "INVALID_REQUEST" });
   });
 });

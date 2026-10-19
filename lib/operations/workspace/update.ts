@@ -5,7 +5,15 @@ import type { ReasoningEffort } from "@/lib/models/llmSelection";
 import { metadataWrites, validateMetadata, type MetadataWriter, type WorkspaceMetadataInput } from "./metadata";
 import { currentModelSelection, publicModelSelection, type WorkspaceLookup } from "./read";
 import { setChannelEnabled, validateChannelEnabled, type ChannelCredentials } from "./access";
-import { setInternetAccess, validateInternetAccess, type EgressServices, type EgressWriter } from "./egress";
+import {
+  setDomainAllowlist,
+  setInternetAccess,
+  validateAllowedDomains,
+  validateDomainRestriction,
+  validateInternetAccess,
+  type EgressServices,
+  type EgressWriter,
+} from "./egress";
 import {
   storeWorkspaceSecret,
   validateSecret,
@@ -23,6 +31,8 @@ export const WORKSPACE_UPDATABLE_FIELDS = [
   "maxIterations",
   "maxRunMinutes",
   "internetAccess",
+  "domainRestriction",
+  "allowedDomains",
   "workspaceApiAccess",
   "workspaceMcpAccess",
   "llmProvider",
@@ -46,6 +56,9 @@ function field<K extends keyof WorkspaceUpdateValues>(
 /** Omitted fields stay unchanged; an explicitly empty description clears it. */
 export type UpdateWorkspaceInput = WorkspaceMetadataInput & {
   internetAccess?: boolean;
+  domainRestriction?: boolean;
+  /** Replaces the whole list. */
+  allowedDomains?: string[];
   workspaceApiAccess?: boolean;
   workspaceMcpAccess?: boolean;
   secret?: WorkspaceSecretInput;
@@ -70,6 +83,8 @@ export type WorkspaceUpdateValues = {
   llmModel?: string;
   reasoningEffort?: ReasoningEffort;
   internetAccess?: boolean;
+  domainRestriction?: boolean;
+  allowedDomains?: string[];
   workspaceApiAccess?: boolean;
   workspaceMcpAccess?: boolean;
   secret?: ThirdPartySecret;
@@ -100,6 +115,8 @@ export async function updateWorkspace(
   // Phase one: validate everything, touch nothing.
   const metadata = validateMetadata(input, currentModelSelection(existing));
   const internetAccess = ifDefined(input.internetAccess, validateInternetAccess);
+  const domainRestriction = ifDefined(input.domainRestriction, validateDomainRestriction);
+  const allowedDomains = ifDefined(input.allowedDomains, validateAllowedDomains);
   const apiAccess = ifDefined(input.workspaceApiAccess, (value) => validateChannelEnabled("workspaceApiAccess", value));
   const mcpAccess = ifDefined(input.workspaceMcpAccess, (value) => validateChannelEnabled("workspaceMcpAccess", value));
   const secretInput = ifDefined(input.secret, validateSecret);
@@ -131,6 +148,25 @@ export async function updateWorkspace(
     applied(["internetAccess"], egress.applied);
   }
 
+  // One write for both fields, each defaulting to the saved value, so either can be sent alone.
+  if (domainRestriction !== undefined || allowedDomains !== undefined) {
+    const previous = existing.domainAllowlist ?? { restricted: false, domains: [] };
+    const next = { restricted: domainRestriction ?? previous.restricted, domains: allowedDomains ?? previous.domains };
+    const fields = [
+      ...(domainRestriction !== undefined ? (["domainRestriction"] as const) : []),
+      ...(allowedDomains !== undefined ? (["allowedDomains"] as const) : []),
+    ];
+    const allowlist = setDomainAllowlist(
+      id,
+      next,
+      previous,
+      internetAccess ?? existing.internetAccess,
+      store,
+      deps.egress,
+    );
+    applied(fields, allowlist.applied);
+  }
+
   // These three write through capabilities that raise rather than return a flag, so reaching the next
   // line is itself the success signal — hence `true` rather than a result to check.
   if (apiAccess !== undefined) {
@@ -159,6 +195,8 @@ export async function updateWorkspace(
       ...field("maxRunMinutes", metadata.maxRunMinutes),
       ...(modelValues ?? {}),
       ...field("internetAccess", internetAccess),
+      ...field("domainRestriction", domainRestriction),
+      ...field("allowedDomains", allowedDomains),
       ...field("workspaceApiAccess", apiAccess),
       ...field("workspaceMcpAccess", mcpAccess),
       ...field("secret", secret),

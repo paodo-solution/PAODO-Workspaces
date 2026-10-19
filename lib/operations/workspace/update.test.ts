@@ -28,6 +28,7 @@ const storeStub = (overrides: Partial<UpdateWorkspaceStore> = {}): UpdateWorkspa
   setWorkspaceMaxRunMinutes: () => true,
   setWorkspaceLlm: () => true,
   setWorkspaceInternetAccess: () => true,
+  setWorkspaceDomainAllowlist: () => true,
   ...overrides,
 });
 
@@ -328,5 +329,59 @@ describe("the update contract", () => {
       secret: { name: "API_TOKEN", domains: ["api.example.com"] },
     });
     expect(result?.applied).toEqual(Object.keys(result?.values ?? {}));
+  });
+
+  describe("domain allowlist", () => {
+    const saved = {
+      ...workspace,
+      internetAccess: true,
+      domainAllowlist: { restricted: false, domains: ["api.vercel.com"] },
+    };
+
+    function recording() {
+      const written: unknown[] = [];
+      const policies: unknown[] = [];
+      const d = deps({
+        store: storeStub({
+          getWorkspace: () => saved,
+          setWorkspaceDomainAllowlist: (_id, allowlist) => {
+            written.push(allowlist);
+            return true;
+          },
+        }),
+        egress: egressStub({ setPolicy: (_id, enabled, allowlist) => policies.push({ enabled, allowlist }) }),
+      });
+      return { written, policies, d };
+    }
+
+    it("turns the restriction on and keeps the saved list", async () => {
+      const { written, policies, d } = recording();
+      const result = await updateWorkspace("ws-1", { domainRestriction: true }, d);
+      expect(written).toEqual([{ restricted: true, domains: ["api.vercel.com"] }]);
+      expect(policies).toEqual([{ enabled: true, allowlist: { restricted: true, domains: ["api.vercel.com"] } }]);
+      expect(result?.applied).toEqual(["domainRestriction"]);
+      expect(result?.values).toEqual({ domainRestriction: true });
+    });
+
+    it("replaces the list, normalized, and keeps the saved restriction", async () => {
+      const { written, d } = recording();
+      const result = await updateWorkspace("ws-1", { allowedDomains: ["https://Registry.npmjs.org/"] }, d);
+      expect(written).toEqual([{ restricted: false, domains: ["registry.npmjs.org"] }]);
+      expect(result?.values).toEqual({ allowedDomains: ["registry.npmjs.org"] });
+    });
+
+    it("writes the policy with the internet setting the same request applies", async () => {
+      const { policies, d } = recording();
+      await updateWorkspace("ws-1", { internetAccess: false, domainRestriction: true }, d);
+      expect(policies.at(-1)).toEqual({ enabled: false, allowlist: { restricted: true, domains: ["api.vercel.com"] } });
+    });
+
+    it("writes nothing when a domain is invalid", async () => {
+      const { written, d } = recording();
+      await expect(
+        updateWorkspace("ws-1", { domainRestriction: true, allowedDomains: ["localhost"] }, d),
+      ).rejects.toThrow("each allowed domain must be a hostname");
+      expect(written).toEqual([]);
+    });
   });
 });

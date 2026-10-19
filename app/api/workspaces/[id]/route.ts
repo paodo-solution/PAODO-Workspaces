@@ -54,6 +54,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     reasoningEffort?: string;
     description?: string;
     internetAccess?: boolean;
+    domainRestriction?: boolean;
+    allowedDomains?: string[];
     workspaceApiAccess?: boolean;
     workspaceMcpAccess?: boolean;
   };
@@ -96,6 +98,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.maxIterations !== undefined ? { maxIterations: body.maxIterations } : {}),
       ...(body.maxRunMinutes !== undefined ? { maxRunMinutes: body.maxRunMinutes } : {}),
       ...(body.internetAccess !== undefined ? { internetAccess: body.internetAccess } : {}),
+      ...(body.domainRestriction !== undefined ? { domainRestriction: body.domainRestriction } : {}),
+      ...(body.allowedDomains !== undefined ? { allowedDomains: body.allowedDomains } : {}),
       ...(body.workspaceApiAccess !== undefined ? { workspaceApiAccess: body.workspaceApiAccess } : {}),
       ...(body.workspaceMcpAccess !== undefined ? { workspaceMcpAccess: body.workspaceMcpAccess } : {}),
       // Omitted fields are forwarded as omitted, not as "": the operation resolves each missing one
