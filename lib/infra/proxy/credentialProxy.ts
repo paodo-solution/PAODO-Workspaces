@@ -10,9 +10,10 @@ import { isBlockedAddress, makeGuardedLookup } from "./destinationGuard";
 import { createAuditLogger, createLogger } from "../logger";
 import { throttleLog, throttleLogWithSources } from "../logThrottle";
 import { WorkspaceRuleStore } from "./workspaceRuleStore";
-import { allowedDomainsFor, isInternetAccessEnabled } from "./internetAccessPolicy";
+import { checkAccess, type AccessDecision } from "./internetAccessPolicy";
 import { readHttpHeaders, collectBody, pipeBody, bodyMode } from "./httpWire";
 import type { DomainRule } from "../security/workspaceSecretStore";
+import { hostMatches } from "../../workspace/domain";
 
 const log = createLogger("credentialProxy");
 const audit = createAuditLogger("credentialProxy");
@@ -28,11 +29,6 @@ function parseProxyAuth(authHeader: string | undefined): { wsId: string; secret:
   const colon = decoded.indexOf(":");
   if (colon === -1) return null;
   return { wsId: decoded.slice(0, colon), secret: decoded.slice(colon + 1) };
-}
-
-// Exact host only: a key for "api.openai.com" must never reach another "*.openai.com" host.
-export function hostMatches(hostname: string, domain: string): boolean {
-  return hostname.toLowerCase() === domain.toLowerCase();
 }
 
 // Merge the token maps of every rule whose domain covers this host. If none match, the
@@ -164,13 +160,6 @@ function auditBlockedDestination(context: ProxyRequestContext): void {
   );
 }
 
-// Exact match, like secrets: "vercel.com" doesn't cover "api.vercel.com". Unrestricted workspaces pass.
-export function isHostAllowed(allowed: readonly string[] | null, hostname: string): boolean {
-  if (allowed === null) return true;
-  const host = hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
-  return allowed.some((domain) => hostMatches(host, domain));
-}
-
 // Sources are the refused hosts, so a throttled window still names every host the user may need to add.
 function auditDomainNotAllowed(context: ProxyRequestContext): void {
   const window = throttleLogWithSources("proxy_domain_not_allowed", context.hostname);
@@ -241,17 +230,21 @@ export class CredentialProxy {
   // Extra CA(s) trusted for the re-originated upstream TLS. Test-only injection (lets an e2e
   // test run an HTTPS stub with a self-signed chain); production always uses the system roots.
   private upstreamCa?: string | string[];
+  // The workspace's internet policy (off, or restricted to listed hosts). Injectable like blockDestination.
+  private checkAccess: (wsId: string, hostname?: string) => AccessDecision;
   // Plain tunnels are opaque pipes that never re-check policy, so they're tracked for closeDisallowedTunnels.
   private tunnels = new Set<OpenTunnel>();
 
   constructor(opts?: {
     blockDestination?: (ip: string) => boolean;
+    checkAccess?: (wsId: string, hostname?: string) => AccessDecision;
     upstreamCa?: string | string[];
     /** The production sidecar exits here so Docker can restart a dead listener. */
     onServerError?: (err: Error) => void;
   }) {
     this.blockDestination = opts?.blockDestination ?? isBlockedAddress;
     this.upstreamCa = opts?.upstreamCa;
+    this.checkAccess = opts?.checkAccess ?? checkAccess;
     this.lookup = makeGuardedLookup(this.blockDestination);
     this.server = net.createServer((socket) => {
       this.handleConnection(socket).catch((err) => {
@@ -290,7 +283,7 @@ export class CredentialProxy {
     let closed = 0;
     for (const tunnel of this.tunnels) {
       const { workspaceId, hostname, port } = tunnel;
-      if (isInternetAccessEnabled(workspaceId) && isHostAllowed(allowedDomainsFor(workspaceId), hostname)) continue;
+      if (this.checkAccess(workspaceId, hostname) === "allowed") continue;
       this.tunnels.delete(tunnel);
       tunnel.client.destroy();
       tunnel.upstream.destroy();
@@ -332,7 +325,7 @@ export class CredentialProxy {
 
     // Defense in depth: an off workspace has no sidecar attached, so it only gets here through a stale
     // attachment or a redeploy race. Refused even if it has secret rules.
-    if (!isInternetAccessEnabled(auth.wsId)) {
+    if (this.checkAccess(auth.wsId) === "internet_off") {
       audit.warn(
         { wsId: auth.wsId, event: "proxy_internet_access_blocked" },
         "refusing connection — internet access is disabled for this workspace",
@@ -407,7 +400,7 @@ export class CredentialProxy {
 
   // Checked before any upstream connection or MITM, so an unlisted host is never contacted at all.
   private refuseUnlistedHost(socket: net.Socket, context: ProxyRequestContext): boolean {
-    if (!context.workspaceId || isHostAllowed(allowedDomainsFor(context.workspaceId), context.hostname)) return false;
+    if (!context.workspaceId || this.checkAccess(context.workspaceId, context.hostname) === "allowed") return false;
     auditDomainNotAllowed(context);
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();

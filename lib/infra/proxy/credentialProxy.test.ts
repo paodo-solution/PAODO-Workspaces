@@ -7,8 +7,6 @@ import type { Transform } from "stream";
 import type * as http from "http";
 import {
   substituteHeaderValue,
-  hostMatches,
-  isHostAllowed,
   reverseTokenMap,
   createRedactTransform,
   buildResponseHead,
@@ -69,46 +67,6 @@ describe("substituteHeaderValue", () => {
   it("does not corrupt a Basic header whose payload isn't valid base64", () => {
     // No token present and not decodable — must pass through unchanged, not throw.
     expect(substituteHeaderValue("Basic not*base64*here", tokenMap)).toBe("Basic not*base64*here");
-  });
-});
-
-describe("hostMatches (exact-host scoping)", () => {
-  it("matches the exact host", () => {
-    expect(hostMatches("api.openai.com", "api.openai.com")).toBe(true);
-  });
-
-  it("is case-insensitive on the request host", () => {
-    expect(hostMatches("API.OpenAI.com", "api.openai.com")).toBe(true);
-  });
-
-  it("is case-insensitive on the scoped domain too", () => {
-    expect(hostMatches("api.openai.com", "API.OpenAI.com")).toBe(true);
-  });
-
-  it("does NOT match a subdomain of the scoped host", () => {
-    expect(hostMatches("evil.api.openai.com", "api.openai.com")).toBe(false);
-  });
-
-  it("does NOT let an apex rule cover a subdomain", () => {
-    expect(hostMatches("api.openai.com", "openai.com")).toBe(false);
-  });
-
-  it("does not match unrelated hosts", () => {
-    expect(hostMatches("api.evil.com", "api.openai.com")).toBe(false);
-  });
-});
-
-describe("isHostAllowed (domain allowlist)", () => {
-  it("lets everything through when the workspace isn't restricted", () => {
-    expect(isHostAllowed(null, "anything.example.com")).toBe(true);
-  });
-
-  it("matches listed hosts exactly, ignoring case and a trailing dot", () => {
-    const allowed = ["api.vercel.com"];
-    expect(isHostAllowed(allowed, "API.Vercel.com.")).toBe(true);
-    expect(isHostAllowed(allowed, "vercel.com")).toBe(false);
-    expect(isHostAllowed(allowed, "evil.api.vercel.com")).toBe(false);
-    expect(isHostAllowed([], "api.vercel.com")).toBe(false);
   });
 });
 

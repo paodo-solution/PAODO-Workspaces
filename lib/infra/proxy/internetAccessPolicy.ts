@@ -7,7 +7,7 @@ import { atomicSaveJson, readJson } from "../jsonPersist";
 import { globalSingleton } from "../globalSingleton";
 import { createLogger } from "../logger";
 import type { DomainAllowlist } from "../../workspace/types";
-import { enforcedDomains } from "../../workspace/domain";
+import { enforcedDomains, isHostAllowed } from "../../workspace/domain";
 
 const log = createLogger("internetAccessPolicy");
 // Lives inside .proxy-ca/ so the sidecar can mount that one directory rather than the whole
@@ -55,6 +55,15 @@ export function isInternetAccessEnabled(wsId: string): boolean {
 export function allowedDomainsFor(wsId: string): readonly string[] | null {
   const entry = store[wsId];
   return Array.isArray(entry) ? entry : null;
+}
+
+export type AccessDecision = "allowed" | "internet_off" | "domain_not_allowed";
+
+/** Whether `wsId` may reach `hostname`; without a host, only whether its internet access is on. */
+export function checkAccess(wsId: string, hostname?: string): AccessDecision {
+  if (!isInternetAccessEnabled(wsId)) return "internet_off";
+  if (hostname === undefined || isHostAllowed(allowedDomainsFor(wsId), hostname)) return "allowed";
+  return "domain_not_allowed";
 }
 
 export function deleteInternetAccessPolicy(wsId: string): void {

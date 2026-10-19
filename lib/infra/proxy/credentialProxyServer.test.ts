@@ -441,6 +441,26 @@ describe("CredentialProxy domain allowlist", () => {
     expect((proxy as unknown as { tunnels: Set<unknown> }).tunnels.size).toBe(1);
   });
 
+  it("asks an injected policy instead of the policy file", async () => {
+    const stub = await countingStub();
+    const asked: Array<string | undefined> = [];
+    const proxy = new CredentialProxy({
+      ...allowAll,
+      checkAccess: (_wsId, hostname) => {
+        asked.push(hostname);
+        return hostname === undefined ? "allowed" : "domain_not_allowed";
+      },
+    });
+    const server = (proxy as unknown as { server: net.Server }).server;
+    proxy.listen(0);
+    await once(server, "listening");
+    cleanups.push(() => server.close());
+    const received = await connectThrough((server.address() as net.AddressInfo).port, `127.0.0.1:${stub.port}`);
+    expect(received).toContain("403");
+    expect(asked).toEqual([undefined, "127.0.0.1"]);
+    expect(stub.connections()).toBe(0);
+  });
+
   it("ignores a kept list while the restriction is off", async () => {
     const stub = await countingStub();
     setInternetAccessPolicy(WS, true, { restricted: false, domains: ["api.vercel.com"] });

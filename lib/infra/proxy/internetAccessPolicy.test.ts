@@ -21,6 +21,7 @@ import {
   deleteInternetAccessPolicy,
   reloadInternetAccessPolicy,
   allowedDomainsFor,
+  checkAccess,
   INTERNET_ACCESS_POLICY_FILE,
 } from "./internetAccessPolicy";
 
@@ -88,6 +89,25 @@ describe("setInternetAccessPolicy with a domain allowlist", () => {
     setInternetAccessPolicy("ws-reenabled", false, allowlist);
     setInternetAccessPolicy("ws-reenabled", true, allowlist);
     expect(allowedDomainsFor("ws-reenabled")).toEqual(["api.vercel.com"]);
+  });
+});
+
+describe("checkAccess", () => {
+  it("refuses everything while internet access is off, host or not", () => {
+    setInternetAccessPolicy("ws-check-off", false, { restricted: true, domains: ["api.vercel.com"] });
+    expect(checkAccess("ws-check-off")).toBe("internet_off");
+    expect(checkAccess("ws-check-off", "api.vercel.com")).toBe("internet_off");
+  });
+
+  it("allows only listed hosts while restricted, and any host before one is named", () => {
+    setInternetAccessPolicy("ws-check-restricted", true, { restricted: true, domains: ["api.vercel.com"] });
+    expect(checkAccess("ws-check-restricted")).toBe("allowed");
+    expect(checkAccess("ws-check-restricted", "API.Vercel.com")).toBe("allowed");
+    expect(checkAccess("ws-check-restricted", "vercel.com")).toBe("domain_not_allowed");
+  });
+
+  it("allows every host of an unrestricted workspace", () => {
+    expect(checkAccess("ws-check-never-set", "anything.example.com")).toBe("allowed");
   });
 });
 
