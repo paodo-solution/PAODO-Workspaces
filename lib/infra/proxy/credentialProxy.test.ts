@@ -8,6 +8,7 @@ import type * as http from "http";
 import {
   substituteHeaderValue,
   hostMatches,
+  isHostAllowed,
   reverseTokenMap,
   createRedactTransform,
   buildResponseHead,
@@ -94,6 +95,20 @@ describe("hostMatches (exact-host scoping)", () => {
 
   it("does not match unrelated hosts", () => {
     expect(hostMatches("api.evil.com", "api.openai.com")).toBe(false);
+  });
+});
+
+describe("isHostAllowed (domain allowlist)", () => {
+  it("lets everything through when the workspace isn't restricted", () => {
+    expect(isHostAllowed(null, "anything.example.com")).toBe(true);
+  });
+
+  it("matches listed hosts exactly, ignoring case and a trailing dot", () => {
+    const allowed = ["api.vercel.com"];
+    expect(isHostAllowed(allowed, "API.Vercel.com.")).toBe(true);
+    expect(isHostAllowed(allowed, "vercel.com")).toBe(false);
+    expect(isHostAllowed(allowed, "evil.api.vercel.com")).toBe(false);
+    expect(isHostAllowed([], "api.vercel.com")).toBe(false);
   });
 });
 

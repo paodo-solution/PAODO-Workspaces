@@ -17,6 +17,7 @@ import {
   reconcileInternetAccessPolicy,
   setInternetAccessPolicy,
   isInternetAccessEnabled,
+  allowedDomainsFor,
   INTERNET_ACCESS_POLICY_FILE,
 } from "./internetAccessPolicy";
 
@@ -56,6 +57,17 @@ describe("reconcileInternetAccessPolicy", () => {
     reconcileInternetAccessPolicy([{ id: "ws-kept", internetAccess: false }]);
     expect(onDisk()).toEqual({ "ws-kept": false });
     expect(isInternetAccessEnabled("ws-deleted-while-down")).toBe(true);
+  });
+
+  it("rebuilds restricted workspaces' hosts, and corrects a stale list", () => {
+    fs.writeFileSync(INTERNET_ACCESS_POLICY_FILE, JSON.stringify({ "ws-restricted": ["old.example.com"] }));
+    reconcileInternetAccessPolicy([
+      { id: "ws-restricted", domainAllowlist: { restricted: true, domains: ["api.vercel.com"] } },
+      { id: "ws-kept", domainAllowlist: { restricted: false, domains: ["api.vercel.com"] } },
+      { id: "ws-off", internetAccess: false, domainAllowlist: { restricted: true, domains: ["api.vercel.com"] } },
+    ]);
+    expect(onDisk()).toEqual({ "ws-restricted": ["api.vercel.com"], "ws-off": false });
+    expect(allowedDomainsFor("ws-restricted")).toEqual(["api.vercel.com"]);
   });
 
   it("throws when the rebuilt policy cannot be persisted, so startup can refuse to serve", () => {

@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  workspace: { id: "ws-1", name: "Alpha", internetAccess: false },
+  workspace: { id: "ws-1", name: "Alpha", internetAccess: false } as Record<string, unknown>,
   setWorkspaceInternetAccess: vi.fn(),
   setInternetAccessPolicy: vi.fn(),
   applyInternetAccess: vi.fn(async () => {}),
@@ -81,10 +81,17 @@ describe("PATCH /api/workspaces/[id]/internet-access", () => {
       applied: { internetAccess: true },
     });
     expect(h.setWorkspaceInternetAccess).toHaveBeenCalledWith("ws-1", true);
-    expect(h.setInternetAccessPolicy).toHaveBeenCalledWith("ws-1", true);
+    expect(h.setInternetAccessPolicy).toHaveBeenCalledWith("ws-1", true, undefined);
     // Carries the new value, so the network is rebuilt with the right --internal flag directly
     // rather than being left for a later container bring-up to reconcile.
     expect(h.applyInternetAccess).toHaveBeenCalledWith("ws-1", true);
+  });
+
+  it("hands the policy the saved allowlist, so turning internet back on restores the restriction", async () => {
+    const domainAllowlist = { restricted: true, domains: ["api.vercel.com"] };
+    h.workspace = { ...h.workspace, domainAllowlist };
+    await PATCH(request({ enabled: true }), ctx());
+    expect(h.setInternetAccessPolicy).toHaveBeenCalledWith("ws-1", true, domainAllowlist);
   });
 
   it("rolls back the store field when the policy-file write fails", async () => {
@@ -113,7 +120,7 @@ describe("PATCH /api/workspaces/[id]/internet-access", () => {
     });
     expect(h.setWorkspaceInternetAccess).toHaveBeenNthCalledWith(1, "ws-1", true);
     expect(h.setWorkspaceInternetAccess).toHaveBeenNthCalledWith(2, "ws-1", false);
-    expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(1, "ws-1", true);
-    expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(2, "ws-1", false);
+    expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(1, "ws-1", true, undefined);
+    expect(h.setInternetAccessPolicy).toHaveBeenNthCalledWith(2, "ws-1", false, undefined);
   });
 });

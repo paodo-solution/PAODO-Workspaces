@@ -8,9 +8,9 @@ import { Transform } from "stream";
 import { signDomainCert, verifyProxySecret } from "./proxyCA";
 import { isBlockedAddress, makeGuardedLookup } from "./destinationGuard";
 import { createAuditLogger, createLogger } from "../logger";
-import { throttleLog } from "../logThrottle";
+import { throttleLog, throttleLogWithSources } from "../logThrottle";
 import { WorkspaceRuleStore } from "./workspaceRuleStore";
-import { isInternetAccessEnabled } from "./internetAccessPolicy";
+import { allowedDomainsFor, isInternetAccessEnabled } from "./internetAccessPolicy";
 import { readHttpHeaders, collectBody, pipeBody, bodyMode } from "./httpWire";
 import type { DomainRule } from "../security/workspaceSecretStore";
 
@@ -156,6 +156,29 @@ function auditBlockedDestination(context: ProxyRequestContext): void {
   );
 }
 
+// Exact match, like secrets: "vercel.com" doesn't cover "api.vercel.com". Unrestricted workspaces pass.
+export function isHostAllowed(allowed: readonly string[] | null, hostname: string): boolean {
+  if (allowed === null) return true;
+  const host = hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  return allowed.some((domain) => hostMatches(host, domain));
+}
+
+// Sources are the refused hosts, so a throttled window still names every host the user may need to add.
+function auditDomainNotAllowed(context: ProxyRequestContext): void {
+  const window = throttleLogWithSources("proxy_domain_not_allowed", context.hostname);
+  if (window === null) return;
+  audit.warn(
+    {
+      event: "proxy_domain_not_allowed",
+      outcome: "request_blocked",
+      suppressed: window.suppressed,
+      suppressedHosts: window.sources,
+      ...context,
+    },
+    "credential proxy refused a host outside the workspace's allowed domains",
+  );
+}
+
 function auditUpstreamAuthFailure(
   context: ProxyRequestContext,
   method: string,
@@ -289,6 +312,7 @@ export class CredentialProxy {
       const colonIdx = target.lastIndexOf(":");
       const hostname = colonIdx !== -1 ? target.slice(0, colonIdx) : target;
       const port = colonIdx !== -1 ? parseInt(target.slice(colonIdx + 1), 10) : 443;
+      if (this.refuseUnlistedHost(socket, { workspaceId: auth.wsId, hostname, port, transport: "tunnel" })) return;
 
       // Only intercept TLS for hosts a secret is scoped to. Every other host (pypi, apt
       // mirrors, github…) is a straight tunnel, so package installs and clones are untouched.
@@ -339,6 +363,15 @@ export class CredentialProxy {
     } else {
       await this.handleHttpProxy(socket, statusLine, headers, remaining, auth?.wsId);
     }
+  }
+
+  // Checked before any upstream connection or MITM, so an unlisted host is never contacted at all.
+  private refuseUnlistedHost(socket: net.Socket, context: ProxyRequestContext): boolean {
+    if (!context.workspaceId || isHostAllowed(allowedDomainsFor(context.workspaceId), context.hostname)) return false;
+    auditDomainNotAllowed(context);
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    socket.destroy();
+    return true;
   }
 
   private async handleMitm(
@@ -480,6 +513,7 @@ export class CredentialProxy {
     const colonIdx = hostHeader.lastIndexOf(":");
     const hostname = colonIdx !== -1 ? hostHeader.slice(0, colonIdx) : hostHeader;
     const port = colonIdx !== -1 ? parseInt(hostHeader.slice(colonIdx + 1), 10) : 80;
+    if (this.refuseUnlistedHost(socket, { workspaceId, hostname, port, transport: "http" })) return;
 
     // SSRF guard: refuse plain-HTTP forwards to internal addresses. IP literals are checked here
     // (http.request skips DNS for them); hostnames are validated by this.lookup below.

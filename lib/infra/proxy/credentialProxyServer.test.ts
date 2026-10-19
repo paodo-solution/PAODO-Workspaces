@@ -310,6 +310,86 @@ describe("CredentialProxy internet-access policy", () => {
   });
 });
 
+// A restricted workspace reaches only its listed hosts, checked before any upstream connection or MITM,
+// so a secret rule for an unlisted host grants nothing.
+describe("CredentialProxy domain allowlist", () => {
+  const WS = "ws-allowlist";
+
+  async function countingStub(): Promise<{ port: number; connections: () => number }> {
+    let count = 0;
+    const stub = net.createServer((sock) => {
+      count += 1;
+      sock.write("HELLO");
+    });
+    cleanups.push(() => stub.close());
+    return { port: await listeningPort(stub), connections: () => count };
+  }
+
+  async function connectThrough(proxyPort: number, target: string): Promise<string> {
+    const client = net.connect(proxyPort, "127.0.0.1");
+    cleanups.push(() => client.destroy());
+    await once(client, "connect");
+    client.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${authHeader(WS)}\r\n`);
+    return readUntil(client, (s) => s.includes("HELLO") || s.includes("403"));
+  }
+
+  it("tunnels to a listed host", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["127.0.0.1"] });
+    const received = await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`);
+    expect(received).toContain("200 Connection Established");
+  });
+
+  it("refuses an unlisted host with a 403 without ever contacting it", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["api.vercel.com"] });
+    const received = await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`);
+    expect(received).toContain("403");
+    expect(received).not.toContain("Connection Established");
+    expect(stub.connections()).toBe(0);
+  });
+
+  it("refuses everything while restricted to an empty list", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: [] });
+    expect(await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`)).toContain("403");
+  });
+
+  it("refuses a plain-HTTP forward to an unlisted host", async () => {
+    const upstream = await startUpstream();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["api.vercel.com"] });
+    const client = net.connect(await startProxy(allowAll), "127.0.0.1");
+    cleanups.push(() => client.destroy());
+    await once(client, "connect");
+    client.write(
+      `GET http://127.0.0.1:${upstream.port}/ HTTP/1.1\r\nHost: 127.0.0.1:${upstream.port}\r\n${authHeader(WS)}\r\n`,
+    );
+    const received = await readUntil(client, (s) => s.includes("\r\n"));
+    expect(received).toContain("403");
+  });
+
+  it("refuses a host a secret is scoped to when the allowlist doesn't list it", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["api.vercel.com"] });
+    const proxy = new CredentialProxy(allowAll);
+    proxy.setRules(WS, [{ domain: "127.0.0.1", tokenMap: new Map([["__pxy_t__", "real"]]) }]);
+    const server = (proxy as unknown as { server: net.Server }).server;
+    proxy.listen(0);
+    await once(server, "listening");
+    cleanups.push(() => server.close());
+    const received = await connectThrough((server.address() as net.AddressInfo).port, `127.0.0.1:${stub.port}`);
+    expect(received).toContain("403");
+    expect(stub.connections()).toBe(0);
+  });
+
+  it("ignores a kept list while the restriction is off", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: false, domains: ["api.vercel.com"] });
+    const received = await connectThrough(await startProxy(allowAll), `127.0.0.1:${stub.port}`);
+    expect(received).toContain("200 Connection Established");
+  });
+});
+
 // Full MITM loop: token substituted upstream, response redacted back before the client sees it, so even an
 // upstream echoing the credential never exposes plaintext to the container.
 describe("CredentialProxy MITM response redaction", () => {

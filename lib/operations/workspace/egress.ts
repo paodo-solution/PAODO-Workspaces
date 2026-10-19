@@ -1,7 +1,7 @@
 // Internet access: the registry, the proxy policy and the sidecar attachment (containerManager.ts) must agree,
 // with rollback on failure. Applied to the running container, never by recreating it.
 import type { IWorkspaceStore } from "@/lib/infra/interfaces";
-import { getContainers } from "@/lib/infra/services";
+import { getContainers, getStore } from "@/lib/infra/services";
 import { setInternetAccessPolicy } from "@/lib/infra/proxy/internetAccessPolicy";
 import { createLogger } from "@/lib/infra/logger";
 import { WorkspaceUpdateError, WorkspaceUpdateFailure } from "./errors";
@@ -22,7 +22,8 @@ const log = createLogger("workspaceOperations");
 
 function defaultEgressServices(): EgressServices {
   return {
-    setPolicy: setInternetAccessPolicy,
+    // Carries the saved allowlist, so turning internet access back on restores the restriction too.
+    setPolicy: (id, enabled) => setInternetAccessPolicy(id, enabled, getStore().getWorkspace(id)?.domainAllowlist),
     applyToContainer: (id, enabled) => getContainers().applyInternetAccess(id, enabled),
   };
 }
