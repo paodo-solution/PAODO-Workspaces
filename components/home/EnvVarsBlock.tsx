@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ThirdPartySecret } from "@/lib/operations/workspace/secrets";
+import { DOMAIN_FORMAT_ERROR, isValidDomain } from "@/lib/workspace/domain";
 
 export default function EnvVarsBlock({ wsId }: { wsId: string }) {
   const [secrets, setSecrets] = useState<ThirdPartySecret[]>([]);
@@ -11,6 +12,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [domainBlurred, setDomainBlurred] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,9 +27,11 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
     setValue("");
     setDomains([""]);
     setError(null);
+    setDomainBlurred(false);
   };
 
   const setDomainValue = (idx: number, val: string) => {
+    setDomainBlurred(false);
     setDomains((prev) => prev.map((d, i) => (i === idx ? val : d)));
   };
 
@@ -38,6 +42,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
   };
 
   const trimmedDomains = domains.map((d) => d.trim()).filter((d) => d.length > 0);
+  const hasInvalidDomain = trimmedDomains.some((d) => !isValidDomain(d));
 
   const add = async () => {
     setError(null);
@@ -149,6 +154,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
                     className="input input-sm font-mono flex-1"
                     value={domain}
                     onChange={(e) => setDomainValue(idx, e.target.value)}
+                    onBlur={() => setDomainBlurred(true)}
                   />
                   {domains.length > 1 && (
                     <button
@@ -163,6 +169,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
                 </div>
               ))}
             </div>
+            {domainBlurred && hasInvalidDomain && <p className="text-xs text-danger m-0">{DOMAIN_FORMAT_ERROR}</p>}
             <button type="button" className="linkbtn px-0 text-primary mt-1 self-start" onClick={addDomainField}>
               + Add domain
             </button>
@@ -174,7 +181,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
             <button
               className="btn btn-sm"
               onClick={add}
-              disabled={adding || !name || !value || trimmedDomains.length === 0}
+              disabled={adding || !name || !value || trimmedDomains.length === 0 || hasInvalidDomain}
             >
               {adding ? "Saving…" : "Save secret"}
             </button>

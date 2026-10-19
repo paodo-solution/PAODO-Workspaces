@@ -4,22 +4,21 @@ import { getStore } from "@/lib/infra/services";
 import {
   deleteSecret,
   listSecretMeta,
-  normalizeDomain,
   setSecret,
   RESERVED_SECRET_NAMES,
 } from "@/lib/infra/security/workspaceSecretStore";
+import { isValidDomain } from "@/lib/workspace/domain";
 import { WorkspaceUpdateError, WorkspaceUpdateFailure } from "./errors";
 import type { WorkspaceLookup } from "./read";
 
 // Exported so callers that publish an input contract (the CLI's schema) state the same rule this
 // validates, instead of a copy that drifts.
 export const SECRET_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
-const SECRET_DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
 // Re-exported so the CLI schema states the same rule; defined in the store, which enforces it at injection.
 export { RESERVED_SECRET_NAMES };
 
-// A secret's name, date and allowed hosts. Never its value, which only the credential proxy injects.
+// A secret's name, date and allowed domains. Never its value, which only the credential proxy injects.
 export interface ThirdPartySecret {
   name: string;
   createdAt: string;
@@ -96,11 +95,11 @@ export function validateSecret(input: unknown): WorkspaceSecretInput {
   }
   if (typeof value !== "string" || !value.trim()) throw new WorkspaceUpdateError("value required");
   if (!Array.isArray(domains) || domains.length === 0) {
-    throw new WorkspaceUpdateError("add at least one allowed host");
+    throw new WorkspaceUpdateError("add at least one allowed domain");
   }
   for (const raw of domains) {
-    if (typeof raw !== "string" || !SECRET_DOMAIN_RE.test(normalizeDomain(raw))) {
-      throw new WorkspaceUpdateError("each allowed host must be a hostname the key is sent to (e.g. api.openai.com)");
+    if (typeof raw !== "string" || !isValidDomain(raw)) {
+      throw new WorkspaceUpdateError("each allowed domain must be a hostname the key is sent to (e.g. api.openai.com)");
     }
   }
   return { name, value, domains };

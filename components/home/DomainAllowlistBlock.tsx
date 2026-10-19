@@ -4,32 +4,29 @@
 
 import { useState } from "react";
 import { Switch } from "@/components/shared/Switch";
-
-/** Reduces a typed URL or host to a bare lowercase host, e.g. "https://API.x.com/v1" → "api.x.com". */
-function normalizeDomain(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^[a-z]+:\/\//, "")
-    .split(/[/?#]/)[0];
-}
+import { DOMAIN_FORMAT_ERROR, isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
 
 export default function DomainAllowlistBlock() {
   const [enabled, setEnabled] = useState(false);
   const [domains, setDomains] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
+  const [draftBlurred, setDraftBlurred] = useState(false);
+  const draftValid = isValidDomain(draft);
 
   const saveDraft = () => {
+    if (!draftValid) {
+      setDraftBlurred(true);
+      return;
+    }
     const domain = normalizeDomain(draft);
-    if (!domain) return;
     setDomains((prev) => (prev.includes(domain) ? prev : [...prev, domain]));
-    setDraft("");
-    setAdding(false);
+    cancelDraft();
   };
 
   const cancelDraft = () => {
     setDraft("");
+    setDraftBlurred(false);
     setAdding(false);
   };
 
@@ -72,27 +69,33 @@ export default function DomainAllowlistBlock() {
               </button>
             </div>
           ))}
-          {adding ? (
+          {adding && (
             <div className="flex items-center gap-2">
               <input
                 className="input input-sm font-mono flex-1"
                 autoFocus
                 aria-label="New allowed domain"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setDraftBlurred(false);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") saveDraft();
                   if (e.key === "Escape") cancelDraft();
                 }}
                 onBlur={() => {
                   if (!draft.trim()) cancelDraft();
+                  else setDraftBlurred(true);
                 }}
               />
-              <button type="button" className="btn w-16 px-0" onClick={saveDraft} disabled={!normalizeDomain(draft)}>
+              <button type="button" className="btn w-16 px-0" onClick={saveDraft} disabled={!draftValid}>
                 Save
               </button>
             </div>
-          ) : (
+          )}
+          {adding && draftBlurred && !draftValid && <p className="text-xs text-danger m-0">{DOMAIN_FORMAT_ERROR}</p>}
+          {!adding && (
             <button type="button" className="linkbtn px-0 text-primary self-start" onClick={() => setAdding(true)}>
               + Add domain
             </button>
