@@ -138,6 +138,14 @@ interface ProxyRequestContext {
   transport: "http" | "https" | "tunnel";
 }
 
+interface OpenTunnel {
+  workspaceId: string;
+  hostname: string;
+  port: number;
+  client: net.Socket;
+  upstream: net.Socket;
+}
+
 function isBlockedDestinationError(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === "EBLOCKED";
 }
@@ -233,6 +241,8 @@ export class CredentialProxy {
   // Extra CA(s) trusted for the re-originated upstream TLS. Test-only injection (lets an e2e
   // test run an HTTPS stub with a self-signed chain); production always uses the system roots.
   private upstreamCa?: string | string[];
+  // Plain tunnels are opaque pipes that never re-check policy, so they're tracked for closeDisallowedTunnels.
+  private tunnels = new Set<OpenTunnel>();
 
   constructor(opts?: {
     blockDestination?: (ip: string) => boolean;
@@ -273,6 +283,31 @@ export class CredentialProxy {
 
   clearRules(wsId: string): void {
     this.ruleStore.clearRules(wsId);
+  }
+
+  /** Closes every open plain tunnel the current policy refuses and returns how many; run after each policy reload. */
+  closeDisallowedTunnels(): number {
+    let closed = 0;
+    for (const tunnel of this.tunnels) {
+      const { workspaceId, hostname, port } = tunnel;
+      if (isInternetAccessEnabled(workspaceId) && isHostAllowed(allowedDomainsFor(workspaceId), hostname)) continue;
+      this.tunnels.delete(tunnel);
+      tunnel.client.destroy();
+      tunnel.upstream.destroy();
+      closed += 1;
+      audit.warn(
+        {
+          event: "proxy_tunnel_closed_by_policy",
+          outcome: "tunnel_closed",
+          workspaceId,
+          upstreamHost: hostname,
+          port,
+          transport: "tunnel",
+        },
+        "credential proxy closed an open tunnel the workspace's policy no longer allows",
+      );
+    }
+    return closed;
   }
 
   private async handleConnection(socket: net.Socket): Promise<void> {
@@ -353,6 +388,11 @@ export class CredentialProxy {
         });
         upstream.on("connect", () => {
           established = true;
+          const tunnel: OpenTunnel = { workspaceId: auth.wsId, hostname, port, client: socket, upstream };
+          this.tunnels.add(tunnel);
+          const forget = () => this.tunnels.delete(tunnel);
+          socket.once("close", forget);
+          upstream.once("close", forget);
           socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
           if (remaining.length) upstream.write(remaining);
           socket.pipe(upstream);

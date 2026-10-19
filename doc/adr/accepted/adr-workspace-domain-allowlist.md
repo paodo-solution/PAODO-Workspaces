@@ -71,7 +71,10 @@ Consequences
   way for data to leave, and a host that serves anyone's content (`github.com`,
   `raw.githubusercontent.com`, package registries) is a way for anyone's content to reach the
   agent. Paths aren't checked: for HTTPS the proxy sees only the host.
-- Changes apply to new connections only; a tunnel that's already open stays open until it closes.
+- Changes apply within one policy poll (about a second). On each reload the sidecar also closes open
+  tunnels to hosts it now refuses (`proxy_tunnel_closed_by_policy`), so a long-lived connection can't
+  outlast a narrowed list. A request with an injected secret already uses its own connection, so it
+  needs no such step.
 - A malformed saved allowlist doesn't stop the app. That workspace's internet access is turned off
   and `workspace_domain_allowlist_malformed` is logged. Falling back to an empty list would allow
   everything; refusing to start would take down every workspace for one bad record.

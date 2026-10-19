@@ -384,6 +384,64 @@ describe("CredentialProxy domain allowlist", () => {
     expect(stub.connections()).toBe(0);
   });
 
+  async function proxyWithPort(): Promise<{ proxy: CredentialProxy; port: number }> {
+    const proxy = new CredentialProxy(allowAll);
+    const server = (proxy as unknown as { server: net.Server }).server;
+    proxy.listen(0);
+    await once(server, "listening");
+    cleanups.push(() => server.close());
+    return { proxy, port: (server.address() as net.AddressInfo).port };
+  }
+
+  async function openTunnel(proxyPort: number, target: string): Promise<net.Socket> {
+    const client = net.connect(proxyPort, "127.0.0.1");
+    cleanups.push(() => client.destroy());
+    await once(client, "connect");
+    client.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${authHeader(WS)}\r\n`);
+    await readUntil(client, (s) => s.includes("HELLO"));
+    return client;
+  }
+
+  it("closes an open tunnel once the narrowed list no longer allows its host", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, undefined);
+    const { proxy, port } = await proxyWithPort();
+    const client = await openTunnel(port, `127.0.0.1:${stub.port}`);
+    const closed = once(client, "close");
+
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["api.vercel.com"] });
+    expect(proxy.closeDisallowedTunnels()).toBe(1);
+    await closed;
+  });
+
+  it("closes an open tunnel when internet access is turned off", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, undefined);
+    const { proxy, port } = await proxyWithPort();
+    const client = await openTunnel(port, `127.0.0.1:${stub.port}`);
+    const closed = once(client, "close");
+
+    setInternetAccessPolicy(WS, false);
+    expect(proxy.closeDisallowedTunnels()).toBe(1);
+    await closed;
+  });
+
+  it("keeps an open tunnel whose host is still listed, and forgets tunnels that closed", async () => {
+    const stub = await countingStub();
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["127.0.0.1"] });
+    const { proxy, port } = await proxyWithPort();
+    const kept = await openTunnel(port, `127.0.0.1:${stub.port}`);
+    const gone = await openTunnel(port, `127.0.0.1:${stub.port}`);
+    gone.destroy();
+    await once(gone, "close");
+    await new Promise((r) => setTimeout(r, 20));
+
+    setInternetAccessPolicy(WS, true, { restricted: true, domains: ["127.0.0.1", "api.vercel.com"] });
+    expect(proxy.closeDisallowedTunnels()).toBe(0);
+    expect(kept.destroyed).toBe(false);
+    expect((proxy as unknown as { tunnels: Set<unknown> }).tunnels.size).toBe(1);
+  });
+
   it("ignores a kept list while the restriction is off", async () => {
     const stub = await countingStub();
     setInternetAccessPolicy(WS, true, { restricted: false, domains: ["api.vercel.com"] });
