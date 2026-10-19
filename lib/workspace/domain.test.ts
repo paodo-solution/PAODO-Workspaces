@@ -23,9 +23,9 @@ describe("isValidDomain", () => {
 });
 
 describe("enforcedDomains", () => {
-  it("enforces a restricted list only once it has a domain", () => {
+  it("enforces a restricted list, an empty one allowing no host", () => {
     expect(enforcedDomains({ restricted: true, domains: ["api.vercel.com"] })).toEqual(["api.vercel.com"]);
-    expect(enforcedDomains({ restricted: true, domains: [] })).toBeNull();
+    expect(enforcedDomains({ restricted: true, domains: [] })).toEqual([]);
     expect(enforcedDomains({ restricted: false, domains: ["api.vercel.com"] })).toBeNull();
     expect(enforcedDomains(undefined)).toBeNull();
   });
@@ -38,8 +38,11 @@ describe("blockedHosts", () => {
     expect(blockedHosts(["github.com"], allowlist)).toEqual([]);
   });
 
+  it("blocks every host of the secret while a restricted list is empty", () => {
+    expect(blockedHosts(["api.github.com"], { restricted: true, domains: [] })).toEqual(["api.github.com"]);
+  });
+
   it("blocks nothing when no restriction is enforced", () => {
-    expect(blockedHosts(["api.github.com"], { restricted: true, domains: [] })).toEqual([]);
     expect(blockedHosts(["api.github.com"], { restricted: false, domains: ["github.com"] })).toEqual([]);
     expect(blockedHosts(["api.github.com"], undefined)).toEqual([]);
   });

@@ -24,7 +24,7 @@ type Store = Record<string, Entry>;
 // everywhere below (never reassigned) so all instances keep seeing the same state.
 const store: Store = globalSingleton<Store>("internetAccessPolicy", () => readJson<Store>(FILE, {}));
 
-// Off wins over the allowlist; a list that enforces nothing (not restricted, or empty) writes nothing.
+// Off wins over the allowlist; an unrestricted list writes nothing, a restricted empty one writes [] (no host).
 // Re-enabling internet access therefore brings back exactly the restriction the workspace had.
 function entryFor(enabled: boolean, allowlist?: DomainAllowlist): Entry | undefined {
   if (!enabled) return false;

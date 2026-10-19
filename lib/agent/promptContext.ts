@@ -31,12 +31,11 @@ function readAgentsMd(workspaceDir: string): string | undefined {
   }
 }
 
-// Hosts a restricted workspace may reach, or null when nothing is enforced (an empty list included).
-function allowedDomains(workspaceId: string): string[] | null {
-  return enforcedDomains(getStore().getWorkspace(workspaceId)?.domainAllowlist);
-}
-
 function buildRestrictedNetworkInfo(domains: string[]): string {
+  if (domains.length === 0) {
+    return `# Internet access — RESTRICTED, NO ALLOWED DOMAIN
+Internet access is restricted to allowed domains, but none is set, so every host gets a proxy 403, package registries included. Don't retry; tell the user which exact host to add.`;
+  }
   return `# Internet access — RESTRICTED
 Only these hosts are reachable, matched exactly (subdomains and redirect targets like www. need their own entry):
 ${domains.map((d) => `- ${d}`).join("\n")}
@@ -47,7 +46,7 @@ Any other host, package registries included, gets a proxy 403. Don't retry it; t
 function buildNetworkInfo(workspaceId: string): string {
   const ws = getStore().getWorkspace(workspaceId);
   const enabled = ws ? (ws.internetAccess ?? true) : false;
-  const restricted = enabled ? allowedDomains(workspaceId) : null;
+  const restricted = enabled ? enforcedDomains(ws?.domainAllowlist) : null;
   if (restricted) return buildRestrictedNetworkInfo(restricted);
   return enabled
     ? `# Internet access

@@ -23,9 +23,9 @@ export function isValidDomain(input: string): boolean {
   return DOMAIN_RE.test(normalizeDomain(input));
 }
 
-/** The hosts actually enforced, or null when unrestricted: an empty list doesn't restrict anything yet. */
+/** The hosts actually enforced, or null when unrestricted: a restricted empty list allows no host at all. */
 export function enforcedDomains(allowlist: DomainAllowlist | undefined): string[] | null {
-  return allowlist?.restricted && allowlist.domains.length > 0 ? allowlist.domains : null;
+  return allowlist?.restricted ? allowlist.domains : null;
 }
 
 /** A secret's hosts the allowlist refuses; empty when nothing is enforced. */

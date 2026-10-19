@@ -20,8 +20,8 @@ export interface Workspace {
   domainAllowlist?: DomainAllowlist;
 }
 
-// Hosts the container may reach while internet access is on, matched exactly. An empty list restricts
-// nothing until a domain is added (see enforcedDomains).
+// Hosts the container may reach while internet access is on, matched exactly. Restricted with an empty
+// list blocks every host (see enforcedDomains).
 export interface DomainAllowlist {
   restricted: boolean;
   domains: string[];

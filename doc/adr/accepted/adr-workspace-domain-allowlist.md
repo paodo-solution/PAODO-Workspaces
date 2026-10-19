@@ -34,15 +34,16 @@ Decision
 3. **Model.** `Workspace.domainAllowlist?: { restricted, domains }` lives in the registry. When
    absent, the workspace is unrestricted. The list is kept while `restricted` is off, so turning
    the restriction back on restores it.
-4. **An empty list restricts nothing.** `enforcedDomains()` is the single rule for whether a
-   restriction applies: it applies only when `restricted` is on and the list has at least one
-   domain. The proxy policy, the agent prompt, `blockedBy` on secrets and the UI all go through
-   it, so they can't disagree. In the UI, "On" stays grey until a domain is added. This was a
-   product choice: turning the switch on shouldn't cut the workspace off before its first domain
-   is entered.
+4. **An empty list blocks everything.** `enforcedDomains()` is the single rule for whether a
+   restriction applies: it applies whenever `restricted` is on, and an empty list allows no host.
+   The proxy policy, the agent prompt, `blockedBy` on secrets and the UI all go through it, so they
+   can't disagree. The switch therefore always means what it shows, and a half-finished setup fails
+   closed. The UI shows a red "No allowed domain is set" line while the list is empty, and the agent
+   prompt says every host is refused. The CLI and MCP can still send `domainRestriction` alone: the
+   in-between state is safe, just offline.
 5. **Enforcement in the proxy.** The sidecar's policy file (`internetAccessPolicy.ts`) now maps
-   each workspace to `false` (internet off), `string[]` (restricted to these hosts) or nothing
-   (open). Internet off wins over the allowlist. `credentialProxy.ts` checks `isHostAllowed`
+   each workspace to `false` (internet off), `string[]` (restricted to these hosts; `[]` allows
+   none) or nothing (open). Internet off wins over the allowlist. `credentialProxy.ts` checks `isHostAllowed`
    right after the internet-off check, for both CONNECT and plain HTTP, and before any upstream
    connection or MITM, so a refused host is never contacted. A refusal gets a 403 and a
    throttled `proxy_domain_not_allowed` audit line. The throttle records the refused hosts
@@ -76,8 +77,8 @@ Consequences
   outlast a narrowed list. A request with an injected secret already uses its own connection, so it
   needs no such step.
 - A malformed saved allowlist doesn't stop the app. That workspace's internet access is turned off
-  and `workspace_domain_allowlist_malformed` is logged. Falling back to an empty list would allow
-  everything; refusing to start would take down every workspace for one bad record.
+  and `workspace_domain_allowlist_malformed` is logged. Dropping the unreadable list would leave the
+  workspace open; refusing to start would take down every workspace for one bad record.
 - **Deploy the app and the sidecar together.** An older sidecar reads a list entry as "enabled" and
   allows everything.
 
@@ -88,9 +89,11 @@ Alternatives considered
   rule. They could be added later without breaking anything.
 - Path rules (`api.vercel.com/v9/*`): rejected, because they would mean decrypting every allowed
   connection, which costs more and makes failures harder to understand.
-- An empty list blocks everything: rejected after testing, because turning the switch on would cut
-  the workspace off until its first domain. This would have been the safer default, and the
-  malformed-record fallback above keeps that safety where it matters.
+- An empty list restricts nothing: this was the first choice, so that turning the switch on
+  wouldn't cut the workspace off before its first domain. Reversed, because the switch then said
+  "restricted" while every host was reachable, failing open in the state users are most likely to
+  leave half-done. Turning the switch on now cuts internet access, including open tunnels, until a
+  domain is added; the red warning makes that visible.
 - Allowing a secret's hosts automatically: rejected, because then the list on screen would no
   longer show everything the agent can reach.
 

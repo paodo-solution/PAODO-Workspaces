@@ -99,7 +99,7 @@ export class WorkspaceStore implements IWorkspaceStore {
   }
 
   // Fails closed for this workspace only: an unreadable allowlist turns its internet access off until the
-  // owner resets it, while every other workspace keeps working. An empty list would allow everything.
+  // owner resets it, while every other workspace keeps working. Dropping the list would leave it open.
   private checkDomainAllowlist(r: WorkspaceRecord): boolean {
     if (r.domainAllowlist === undefined || isDomainAllowlist(r.domainAllowlist)) return true;
     log.error(

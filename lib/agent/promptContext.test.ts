@@ -125,11 +125,12 @@ describe("buildWorkspacePromptInputs", () => {
       expect(networkInfo).toContain("tell the user which exact host to add");
     });
 
-    it("keeps the open-internet text while the list is empty, since nothing is enforced yet", () => {
+    it("tells the agent every host is refused while the list is empty", () => {
       getWorkspace.mockReturnValue(restricted([]));
       const { networkInfo } = buildWorkspacePromptInputs("ws1", dir);
-      expect(networkInfo).toContain("This workspace has internet access.");
-      expect(networkInfo).not.toContain("RESTRICTED");
+      expect(networkInfo).toContain("# Internet access — RESTRICTED, NO ALLOWED DOMAIN");
+      expect(networkInfo).toContain("every host gets a proxy 403");
+      expect(networkInfo).not.toContain("This workspace has internet access.");
     });
 
     it("keeps the open-internet text while a kept list isn't restricted", () => {
