@@ -6,6 +6,7 @@ import { metadataWrites, validateMetadata, type MetadataWriter, type WorkspaceMe
 import { currentModelSelection, publicModelSelection, type WorkspaceLookup } from "./read";
 import { setChannelEnabled, validateChannelEnabled, type ChannelCredentials } from "./access";
 import {
+  resolveDomainAllowlist,
   setDomainAllowlist,
   setInternetAccess,
   validateAllowedDomains,
@@ -144,14 +145,23 @@ export async function updateWorkspace(
   }
 
   if (internetAccess !== undefined) {
-    const egress = await setInternetAccess(id, internetAccess, existing.internetAccess, store, deps.egress);
+    const egress = await setInternetAccess(
+      id,
+      internetAccess,
+      existing.internetAccess,
+      existing.domainAllowlist,
+      store,
+      deps.egress,
+    );
     applied(["internetAccess"], egress.applied);
   }
 
-  // One write for both fields, each defaulting to the saved value, so either can be sent alone.
+  // One write for both fields.
   if (domainRestriction !== undefined || allowedDomains !== undefined) {
-    const previous = existing.domainAllowlist ?? { restricted: false, domains: [] };
-    const next = { restricted: domainRestriction ?? previous.restricted, domains: allowedDomains ?? previous.domains };
+    const { previous, next } = resolveDomainAllowlist(existing.domainAllowlist, {
+      restricted: domainRestriction,
+      domains: allowedDomains,
+    });
     const fields = [
       ...(domainRestriction !== undefined ? (["domainRestriction"] as const) : []),
       ...(allowedDomains !== undefined ? (["allowedDomains"] as const) : []),

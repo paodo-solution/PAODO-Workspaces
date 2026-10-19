@@ -1,7 +1,7 @@
 // Internet access and its domain allowlist: the registry, the proxy policy and the sidecar attachment
 // (containerManager.ts) must agree, with rollback on failure. Applied to the running container, never recreated.
 import type { IWorkspaceStore } from "@/lib/infra/interfaces";
-import { getContainers, getStore } from "@/lib/infra/services";
+import { getContainers } from "@/lib/infra/services";
 import { setInternetAccessPolicy } from "@/lib/infra/proxy/internetAccessPolicy";
 import { createLogger } from "@/lib/infra/logger";
 import { isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
@@ -11,8 +11,7 @@ import { WorkspaceUpdateError, WorkspaceUpdateFailure } from "./errors";
 export type EgressWriter = Pick<IWorkspaceStore, "setWorkspaceInternetAccess" | "setWorkspaceDomainAllowlist">;
 
 export interface EgressServices {
-  /** Without `allowlist`, writes the workspace's saved one, so re-enabling internet restores the restriction. */
-  setPolicy(id: string, enabled: boolean, allowlist?: DomainAllowlist): void;
+  setPolicy(id: string, enabled: boolean, allowlist: DomainAllowlist | undefined): void;
   applyToContainer(id: string, enabled: boolean): Promise<void>;
 }
 
@@ -25,8 +24,7 @@ const log = createLogger("workspaceOperations");
 
 function defaultEgressServices(): EgressServices {
   return {
-    setPolicy: (id, enabled, allowlist = getStore().getWorkspace(id)?.domainAllowlist) =>
-      setInternetAccessPolicy(id, enabled, allowlist),
+    setPolicy: setInternetAccessPolicy,
     applyToContainer: (id, enabled) => getContainers().applyInternetAccess(id, enabled),
   };
 }
@@ -60,19 +58,32 @@ export function validateAllowedDomains(value: unknown): string[] {
   return domains;
 }
 
+/** Merges validated changes over the saved allowlist, so either field can be sent alone. */
+export function resolveDomainAllowlist(
+  saved: DomainAllowlist | undefined,
+  changes: { restricted?: boolean; domains?: string[] },
+): { previous: DomainAllowlist; next: DomainAllowlist } {
+  const previous = saved ?? { restricted: false, domains: [] };
+  return {
+    previous,
+    next: { restricted: changes.restricted ?? previous.restricted, domains: changes.domains ?? previous.domains },
+  };
+}
+
 // Registry, proxy policy and network are one boundary: if the proxy or the network rebuild fails, all
-// roll back to `previous` and it throws.
+// roll back to `previous` and it throws. `allowlist` is the saved one, so re-enabling restores it.
 export async function setInternetAccess(
   id: string,
   enabled: boolean,
   previous: boolean,
+  allowlist: DomainAllowlist | undefined,
   store: EgressWriter,
   services: EgressServices = defaultEgressServices(),
 ): Promise<EgressResult> {
   if (!store.setWorkspaceInternetAccess(id, enabled)) return { applied: false };
 
   try {
-    services.setPolicy(id, enabled);
+    services.setPolicy(id, enabled, allowlist);
   } catch (err) {
     store.setWorkspaceInternetAccess(id, previous);
     log.error(
@@ -89,7 +100,7 @@ export async function setInternetAccess(
     try {
       // Restore the proxy first. If that write fails, keep the store at the new value rather than
       // knowingly making the two persisted authorities disagree.
-      services.setPolicy(id, previous);
+      services.setPolicy(id, previous, allowlist);
       if (!store.setWorkspaceInternetAccess(id, previous)) {
         throw new Error("workspace disappeared while rolling back internet access");
       }

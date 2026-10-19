@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_ALLOWED_DOMAINS,
+  resolveDomainAllowlist,
   setDomainAllowlist,
   setInternetAccess,
   validateAllowedDomains,
@@ -24,12 +25,13 @@ const services = (overrides: Partial<EgressServices> = {}): EgressServices => ({
 });
 
 describe("setting workspace egress", () => {
-  it("persists the setting, enforces it at the proxy, and tears down the container", async () => {
+  it("persists the setting, enforces it at the proxy with the saved allowlist, and tears down the container", async () => {
     const steps: string[] = [];
     const result = await setInternetAccess(
       "ws-1",
       true,
       false,
+      { restricted: true, domains: ["api.vercel.com"] },
       writer({
         setWorkspaceInternetAccess: (_id, enabled) => {
           steps.push(`registry:${enabled}`);
@@ -37,14 +39,14 @@ describe("setting workspace egress", () => {
         },
       }),
       services({
-        setPolicy: (_id, enabled) => steps.push(`policy:${enabled}`),
+        setPolicy: (_id, enabled, allowlist) => steps.push(`policy:${enabled}:${allowlist?.domains.join(",")}`),
         applyToContainer: async () => {
           steps.push("stop");
         },
       }),
     );
 
-    expect(steps).toEqual(["registry:true", "policy:true", "stop"]);
+    expect(steps).toEqual(["registry:true", "policy:true:api.vercel.com", "stop"]);
     expect(result).toEqual({ applied: true });
   });
 
@@ -64,6 +66,7 @@ describe("setting workspace egress", () => {
         "ws-1",
         true,
         false,
+        undefined,
         store,
         services({
           setPolicy: () => {
@@ -82,6 +85,7 @@ describe("setting workspace egress", () => {
         "ws-1",
         false,
         true,
+        undefined,
         writer(),
         services({
           setPolicy: () => {
@@ -104,6 +108,7 @@ describe("setting workspace egress", () => {
         "ws-1",
         false,
         true,
+        undefined,
         writer({
           setWorkspaceInternetAccess: (_id, enabled) => {
             written.push(enabled);
@@ -130,6 +135,7 @@ describe("setting workspace egress", () => {
       "ws-1",
       true,
       false,
+      undefined,
       writer({ setWorkspaceInternetAccess: () => false }),
       services({
         setPolicy: () => {
@@ -243,5 +249,22 @@ describe("setting the domain allowlist", () => {
       }),
     );
     expect(result).toEqual({ applied: false });
+  });
+});
+
+describe("resolving the domain allowlist", () => {
+  it("keeps the saved value of a field that wasn't sent", () => {
+    const saved: DomainAllowlist = { restricted: true, domains: ["api.vercel.com"] };
+    expect(resolveDomainAllowlist(saved, { restricted: false })).toEqual({
+      previous: saved,
+      next: { restricted: false, domains: ["api.vercel.com"] },
+    });
+  });
+
+  it("starts from an unrestricted empty list when nothing is saved", () => {
+    expect(resolveDomainAllowlist(undefined, { domains: ["a.example.com"] })).toEqual({
+      previous: { restricted: false, domains: [] },
+      next: { restricted: false, domains: ["a.example.com"] },
+    });
   });
 });
