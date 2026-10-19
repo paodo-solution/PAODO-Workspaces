@@ -62,8 +62,7 @@ export default function HomePage() {
     error: internetError,
     reload: reloadInternet,
     toggle: toggleInternetAccess,
-    domainRestriction,
-    allowedDomains,
+    allowlist,
     toggleDomainRestriction,
     setAllowedDomains,
   } = useWorkspaceInternetAccess(selectedId);
@@ -478,8 +477,7 @@ export default function HomePage() {
                   key={`net-${selected.id}`}
                   enabled={internetAccess}
                   onToggle={toggleInternetAccess}
-                  domainRestriction={domainRestriction}
-                  allowedDomains={allowedDomains}
+                  allowlist={allowlist}
                   onToggleDomainRestriction={toggleDomainRestriction}
                   onChangeAllowedDomains={setAllowedDomains}
                   loading={internetLoading}
@@ -487,11 +485,7 @@ export default function HomePage() {
                   onRetry={reloadInternet}
                 />
                 {internetAccess && (
-                  <EnvVarsBlock
-                    key={`env-${selected.id}`}
-                    wsId={selected.id}
-                    allowlist={{ restricted: domainRestriction, domains: allowedDomains }}
-                  />
+                  <EnvVarsBlock key={`env-${selected.id}`} wsId={selected.id} allowlist={allowlist} />
                 )}
               </div>
             ) : (

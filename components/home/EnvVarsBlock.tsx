@@ -1,19 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DomainField from "@/components/shared/DomainField";
+import RemoveButton from "@/components/shared/RemoveButton";
 import type { ThirdPartySecret } from "@/lib/operations/workspace/secrets";
-import { DOMAIN_FORMAT_ERROR, blockedHosts, isValidDomain } from "@/lib/workspace/domain";
+import { blockedHosts, isValidDomain } from "@/lib/workspace/domain";
 import type { DomainAllowlist } from "@/lib/workspace/types";
+
+// A stable id per domain row, so removing one row never hands its DomainField state to the next.
+interface DomainRow {
+  id: number;
+  value: string;
+}
+
+let nextRowId = 0;
+const blankRow = (): DomainRow => ({ id: nextRowId++, value: "" });
 
 export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowlist: DomainAllowlist }) {
   const [secrets, setSecrets] = useState<ThirdPartySecret[]>([]);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
-  const [domains, setDomains] = useState<string[]>([""]);
+  const [domains, setDomains] = useState<DomainRow[]>(() => [blankRow()]);
   const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [domainBlurred, setDomainBlurred] = useState(false);
 
   useEffect(() => {
     fetch(`/api/workspaces/${wsId}/env-vars`)
@@ -25,23 +35,21 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
   const resetForm = () => {
     setName("");
     setValue("");
-    setDomains([""]);
+    setDomains([blankRow()]);
     setError(null);
-    setDomainBlurred(false);
   };
 
-  const setDomainValue = (idx: number, val: string) => {
-    setDomainBlurred(false);
-    setDomains((prev) => prev.map((d, i) => (i === idx ? val : d)));
+  const setDomainValue = (id: number, val: string) => {
+    setDomains((prev) => prev.map((row) => (row.id === id ? { ...row, value: val } : row)));
   };
 
-  const addDomainField = () => setDomains((prev) => [...prev, ""]);
+  const addDomainField = () => setDomains((prev) => [...prev, blankRow()]);
 
-  const removeDomainField = (idx: number) => {
-    setDomains((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
+  const removeDomainField = (id: number) => {
+    setDomains((prev) => (prev.length === 1 ? [blankRow()] : prev.filter((row) => row.id !== id)));
   };
 
-  const trimmedDomains = domains.map((d) => d.trim()).filter((d) => d.length > 0);
+  const trimmedDomains = domains.map((row) => row.value.trim()).filter((d) => d.length > 0);
   const hasInvalidDomain = trimmedDomains.some((d) => !isValidDomain(d));
 
   const add = async () => {
@@ -89,14 +97,7 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
                 <span className="shrink-0">{s.name}</span>
                 {s.domains?.length ? <span className="truncate">→ {s.domains.join(", ")}</span> : null}
               </div>
-              <button
-                type="button"
-                className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70 shrink-0"
-                aria-label={`Remove ${s.name}`}
-                onClick={() => remove(s.name)}
-              >
-                ×
-              </button>
+              <RemoveButton label={`Remove ${s.name}`} onClick={() => remove(s.name)} />
             </div>
           ))}
         </div>
@@ -138,28 +139,14 @@ export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowl
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-text">Allowed domains</span>
             <div className="flex flex-col gap-2">
-              {domains.map((domain, idx) => (
-                <div className="flex items-center gap-2" key={idx}>
-                  <input
-                    className="input input-sm font-mono flex-1"
-                    value={domain}
-                    onChange={(e) => setDomainValue(idx, e.target.value)}
-                    onBlur={() => setDomainBlurred(true)}
-                  />
+              {domains.map((row) => (
+                <DomainField key={row.id} value={row.value} onChange={(val) => setDomainValue(row.id, val)}>
                   {domains.length > 1 && (
-                    <button
-                      type="button"
-                      className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70"
-                      aria-label="Remove domain"
-                      onClick={() => removeDomainField(idx)}
-                    >
-                      ×
-                    </button>
+                    <RemoveButton label="Remove domain" onClick={() => removeDomainField(row.id)} />
                   )}
-                </div>
+                </DomainField>
               ))}
             </div>
-            {domainBlurred && hasInvalidDomain && <p className="text-xs text-danger m-0">{DOMAIN_FORMAT_ERROR}</p>}
             <button type="button" className="linkbtn px-0 text-primary mt-1 self-start" onClick={addDomainField}>
               + Add domain
             </button>

@@ -5,6 +5,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { confirmedValues } from "@/lib/client/workspaceReceipt";
 import { fetchJson } from "@/lib/client/fetchJson";
+import type { DomainAllowlist } from "@/lib/workspace/types";
 import { useAsyncResource } from "./useAsyncResource";
 
 interface Access {
@@ -73,11 +74,14 @@ export function useWorkspaceInternetAccess(workspaceId: string | null) {
     [change, access.domainRestriction],
   );
   const setAllowedDomains = useCallback((allowedDomains: string[]) => change({ allowedDomains }), [change]);
+  const allowlist = useMemo<DomainAllowlist>(
+    () => ({ restricted: access.domainRestriction, domains: access.allowedDomains }),
+    [access.domainRestriction, access.allowedDomains],
+  );
 
   return {
     enabled: access.enabled,
-    domainRestriction: access.domainRestriction,
-    allowedDomains: access.allowedDomains,
+    allowlist,
     loading: resource.loading,
     error: resource.error,
     reload: resource.reload,

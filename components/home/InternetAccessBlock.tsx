@@ -4,13 +4,13 @@
 
 import { AsyncState } from "@/components/shared/AsyncState";
 import { Switch } from "@/components/shared/Switch";
+import type { DomainAllowlist } from "@/lib/workspace/types";
 import DomainAllowlistBlock from "./DomainAllowlistBlock";
 
 interface Props {
   enabled: boolean;
   onToggle: () => void;
-  domainRestriction: boolean;
-  allowedDomains: string[];
+  allowlist: DomainAllowlist;
   onToggleDomainRestriction: () => void;
   onChangeAllowedDomains: (domains: string[]) => void;
   loading?: boolean;
@@ -21,8 +21,7 @@ interface Props {
 export default function InternetAccessBlock({
   enabled,
   onToggle,
-  domainRestriction,
-  allowedDomains,
+  allowlist,
   onToggleDomainRestriction,
   onChangeAllowedDomains,
   loading = false,
@@ -53,8 +52,8 @@ export default function InternetAccessBlock({
 
       {enabled && (
         <DomainAllowlistBlock
-          enabled={domainRestriction}
-          domains={allowedDomains}
+          enabled={allowlist.restricted}
+          domains={allowlist.domains}
           onToggle={onToggleDomainRestriction}
           onChangeDomains={onChangeAllowedDomains}
         />

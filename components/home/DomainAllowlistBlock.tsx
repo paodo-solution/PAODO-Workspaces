@@ -3,8 +3,10 @@
 "use client";
 
 import { useState } from "react";
+import DomainField from "@/components/shared/DomainField";
+import RemoveButton from "@/components/shared/RemoveButton";
 import { Switch } from "@/components/shared/Switch";
-import { DOMAIN_FORMAT_ERROR, isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
+import { isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
 
 interface Props {
   enabled: boolean;
@@ -17,14 +19,10 @@ interface Props {
 export default function DomainAllowlistBlock({ enabled, domains, onToggle, onChangeDomains }: Props) {
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
-  const [draftBlurred, setDraftBlurred] = useState(false);
   const draftValid = isValidDomain(draft);
 
   const saveDraft = () => {
-    if (!draftValid) {
-      setDraftBlurred(true);
-      return;
-    }
+    if (!draftValid) return;
     const domain = normalizeDomain(draft);
     if (!domains.includes(domain)) onChangeDomains([...domains, domain]);
     cancelDraft();
@@ -32,7 +30,6 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
 
   const cancelDraft = () => {
     setDraft("");
-    setDraftBlurred(false);
     setAdding(false);
   };
 
@@ -65,42 +62,28 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onCha
                 disabled
                 aria-label={`Allowed domain ${domain}`}
               />
-              <button
-                type="button"
-                className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70"
-                aria-label={`Remove ${domain}`}
-                onClick={() => removeDomain(domain)}
-              >
-                ×
-              </button>
+              <RemoveButton label={`Remove ${domain}`} onClick={() => removeDomain(domain)} />
             </div>
           ))}
           {adding && (
-            <div className="flex items-center gap-2">
-              <input
-                className="input input-sm font-mono flex-1"
-                autoFocus
-                aria-label="New allowed domain"
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  setDraftBlurred(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveDraft();
-                  if (e.key === "Escape") cancelDraft();
-                }}
-                onBlur={() => {
-                  if (!draft.trim()) cancelDraft();
-                  else setDraftBlurred(true);
-                }}
-              />
+            <DomainField
+              autoFocus
+              ariaLabel="New allowed domain"
+              value={draft}
+              onChange={setDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveDraft();
+                if (e.key === "Escape") cancelDraft();
+              }}
+              onBlur={() => {
+                if (!draft.trim()) cancelDraft();
+              }}
+            >
               <button type="button" className="btn w-16 px-0" onClick={saveDraft} disabled={!draftValid}>
                 Save
               </button>
-            </div>
+            </DomainField>
           )}
-          {adding && draftBlurred && !draftValid && <p className="text-xs text-danger m-0">{DOMAIN_FORMAT_ERROR}</p>}
           {!adding && (
             <button type="button" className="linkbtn px-0 text-primary self-start" onClick={() => setAdding(true)}>
               + Add domain
