@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import type { ThirdPartySecret } from "@/lib/operations/workspace/secrets";
-import { DOMAIN_FORMAT_ERROR, isValidDomain } from "@/lib/workspace/domain";
+import { DOMAIN_FORMAT_ERROR, blockedHosts, isValidDomain } from "@/lib/workspace/domain";
+import type { DomainAllowlist } from "@/lib/workspace/types";
 
-export default function EnvVarsBlock({ wsId }: { wsId: string }) {
+export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowlist: DomainAllowlist }) {
   const [secrets, setSecrets] = useState<ThirdPartySecret[]>([]);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
@@ -67,6 +68,8 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
     }
   };
 
+  const hasMismatch = secrets.some((s) => blockedHosts(s.domains, allowlist).length > 0);
+
   const remove = async (secretName: string) => {
     await fetch(`/api/workspaces/${wsId}/env-vars/${encodeURIComponent(secretName)}`, { method: "DELETE" });
     setConfirmDelete(null);
@@ -81,17 +84,12 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
       </div>
 
       {secrets.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {secrets.map((s) => (
-            <div
-              key={s.name}
-              className="flex items-center justify-between gap-2 text-ms bg-white border border-border rounded-ctrl px-2.5 py-1.5"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <code className="font-mono text-xs text-text shrink-0">{s.name}</code>
-                {s.domains?.length ? (
-                  <span className="text-xs text-text-muted truncate">→ {s.domains.join(", ")}</span>
-                ) : null}
+            <div key={s.name} className="flex items-center gap-2">
+              <div className="input input-sm font-mono flex-1 min-w-0 flex items-center gap-2 bg-bg-deep text-text-3">
+                <span className="shrink-0">{s.name}</span>
+                {s.domains?.length ? <span className="truncate">→ {s.domains.join(", ")}</span> : null}
               </div>
               {confirmDelete === s.name ? (
                 <div className="flex items-center gap-2 shrink-0">
@@ -103,8 +101,13 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
                   </button>
                 </div>
               ) : (
-                <button className="linkbtn text-danger shrink-0" onClick={() => setConfirmDelete(s.name)}>
-                  Delete
+                <button
+                  type="button"
+                  className="border-0 bg-transparent p-0 text-lg leading-none text-danger cursor-pointer hover:opacity-70 shrink-0"
+                  aria-label={`Remove ${s.name}`}
+                  onClick={() => setConfirmDelete(s.name)}
+                >
+                  ×
                 </button>
               )}
             </div>
@@ -196,6 +199,10 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
             </button>
           </div>
         </div>
+      )}
+
+      {hasMismatch && (
+        <p className="text-xs text-danger m-0">Some secrets won&apos;t work because their domains are not allowed.</p>
       )}
     </div>
   );

@@ -51,7 +51,7 @@ Decision
 6. **Secrets are not exempt.** A secret's host is reachable only if it's also on the allowlist. The
    allowlist is the one place that decides where the agent can go. A secret whose hosts are all
    unlisted shows `blockedBy: "domainAllowlist"` in the API, CLI and MCP; the prompt marks each
-   unlisted host "(blocked: … not allowed)". The app shows no note.
+   unlisted host "(blocked: … not allowed)", and the app shows one red line under the secrets.
 7. **The agent is told.** `promptContext.ts` adds a "RESTRICTED" section listing the hosts. It tells
    the agent that subdomains and redirect targets need their own entry, and that a refused host
    should be named to the user rather than retried.

@@ -486,7 +486,13 @@ export default function HomePage() {
                   error={internetError}
                   onRetry={reloadInternet}
                 />
-                {internetAccess && <EnvVarsBlock key={`env-${selected.id}`} wsId={selected.id} />}
+                {internetAccess && (
+                  <EnvVarsBlock
+                    key={`env-${selected.id}`}
+                    wsId={selected.id}
+                    allowlist={{ restricted: domainRestriction, domains: allowedDomains }}
+                  />
+                )}
               </div>
             ) : (
               <div className="mt-20 text-center text-text-2">
