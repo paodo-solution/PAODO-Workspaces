@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { AsyncState } from "./AsyncState";
 import CredentialReveal from "./CredentialReveal";
+import { Switch } from "./Switch";
 
 interface CredentialPanelProps {
   title: string;
@@ -74,16 +75,12 @@ export default function CredentialPanel({
             {statusLabel(enabled, hasKey)}
           </span>
         </div>
-        <button
-          className={`relative w-9 h-5 rounded-[10px] border-0 cursor-pointer transition-colors duration-200 p-0 flex-shrink-0 ${enabled ? "bg-primary" : "bg-border"}`}
-          onClick={onToggle}
+        <Switch
+          checked={enabled}
+          onChange={onToggle}
           disabled={busy}
-          aria-label={enabled ? `Disable ${toggleLabel}` : `Enable ${toggleLabel}`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 block ${enabled ? "translate-x-4" : ""}`}
-          />
-        </button>
+          ariaLabel={enabled ? `Disable ${toggleLabel}` : `Enable ${toggleLabel}`}
+        />
       </div>
 
       {error && (
