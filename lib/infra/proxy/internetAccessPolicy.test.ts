@@ -20,6 +20,8 @@ import {
   isInternetAccessEnabled,
   deleteInternetAccessPolicy,
   reloadInternetAccessPolicy,
+  allowedDomainsFor,
+  checkAccess,
   INTERNET_ACCESS_POLICY_FILE,
 } from "./internetAccessPolicy";
 
@@ -50,6 +52,96 @@ describe("setInternetAccessPolicy / isInternetAccessEnabled round-trip", () => {
   it("does not affect other workspaces", () => {
     setInternetAccessPolicy("ws-a", false);
     expect(isInternetAccessEnabled("ws-b")).toBe(true);
+  });
+});
+
+describe("setInternetAccessPolicy with a domain allowlist", () => {
+  const onDisk = () => JSON.parse(fs.readFileSync(INTERNET_ACCESS_POLICY_FILE, "utf-8"));
+
+  it("writes the hosts of a restricted workspace and reads them back", () => {
+    setInternetAccessPolicy("ws-restricted", true, { restricted: true, domains: ["api.vercel.com"] });
+    expect(onDisk()["ws-restricted"]).toEqual(["api.vercel.com"]);
+    expect(isInternetAccessEnabled("ws-restricted")).toBe(true);
+    expect(allowedDomainsFor("ws-restricted")).toEqual(["api.vercel.com"]);
+  });
+
+  it("writes an empty list for a restriction with no domains, which allows no host", () => {
+    setInternetAccessPolicy("ws-empty", true, { restricted: true, domains: [] });
+    expect(onDisk()["ws-empty"]).toEqual([]);
+    expect(isInternetAccessEnabled("ws-empty")).toBe(true);
+    expect(allowedDomainsFor("ws-empty")).toEqual([]);
+  });
+
+  it("writes nothing for a kept list while the restriction is off", () => {
+    setInternetAccessPolicy("ws-kept", true, { restricted: false, domains: ["api.vercel.com"] });
+    expect(onDisk()).not.toHaveProperty("ws-kept");
+    expect(allowedDomainsFor("ws-kept")).toBeNull();
+  });
+
+  it("lets internet off win over the allowlist", () => {
+    setInternetAccessPolicy("ws-off-restricted", false, { restricted: true, domains: ["api.vercel.com"] });
+    expect(isInternetAccessEnabled("ws-off-restricted")).toBe(false);
+    expect(allowedDomainsFor("ws-off-restricted")).toBeNull();
+  });
+
+  it("restores the restriction when internet access is turned back on", () => {
+    const allowlist = { restricted: true, domains: ["api.vercel.com"] };
+    setInternetAccessPolicy("ws-reenabled", false, allowlist);
+    setInternetAccessPolicy("ws-reenabled", true, allowlist);
+    expect(allowedDomainsFor("ws-reenabled")).toEqual(["api.vercel.com"]);
+  });
+});
+
+describe("setInternetAccessPolicy when the save fails", () => {
+  const onDisk = () => JSON.parse(fs.readFileSync(INTERNET_ACCESS_POLICY_FILE, "utf-8"));
+  // A directory where atomicSaveJson writes its temp file makes the save throw.
+  const blockSave = () => fs.mkdirSync(INTERNET_ACCESS_POLICY_FILE + ".tmp", { recursive: true });
+  const unblockSave = () => fs.rmSync(INTERNET_ACCESS_POLICY_FILE + ".tmp", { recursive: true, force: true });
+
+  afterEach(unblockSave);
+
+  it("keeps the previous entry in memory and throws", () => {
+    setInternetAccessPolicy("ws-failed", true, { restricted: true, domains: ["api.vercel.com"] });
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed", true)).toThrow();
+    expect(allowedDomainsFor("ws-failed")).toEqual(["api.vercel.com"]);
+  });
+
+  it("never persists the failed change with a later save of another workspace", () => {
+    setInternetAccessPolicy("ws-failed-later", false);
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed-later", true)).toThrow();
+    unblockSave();
+    setInternetAccessPolicy("ws-other-save", false);
+    expect(onDisk()["ws-failed-later"]).toBe(false);
+  });
+
+  it("restores the absence of an entry for a workspace that had none", () => {
+    blockSave();
+    expect(() => setInternetAccessPolicy("ws-failed-new", false)).toThrow();
+    unblockSave();
+    setInternetAccessPolicy("ws-other-save-2", false);
+    expect(onDisk()).not.toHaveProperty("ws-failed-new");
+    expect(isInternetAccessEnabled("ws-failed-new")).toBe(true);
+  });
+});
+
+describe("checkAccess", () => {
+  it("refuses everything while internet access is off, host or not", () => {
+    setInternetAccessPolicy("ws-check-off", false, { restricted: true, domains: ["api.vercel.com"] });
+    expect(checkAccess("ws-check-off")).toBe("internet_off");
+    expect(checkAccess("ws-check-off", "api.vercel.com")).toBe("internet_off");
+  });
+
+  it("allows only listed hosts while restricted, and any host before one is named", () => {
+    setInternetAccessPolicy("ws-check-restricted", true, { restricted: true, domains: ["api.vercel.com"] });
+    expect(checkAccess("ws-check-restricted")).toBe("allowed");
+    expect(checkAccess("ws-check-restricted", "API.Vercel.com")).toBe("allowed");
+    expect(checkAccess("ws-check-restricted", "vercel.com")).toBe("domain_not_allowed");
+  });
+
+  it("allows every host of an unrestricted workspace", () => {
+    expect(checkAccess("ws-check-never-set", "anything.example.com")).toBe("allowed");
   });
 });
 

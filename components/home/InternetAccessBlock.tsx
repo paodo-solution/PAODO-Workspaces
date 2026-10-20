@@ -3,16 +3,33 @@
 "use client";
 
 import { AsyncState } from "@/components/shared/AsyncState";
+import { Switch } from "@/components/shared/Switch";
+import type { DomainAllowlist } from "@/lib/workspace/types";
+import DomainAllowlistBlock from "./DomainAllowlistBlock";
 
 interface Props {
   enabled: boolean;
   onToggle: () => void;
+  allowlist: DomainAllowlist;
+  onToggleDomainRestriction: () => void;
+  onAddAllowedDomain: (domain: string) => void;
+  onRemoveAllowedDomain: (domain: string) => void;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
 }
 
-export default function InternetAccessBlock({ enabled, onToggle, loading = false, error = false, onRetry }: Props) {
+export default function InternetAccessBlock({
+  enabled,
+  onToggle,
+  allowlist,
+  onToggleDomainRestriction,
+  onAddAllowedDomain,
+  onRemoveAllowedDomain,
+  loading = false,
+  error = false,
+  onRetry,
+}: Props) {
   if (loading || error) {
     return (
       <div className="flex flex-col mt-4 border border-border rounded-card p-[16px_18px] bg-bg-tint">
@@ -28,16 +45,22 @@ export default function InternetAccessBlock({ enabled, onToggle, loading = false
           <span className="text-ms font-semibold text-text">Internet access</span>
           <span className={`text-xs ml-2 ${enabled ? "text-select" : "text-text-3"}`}>{enabled ? "On" : "Off"}</span>
         </div>
-        <button
-          className={`relative w-9 h-5 rounded-[10px] border-0 cursor-pointer transition-colors duration-200 p-0 flex-shrink-0 ${enabled ? "bg-primary" : "bg-border"}`}
-          onClick={onToggle}
-          aria-label={enabled ? "Disable internet access" : "Enable internet access"}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 block ${enabled ? "translate-x-4" : ""}`}
-          />
-        </button>
+        <Switch
+          checked={enabled}
+          onChange={onToggle}
+          ariaLabel={enabled ? "Disable internet access" : "Enable internet access"}
+        />
       </div>
+
+      {enabled && (
+        <DomainAllowlistBlock
+          enabled={allowlist.restricted}
+          domains={allowlist.domains}
+          onToggle={onToggleDomainRestriction}
+          onAddDomain={onAddAllowedDomain}
+          onRemoveDomain={onRemoveAllowedDomain}
+        />
+      )}
 
       {!enabled && (
         <p className="m-0 text-xs text-text-3">

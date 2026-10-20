@@ -1,11 +1,13 @@
-// Per-workspace internet policy the proxy checks before any tunnel (defense in depth behind detaching the
-// sidecar). On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
+// Per-workspace internet policy the proxy checks before any tunnel: off (backing up the detached sidecar)
+// or restricted to exact hosts. On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
 import path from "path";
 import { readFileSync } from "fs";
 import { WORKSPACES_ROOT } from "../paths";
 import { atomicSaveJson, readJson } from "../jsonPersist";
 import { globalSingleton } from "../globalSingleton";
 import { createLogger } from "../logger";
+import type { DomainAllowlist } from "../../workspace/types";
+import { enforcedDomains, isHostAllowed } from "../../workspace/domain";
 
 const log = createLogger("internetAccessPolicy");
 // Lives inside .proxy-ca/ so the sidecar can mount that one directory rather than the whole
@@ -13,20 +15,36 @@ const log = createLogger("internetAccessPolicy");
 const FILE = path.join(WORKSPACES_ROOT, ".proxy-ca", "internet-access.json");
 export const INTERNET_ACCESS_POLICY_FILE = FILE;
 
-// wsId -> enabled. Sparse: only "off" entries are ever written (see setInternetAccessPolicy), so an
-// absent key means enabled — the safe default, matching WorkspaceMetadata.internetAccess's default.
-type Store = Record<string, boolean>;
+// wsId -> false (internet off) or the hosts it may reach (restricted). Sparse: an absent key means open,
+// matching WorkspaceMetadata.internetAccess's default.
+type Entry = false | string[];
+type Store = Record<string, Entry>;
 
 // Fixed reference, shared across every module instance via globalSingleton — mutated in place
 // everywhere below (never reassigned) so all instances keep seeing the same state.
 const store: Store = globalSingleton<Store>("internetAccessPolicy", () => readJson<Store>(FILE, {}));
 
-export function setInternetAccessPolicy(wsId: string, enabled: boolean): void {
-  if (enabled) delete store[wsId];
-  else store[wsId] = false;
+// Off wins over the allowlist; an unrestricted list writes nothing, a restricted empty one writes [] (no host).
+// Re-enabling internet access therefore brings back exactly the restriction the workspace had.
+function entryFor(enabled: boolean, allowlist?: DomainAllowlist): Entry | undefined {
+  if (!enabled) return false;
+  const domains = enforcedDomains(allowlist);
+  return domains ? [...domains] : undefined;
+}
+
+function putEntry(wsId: string, entry: Entry | undefined): void {
+  if (entry === undefined) delete store[wsId];
+  else store[wsId] = entry;
+}
+
+// A failed save restores the old entry, or the next save for any workspace would persist this one anyway.
+export function setInternetAccessPolicy(wsId: string, enabled: boolean, allowlist?: DomainAllowlist): void {
+  const previous = store[wsId];
+  putEntry(wsId, entryFor(enabled, allowlist));
   try {
     atomicSaveJson(FILE, store);
   } catch (err) {
+    putEntry(wsId, previous);
     log.error(
       { event: "internet_access_policy_save_failed", outcome: "policy_change_not_persisted", err, wsId },
       "failed to persist internet-access policy",
@@ -39,6 +57,21 @@ export function isInternetAccessEnabled(wsId: string): boolean {
   return store[wsId] !== false;
 }
 
+/** The exact hosts a restricted workspace may reach, or null when it isn't restricted. */
+export function allowedDomainsFor(wsId: string): readonly string[] | null {
+  const entry = store[wsId];
+  return Array.isArray(entry) ? entry : null;
+}
+
+export type AccessDecision = "allowed" | "internet_off" | "domain_not_allowed";
+
+/** Whether `wsId` may reach `hostname`; without a host, only whether its internet access is on. */
+export function checkAccess(wsId: string, hostname?: string): AccessDecision {
+  if (!isInternetAccessEnabled(wsId)) return "internet_off";
+  if (hostname === undefined || isHostAllowed(allowedDomainsFor(wsId), hostname)) return "allowed";
+  return "domain_not_allowed";
+}
+
 export function deleteInternetAccessPolicy(wsId: string): void {
   if (!(wsId in store)) return;
   delete store[wsId];
@@ -49,24 +82,34 @@ export function deleteInternetAccessPolicy(wsId: string): void {
 export interface InternetAccessRecord {
   id: string;
   internetAccess?: boolean;
+  domainAllowlist?: DomainAllowlist;
 }
 
-// Rebuilds the mirror from the registry at startup: a missing entry reads as enabled, so a stale mirror
+const sameEntry = (a: Entry | undefined, b: Entry | undefined) => JSON.stringify(a) === JSON.stringify(b);
+
+// Rebuilds the mirror from the registry at startup: a missing entry reads as open, so a stale mirror
 // fails open. Throws if the file can't be written and read back, which startup treats as fatal.
 export function reconcileInternetAccessPolicy(workspaces: InternetAccessRecord[]): void {
-  const off = new Set(workspaces.filter((w) => w.internetAccess === false).map((w) => w.id));
-  const restored = [...off].filter((id) => store[id] !== false);
-  const dropped = Object.keys(store).filter((id) => !off.has(id));
+  const expected = new Map<string, Entry>();
+  for (const w of workspaces) {
+    const entry = entryFor(w.internetAccess !== false, w.domainAllowlist);
+    if (entry !== undefined) expected.set(w.id, entry);
+  }
+  const restored = [...expected].filter(([id, entry]) => !sameEntry(store[id], entry)).map(([id]) => id);
+  const dropped = Object.keys(store).filter((id) => !expected.has(id));
 
   for (const id of dropped) delete store[id];
-  for (const id of off) store[id] = false;
+  for (const [id, entry] of expected) store[id] = entry;
   atomicSaveJson(FILE, store);
 
   // Read back rather than trust the write: this file is the sidecar's only view of the boundary,
   // and it is the app's last chance to notice the volume is not holding what it was handed.
   const persisted = JSON.parse(readFileSync(FILE, "utf-8")) as Store;
   const persistedIds = Object.keys(persisted);
-  if (persistedIds.length !== off.size || persistedIds.some((id) => !off.has(id) || persisted[id] !== false)) {
+  if (
+    persistedIds.length !== expected.size ||
+    persistedIds.some((id) => !expected.has(id) || !sameEntry(persisted[id], expected.get(id)))
+  ) {
     throw new Error("internet-access policy did not persist as written");
   }
 
@@ -78,7 +121,12 @@ export function reconcileInternetAccessPolicy(workspaces: InternetAccessRecord[]
     return;
   }
   log.info(
-    { event: "internet_access_policy_verified", outcome: "policy_matches_registry", disabled: off.size },
+    {
+      event: "internet_access_policy_verified",
+      outcome: "policy_matches_registry",
+      disabled: [...expected.values()].filter((e) => e === false).length,
+      restricted: [...expected.values()].filter(Array.isArray).length,
+    },
     "internet-access mirror matches the workspace registry",
   );
 }

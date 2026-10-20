@@ -1,33 +1,33 @@
 // Third-party secrets the credential proxy injects. Listing and storing share one rule: a scoped secret is
-// inert without egress (`blockedBy`). The workspace's own API/MCP channels are separate (workspaceAccess).
+// inert without egress or with every host off the allowlist (`blockedBy`). The workspace's own API/MCP channels are separate (workspaceAccess).
 import { getStore } from "@/lib/infra/services";
 import {
   deleteSecret,
   listSecretMeta,
-  normalizeDomain,
   setSecret,
   RESERVED_SECRET_NAMES,
 } from "@/lib/infra/security/workspaceSecretStore";
+import { blockedHosts, isValidDomain } from "@/lib/workspace/domain";
 import { WorkspaceUpdateError, WorkspaceUpdateFailure } from "./errors";
 import type { WorkspaceLookup } from "./read";
+import type { Workspace } from "@/lib/workspace/types";
 
 // Exported so callers that publish an input contract (the CLI's schema) state the same rule this
 // validates, instead of a copy that drifts.
 export const SECRET_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
-const SECRET_DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
 // Re-exported so the CLI schema states the same rule; defined in the store, which enforces it at injection.
 export { RESERVED_SECRET_NAMES };
 
-// A secret's name, date and allowed hosts. Never its value, which only the credential proxy injects.
+// A secret's name, date and allowed domains. Never its value, which only the credential proxy injects.
 export interface ThirdPartySecret {
   name: string;
   createdAt: string;
   /** Hosts this credential is scoped to. Independent of `internetAccess`: both must allow the call. */
   domains: string[];
-  // Set only when something stops the secret working (today, no egress), so no caller mistakes a dormant
-  // secret for a live one.
-  blockedBy?: "internetAccess";
+  // Set only when something stops the secret working (no egress, or none of its hosts allowed), so no
+  // caller mistakes a dormant secret for a live one.
+  blockedBy?: SecretBlocker;
 }
 
 /** A secret as a caller supplies it. The value is write-only and never read back out of this layer. */
@@ -50,9 +50,13 @@ export interface SecretDeleter {
   delete(id: string, name: string): boolean;
 }
 
-// A scoped secret can't be spent without egress. Spread in, so the key is absent when nothing blocks.
-function blockedFor(internetAccess: boolean): { blockedBy?: "internetAccess" } {
-  return internetAccess ? {} : { blockedBy: "internetAccess" };
+type SecretBlocker = "internetAccess" | "domainAllowlist";
+
+// A missing workspace reads as no egress. Spread in, so the key is absent when nothing blocks.
+function blockedFor(workspace: Workspace | undefined, domains: string[]): { blockedBy?: SecretBlocker } {
+  if (!workspace?.internetAccess) return { blockedBy: "internetAccess" };
+  const blocked = blockedHosts(domains, workspace.domainAllowlist);
+  return blocked.length > 0 && blocked.length === domains.length ? { blockedBy: "domainAllowlist" } : {};
 }
 
 function defaultSecretStore(): SecretStore & SecretDeleter {
@@ -96,11 +100,11 @@ export function validateSecret(input: unknown): WorkspaceSecretInput {
   }
   if (typeof value !== "string" || !value.trim()) throw new WorkspaceUpdateError("value required");
   if (!Array.isArray(domains) || domains.length === 0) {
-    throw new WorkspaceUpdateError("add at least one allowed host");
+    throw new WorkspaceUpdateError("add at least one allowed domain");
   }
   for (const raw of domains) {
-    if (typeof raw !== "string" || !SECRET_DOMAIN_RE.test(normalizeDomain(raw))) {
-      throw new WorkspaceUpdateError("each allowed host must be a hostname the key is sent to (e.g. api.openai.com)");
+    if (typeof raw !== "string" || !isValidDomain(raw)) {
+      throw new WorkspaceUpdateError("each allowed domain must be a hostname the key is sent to (e.g. api.openai.com)");
     }
   }
   return { name, value, domains };
@@ -115,8 +119,9 @@ export function listWorkspaceSecrets(
 ): ThirdPartySecret[] {
   const workspace = store.getWorkspace(id);
   if (!workspace) return [];
-  const blocked = blockedFor(workspace.internetAccess);
-  return secrets.read(id).map(({ name, createdAt, domains }) => ({ name, createdAt, domains, ...blocked }));
+  return secrets
+    .read(id)
+    .map(({ name, createdAt, domains }) => ({ name, createdAt, domains, ...blockedFor(workspace, domains) }));
 }
 
 // Expects validateSecret's output. Returns the list shape, `blockedBy` included, so the caller learns
@@ -130,5 +135,5 @@ export function storeWorkspaceSecret(
   const saved = secrets.save(id, input.name, input.value, input.domains);
   // Read egress back after the write rather than before: a workspace that vanished mid-update reads
   // as blocked, which is the truthful answer for a secret that can no longer be spent at all.
-  return { ...saved, ...blockedFor(store.getWorkspace(id)?.internetAccess ?? false) };
+  return { ...saved, ...blockedFor(store.getWorkspace(id), saved.domains) };
 }

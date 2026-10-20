@@ -129,11 +129,12 @@ async function main(): Promise<void> {
     log.info({ workspaces: ids.size }, "reloaded proxy rules after secret change");
   });
 
-  // Same rationale, for the internet-access on/off policy — a separate file (internetAccessPolicy.ts)
-  // since it's consulted before any rule/domain logic runs at all, not folded into the secret store.
+  // Same for the internet-access policy, its own file since it's checked before any secret rule.
+  // Open tunnels it now refuses are closed too, so a narrowed allowlist applies within one poll.
   fs.watchFile(INTERNET_ACCESS_POLICY_FILE, { interval: 1000 }, () => {
     reloadInternetAccessPolicy();
-    log.info("reloaded internet-access policy after change");
+    const closedTunnels = proxy.closeDisallowedTunnels();
+    log.info({ closedTunnels }, "reloaded internet-access policy after change");
   });
 }
 

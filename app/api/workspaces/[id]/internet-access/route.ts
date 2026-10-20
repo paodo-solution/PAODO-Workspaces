@@ -1,4 +1,4 @@
-// Internet-access toggle: GET state, PATCH applies it to the running container via the shared update path.
+// Internet access and its domain allowlist: GET state, PATCH applies any of them via the shared update path.
 // Wire name `enabled`; the receipt says `internetAccess`, like every other trigger.
 export const runtime = "nodejs";
 
@@ -8,7 +8,6 @@ import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/error
 import { receiptResponse } from "@/lib/api/workspaceUpdateReceipt";
 import { createLogger } from "@/lib/infra/logger";
 import { updateWorkspace } from "@/lib/operations/workspace/update";
-import { validateInternetAccess } from "@/lib/operations/workspace/egress";
 
 const log = createLogger("api").child({ route: "internet-access" });
 
@@ -16,7 +15,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const ws = requireWorkspace(id, req);
   if (ws instanceof NextResponse) return ws;
-  return NextResponse.json({ enabled: ws.internetAccess });
+  return NextResponse.json({
+    enabled: ws.internetAccess,
+    domainRestriction: ws.domainAllowlist?.restricted ?? false,
+    allowedDomains: ws.domainAllowlist?.domains ?? [],
+  });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -27,8 +30,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = await readJsonObject(req);
   if (body instanceof Response) return body;
 
+  // Values pass through unchecked: updateWorkspace validates each and skips undefined ones, like a workspace PATCH.
+  const input = {
+    internetAccess: body.enabled as boolean | undefined,
+    domainRestriction: body.domainRestriction as boolean | undefined,
+    allowedDomains: body.allowedDomains as string[] | undefined,
+    addAllowedDomains: body.addAllowedDomains as string[] | undefined,
+    removeAllowedDomains: body.removeAllowedDomains as string[] | undefined,
+  };
+  if (Object.values(input).every((value) => value === undefined)) {
+    return errorResponse(
+      "INVALID_REQUEST",
+      "send at least one of: enabled, domainRestriction, allowedDomains, addAllowedDomains, removeAllowedDomains",
+      { request: req },
+    );
+  }
+
   try {
-    const result = await updateWorkspace(id, { internetAccess: validateInternetAccess(body.enabled) });
+    const result = await updateWorkspace(id, input);
     // Past the guard above, a missing workspace means it was deleted mid-request.
     if (!result) return notFound(req, `workspace ${id}`);
     return receiptResponse(result);

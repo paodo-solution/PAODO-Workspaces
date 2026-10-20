@@ -116,3 +116,4 @@ Alternatives considered
 
 Notes
 See [prd-workspace-internet-access-toggle.md](../prd/accepted/prd-workspace-internet-access-toggle.md) for the product framing.
+While on, access can be narrowed to exact hosts: see [adr-workspace-domain-allowlist.md](adr-workspace-domain-allowlist.md).

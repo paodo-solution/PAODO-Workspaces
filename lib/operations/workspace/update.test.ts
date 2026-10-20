@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { providerAvailabilityEnv, SUPPORTED_PROVIDERS } from "@/lib/agent/buildModel";
 import { updateWorkspace, type UpdateWorkspaceDeps, type UpdateWorkspaceStore } from "./update";
 import type { ChannelCredentials } from "./access";
-import type { EgressServices } from "./egress";
+import { MAX_ALLOWED_DOMAINS, type EgressServices } from "./egress";
 import type { SecretStore } from "./secrets";
 import type { Workspace } from "@/lib/workspace/types";
 
@@ -28,6 +28,7 @@ const storeStub = (overrides: Partial<UpdateWorkspaceStore> = {}): UpdateWorkspa
   setWorkspaceMaxRunMinutes: () => true,
   setWorkspaceLlm: () => true,
   setWorkspaceInternetAccess: () => true,
+  setWorkspaceDomainAllowlist: () => true,
   ...overrides,
 });
 
@@ -328,5 +329,138 @@ describe("the update contract", () => {
       secret: { name: "API_TOKEN", domains: ["api.example.com"] },
     });
     expect(result?.applied).toEqual(Object.keys(result?.values ?? {}));
+  });
+
+  describe("domain allowlist", () => {
+    const tooManyDomains = (n: number) => Array.from({ length: n }, (_, i) => `host${i}.example.com`);
+    const saved = {
+      ...workspace,
+      internetAccess: true,
+      domainAllowlist: { restricted: false, domains: ["api.vercel.com"] },
+    };
+
+    function recording() {
+      const written: unknown[] = [];
+      const policies: unknown[] = [];
+      const d = deps({
+        store: storeStub({
+          getWorkspace: () => saved,
+          setWorkspaceDomainAllowlist: (_id, allowlist) => {
+            written.push(allowlist);
+            return true;
+          },
+        }),
+        egress: egressStub({ setPolicy: (_id, enabled, allowlist) => policies.push({ enabled, allowlist }) }),
+      });
+      return { written, policies, d };
+    }
+
+    it("turns the restriction on and keeps the saved list", async () => {
+      const { written, policies, d } = recording();
+      const result = await updateWorkspace("ws-1", { domainRestriction: true }, d);
+      expect(written).toEqual([{ restricted: true, domains: ["api.vercel.com"] }]);
+      expect(policies).toEqual([{ enabled: true, allowlist: { restricted: true, domains: ["api.vercel.com"] } }]);
+      expect(result?.applied).toEqual(["domainRestriction"]);
+      expect(result?.values).toEqual({ domainRestriction: true });
+    });
+
+    it("replaces the list, normalized, and keeps the saved restriction", async () => {
+      const { written, d } = recording();
+      const result = await updateWorkspace("ws-1", { allowedDomains: ["https://Registry.npmjs.org/"] }, d);
+      expect(written).toEqual([{ restricted: false, domains: ["registry.npmjs.org"] }]);
+      expect(result?.values).toEqual({ allowedDomains: ["registry.npmjs.org"] });
+    });
+
+    it("writes the policy with the internet setting the same request applies", async () => {
+      const { policies, d } = recording();
+      await updateWorkspace("ws-1", { internetAccess: false, domainRestriction: true }, d);
+      expect(policies.at(-1)).toEqual({ enabled: false, allowlist: { restricted: true, domains: ["api.vercel.com"] } });
+    });
+
+    it("adds and removes in one request, and reports the saved list", async () => {
+      const { written, d } = recording();
+      const result = await updateWorkspace(
+        "ws-1",
+        { addAllowedDomains: ["Registry.npmjs.org", "api.vercel.com"], removeAllowedDomains: ["api.vercel.com."] },
+        d,
+      ).catch((err: Error) => err);
+      expect(result).toBeInstanceOf(Error);
+      expect((result as Error).message).toContain("added and removed at once: api.vercel.com");
+      expect(written).toEqual([]);
+
+      const ok = await updateWorkspace(
+        "ws-1",
+        {
+          addAllowedDomains: ["Registry.npmjs.org", "pypi.org"],
+          removeAllowedDomains: ["api.vercel.com", "unlisted.com"],
+        },
+        d,
+      );
+      expect(written).toEqual([{ restricted: false, domains: ["registry.npmjs.org", "pypi.org"] }]);
+      expect(ok?.applied).toEqual(["addAllowedDomains", "removeAllowedDomains", "allowedDomains"]);
+      expect(ok?.values).toEqual({
+        addAllowedDomains: ["registry.npmjs.org", "pypi.org"],
+        removeAllowedDomains: ["api.vercel.com", "unlisted.com"],
+        allowedDomains: ["registry.npmjs.org", "pypi.org"],
+      });
+    });
+
+    it("does not add a domain that is already listed", async () => {
+      const { written, d } = recording();
+      await updateWorkspace("ws-1", { addAllowedDomains: ["API.vercel.com", "pypi.org"] }, d);
+      expect(written).toEqual([{ restricted: false, domains: ["api.vercel.com", "pypi.org"] }]);
+    });
+
+    it("refuses a replacement combined with add or remove, before any write", async () => {
+      const { written, d } = recording();
+      await expect(
+        updateWorkspace("ws-1", { allowedDomains: ["a.example.com"], addAllowedDomains: ["b.example.com"] }, d),
+      ).rejects.toThrow("not both");
+      expect(written).toEqual([]);
+    });
+
+    it("refuses additions that would overfill the list, before any write", async () => {
+      const full = { ...saved, domainAllowlist: { restricted: true, domains: tooManyDomains(MAX_ALLOWED_DOMAINS) } };
+      const written: unknown[] = [];
+      const d = deps({
+        store: storeStub({
+          getWorkspace: () => full,
+          setWorkspaceDomainAllowlist: (_id, allowlist) => written.push(allowlist) > 0,
+        }),
+      });
+      await expect(updateWorkspace("ws-1", { addAllowedDomains: ["one-more.com"] }, d)).rejects.toThrow(
+        `at most ${MAX_ALLOWED_DOMAINS}`,
+      );
+      expect(written).toEqual([]);
+    });
+
+    it("merges with a list another request saved while this one was busy", async () => {
+      // The list changes after the update read the workspace but before the allowlist write.
+      let current = saved;
+      const written: unknown[] = [];
+      const d = deps({
+        store: storeStub({
+          getWorkspace: () => current,
+          setWorkspaceInternetAccess: () => {
+            current = {
+              ...current,
+              domainAllowlist: { restricted: false, domains: ["api.vercel.com", "from-cli.com"] },
+            };
+            return true;
+          },
+          setWorkspaceDomainAllowlist: (_id, allowlist) => written.push(allowlist) > 0,
+        }),
+      });
+      await updateWorkspace("ws-1", { internetAccess: true, removeAllowedDomains: ["api.vercel.com"] }, d);
+      expect(written).toEqual([{ restricted: false, domains: ["from-cli.com"] }]);
+    });
+
+    it("writes nothing when a domain is invalid", async () => {
+      const { written, d } = recording();
+      await expect(
+        updateWorkspace("ws-1", { domainRestriction: true, allowedDomains: ["localhost"] }, d),
+      ).rejects.toThrow("each allowed domain must be a hostname");
+      expect(written).toEqual([]);
+    });
   });
 });

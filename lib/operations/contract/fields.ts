@@ -10,6 +10,7 @@ import { MAX_DRIVE_NAME_LENGTH } from "@/lib/drives/name";
 import { UPDATABLE_FIELDS as DRIVE_UPDATABLE_FIELDS } from "@/lib/operations/drives/manage";
 import { SCHEDULE_FIELDS } from "@/lib/operations/schedules/schedule";
 import { WORKSPACE_UPDATABLE_FIELDS } from "@/lib/operations/workspace/update";
+import { MAX_ALLOWED_DOMAINS } from "@/lib/operations/workspace/egress";
 import { INTERVAL_UNITS, MAX_INTERVAL_VALUE, MAX_PROMPT_LENGTH, MIN_INTERVAL_VALUE } from "@/lib/schedules/types";
 import {
   MAX_MAX_ITERATIONS,
@@ -23,7 +24,7 @@ import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/workspace/name";
 // `type` is the expected JSON type, `values` any closed set, `rule` the rest in words. Descriptive only:
 // it may be looser than the validators but never contradict them.
 export interface ContractField {
-  type: "string" | "int" | "boolean";
+  type: "string" | "int" | "boolean" | "string[]";
   values?: readonly string[];
   rule?: string;
 }
@@ -42,6 +43,22 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   maxIterations: { type: "int", rule: `${MIN_MAX_ITERATIONS}-${MAX_MAX_ITERATIONS}` },
   maxRunMinutes: { type: "int", rule: `${MIN_MAX_RUN_MINUTES}-${MAX_MAX_RUN_MINUTES}` },
   internetAccess: { type: "boolean" },
+  domainRestriction: {
+    type: "boolean",
+    rule: "while true, the container reaches only allowedDomains; an empty list blocks every host",
+  },
+  allowedDomains: {
+    type: "string[]",
+    rule: `at most ${MAX_ALLOWED_DOMAINS} hostnames, each matched exactly (vercel.com does not cover api.vercel.com); replaces the whole list; not combinable with add/removeAllowedDomains; the receipt reports the saved list after any list change`,
+  },
+  addAllowedDomains: {
+    type: "string[]",
+    rule: `hostnames appended to the saved list unless already there; combinable with removeAllowedDomains; the list stays at most ${MAX_ALLOWED_DOMAINS}`,
+  },
+  removeAllowedDomains: {
+    type: "string[]",
+    rule: "hostnames dropped from the saved list; one not listed is a no-op; a domain can't be both added and removed",
+  },
   workspaceApiAccess: { type: "boolean" },
   workspaceMcpAccess: { type: "boolean" },
 };

@@ -2,6 +2,7 @@
 // skills (useful to spot a tool your client depends on disappearing).
 "use client";
 
+import CopyField from "@/components/shared/CopyField";
 import CredentialPanel from "@/components/shared/CredentialPanel";
 import { useCredential } from "@/lib/client/hooks/useCredential";
 // Type-only import: the shape is owned by lib/operations, which both this block and the CLI read.
@@ -58,14 +59,7 @@ export default function McpBlock({ wsId }: { wsId: string }) {
         )}
       </div>
 
-      {(credential.hasKey || credential.plaintext) && (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text">Connection URL</span>
-          <code className="font-mono text-[12px] font-medium leading-[1.5] text-text bg-white px-2 py-1 rounded border border-border min-w-0 break-all">
-            {url}
-          </code>
-        </div>
-      )}
+      {(credential.hasKey || credential.plaintext) && <CopyField label="Connection URL" value={url} />}
     </CredentialPanel>
   );
 }

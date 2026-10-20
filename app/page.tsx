@@ -62,6 +62,10 @@ export default function HomePage() {
     error: internetError,
     reload: reloadInternet,
     toggle: toggleInternetAccess,
+    allowlist,
+    toggleDomainRestriction,
+    addAllowedDomain,
+    removeAllowedDomain,
   } = useWorkspaceInternetAccess(selectedId);
 
   // Form-local UI state: drafts and inline errors that live and die with the open form.
@@ -474,11 +478,15 @@ export default function HomePage() {
                   key={`net-${selected.id}`}
                   enabled={internetAccess}
                   onToggle={toggleInternetAccess}
+                  allowlist={allowlist}
+                  onToggleDomainRestriction={toggleDomainRestriction}
+                  onAddAllowedDomain={addAllowedDomain}
+                  onRemoveAllowedDomain={removeAllowedDomain}
                   loading={internetLoading}
                   error={internetError}
                   onRetry={reloadInternet}
                 />
-                {internetAccess && <EnvVarsBlock key={`env-${selected.id}`} wsId={selected.id} />}
+                {internetAccess && <EnvVarsBlock key={`env-${selected.id}`} wsId={selected.id} allowlist={allowlist} />}
               </div>
             ) : (
               <div className="mt-20 text-center text-text-2">

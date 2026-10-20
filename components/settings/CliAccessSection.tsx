@@ -3,7 +3,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import CredentialConfirm, { type CredentialAction } from "@/components/shared/CredentialConfirm";
 import CredentialReveal from "@/components/shared/CredentialReveal";
+import { useConfirm } from "@/lib/client/hooks/useConfirm";
 import { useCredential } from "@/lib/client/hooks/useCredential";
 import { useReadyOnce } from "@/lib/client/hooks/useReadyOnce";
 
@@ -15,6 +17,9 @@ export default function CliAccessSection({ open, onReady }: { open: boolean; onR
   );
   useReadyOnce(!credential.loading, onReady);
   const [copied, setCopied] = useState(false);
+  const confirmation = useConfirm<CredentialAction>((action) =>
+    action === "rotate" ? credential.rotate() : credential.revoke(),
+  );
 
   // The one-time plaintext must not survive the modal closing — reopening it would otherwise show a
   // key the user already dismissed, in a place they did not ask for it.
@@ -76,18 +81,31 @@ export default function CliAccessSection({ open, onReady }: { open: boolean; onR
           <div className="-ml-1.5 flex items-center gap-2">
             <button
               className="linkbtn self-start"
-              onClick={credential.hasKey ? credential.rotate : credential.generate}
+              onClick={credential.hasKey ? () => confirmation.ask("rotate") : credential.generate}
               disabled={credential.busy}
             >
               {credential.busy ? "Working…" : credential.hasKey ? "Rotate key" : "Generate key"}
             </button>
             {credential.hasKey && (
-              <button className="linkbtn text-danger" onClick={credential.revoke} disabled={credential.busy}>
+              <button
+                className="linkbtn text-danger"
+                onClick={() => confirmation.ask("revoke")}
+                disabled={credential.busy}
+              >
                 Revoke
               </button>
             )}
           </div>
         </div>
+      )}
+
+      {confirmation.pending && (
+        <CredentialConfirm
+          action={confirmation.pending}
+          busy={credential.busy}
+          onConfirm={() => void confirmation.confirm()}
+          onCancel={confirmation.cancel}
+        />
       )}
     </section>
   );

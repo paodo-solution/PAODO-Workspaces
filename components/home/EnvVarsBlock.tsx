@@ -1,17 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DomainField from "@/components/shared/DomainField";
+import RemoveButton from "@/components/shared/RemoveButton";
 import type { ThirdPartySecret } from "@/lib/operations/workspace/secrets";
+import { blockedHosts, isValidDomain } from "@/lib/workspace/domain";
+import type { DomainAllowlist } from "@/lib/workspace/types";
 
-export default function EnvVarsBlock({ wsId }: { wsId: string }) {
+// A stable id per domain row, so removing one row never hands its DomainField state to the next.
+interface DomainRow {
+  id: number;
+  value: string;
+}
+
+let nextRowId = 0;
+const blankRow = (): DomainRow => ({ id: nextRowId++, value: "" });
+
+export default function EnvVarsBlock({ wsId, allowlist }: { wsId: string; allowlist: DomainAllowlist }) {
   const [secrets, setSecrets] = useState<ThirdPartySecret[]>([]);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
-  const [domains, setDomains] = useState<string[]>([""]);
+  const [domains, setDomains] = useState<DomainRow[]>(() => [blankRow()]);
   const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/workspaces/${wsId}/env-vars`)
@@ -23,21 +35,22 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
   const resetForm = () => {
     setName("");
     setValue("");
-    setDomains([""]);
+    setDomains([blankRow()]);
     setError(null);
   };
 
-  const setDomainValue = (idx: number, val: string) => {
-    setDomains((prev) => prev.map((d, i) => (i === idx ? val : d)));
+  const setDomainValue = (id: number, val: string) => {
+    setDomains((prev) => prev.map((row) => (row.id === id ? { ...row, value: val } : row)));
   };
 
-  const addDomainField = () => setDomains((prev) => [...prev, ""]);
+  const addDomainField = () => setDomains((prev) => [...prev, blankRow()]);
 
-  const removeDomainField = (idx: number) => {
-    setDomains((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
+  const removeDomainField = (id: number) => {
+    setDomains((prev) => (prev.length === 1 ? [blankRow()] : prev.filter((row) => row.id !== id)));
   };
 
-  const trimmedDomains = domains.map((d) => d.trim()).filter((d) => d.length > 0);
+  const trimmedDomains = domains.map((row) => row.value.trim()).filter((d) => d.length > 0);
+  const hasInvalidDomain = trimmedDomains.some((d) => !isValidDomain(d));
 
   const add = async () => {
     setError(null);
@@ -62,9 +75,10 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
     }
   };
 
+  const hasMismatch = secrets.some((s) => blockedHosts(s.domains, allowlist).length > 0);
+
   const remove = async (secretName: string) => {
     await fetch(`/api/workspaces/${wsId}/env-vars/${encodeURIComponent(secretName)}`, { method: "DELETE" });
-    setConfirmDelete(null);
     setSecrets((prev) => prev.filter((s) => s.name !== secretName));
   };
 
@@ -76,32 +90,14 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
       </div>
 
       {secrets.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {secrets.map((s) => (
-            <div
-              key={s.name}
-              className="flex items-center justify-between gap-2 text-ms bg-white border border-border rounded-ctrl px-2.5 py-1.5"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <code className="font-mono text-xs text-text shrink-0">{s.name}</code>
-                {s.domains?.length ? (
-                  <span className="text-xs text-text-muted truncate">→ {s.domains.join(", ")}</span>
-                ) : null}
+            <div key={s.name} className="flex items-center gap-2">
+              <div className="input input-sm font-mono flex-1 min-w-0 flex items-center gap-2 bg-bg-deep text-text-3">
+                <span className="shrink-0">{s.name}</span>
+                {s.domains?.length ? <span className="truncate">→ {s.domains.join(", ")}</span> : null}
               </div>
-              {confirmDelete === s.name ? (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(s.name)}>
-                    Delete
-                  </button>
-                  <button className="linkbtn" onClick={() => setConfirmDelete(null)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button className="linkbtn text-danger shrink-0" onClick={() => setConfirmDelete(s.name)}>
-                  Delete
-                </button>
-              )}
+              <RemoveButton label={`Remove ${s.name}`} onClick={() => remove(s.name)} />
             </div>
           ))}
         </div>
@@ -109,13 +105,14 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
 
       {!showForm ? (
         <button
-          className="btn btn-sm self-start"
+          type="button"
+          className="linkbtn px-0 text-primary self-start"
           onClick={() => {
             resetForm();
             setShowForm(true);
           }}
         >
-          Add a secret
+          + Add secret
         </button>
       ) : (
         <div className="flex flex-col gap-3 bg-white border border-border rounded-ctrl p-[12px_14px]">
@@ -140,30 +137,18 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
           </label>
 
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-text">Allowed hosts</span>
+            <span className="text-xs font-medium text-text">Allowed domains</span>
             <div className="flex flex-col gap-2">
-              {domains.map((host, idx) => (
-                <div className="flex items-center gap-2" key={idx}>
-                  <input
-                    className="input input-sm font-mono flex-1"
-                    value={host}
-                    onChange={(e) => setDomainValue(idx, e.target.value)}
-                  />
+              {domains.map((row) => (
+                <DomainField key={row.id} value={row.value} onChange={(val) => setDomainValue(row.id, val)}>
                   {domains.length > 1 && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm px-2 text-text-3"
-                      aria-label="Remove host"
-                      onClick={() => removeDomainField(idx)}
-                    >
-                      ×
-                    </button>
+                    <RemoveButton label="Remove domain" onClick={() => removeDomainField(row.id)} />
                   )}
-                </div>
+                </DomainField>
               ))}
             </div>
-            <button type="button" className="linkbtn text-primary mt-1 self-start" onClick={addDomainField}>
-              + Add host
+            <button type="button" className="linkbtn px-0 text-primary mt-1 self-start" onClick={addDomainField}>
+              + Add domain
             </button>
           </div>
 
@@ -173,7 +158,7 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
             <button
               className="btn btn-sm"
               onClick={add}
-              disabled={adding || !name || !value || trimmedDomains.length === 0}
+              disabled={adding || !name || !value || trimmedDomains.length === 0 || hasInvalidDomain}
             >
               {adding ? "Saving…" : "Save secret"}
             </button>
@@ -188,6 +173,10 @@ export default function EnvVarsBlock({ wsId }: { wsId: string }) {
             </button>
           </div>
         </div>
+      )}
+
+      {hasMismatch && (
+        <p className="text-xs text-danger m-0">Some secrets won&apos;t work because their domains are not allowed.</p>
       )}
     </div>
   );

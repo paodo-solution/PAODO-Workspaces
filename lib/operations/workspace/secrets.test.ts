@@ -51,13 +51,13 @@ describe("third-party secret validation", () => {
     );
     expect(() => validateSecret({ name: "TOKEN", value: 5, domains: ["api.example.com"] })).toThrow("value required");
     expect(() => validateSecret({ name: "TOKEN", value: "v", domains: "api.example.com" })).toThrow(
-      "add at least one allowed host",
+      "add at least one allowed domain",
     );
     expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [5] })).toThrow(
-      "each allowed host must be a hostname",
+      "each allowed domain must be a hostname",
     );
     expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [null] })).toThrow(
-      "each allowed host must be a hostname",
+      "each allowed domain must be a hostname",
     );
   });
 
@@ -93,14 +93,14 @@ describe("third-party secret validation", () => {
     );
   });
 
-  it("requires at least one allowed host", () => {
-    expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [] })).toThrow("add at least one allowed host");
+  it("requires at least one allowed domain", () => {
+    expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [] })).toThrow("add at least one allowed domain");
   });
 
   it("rejects anything that cannot be read as a public hostname", () => {
     for (const domain of ["not a host", "localhost", "example", "", "api_example.com"]) {
       expect(() => validateSecret({ name: "TOKEN", value: "v", domains: [domain] })).toThrow(
-        "each allowed host must be a hostname",
+        "each allowed domain must be a hostname",
       );
     }
   });
@@ -144,6 +144,21 @@ describe("listing third-party secrets", () => {
       { name: "VERCEL_TOKEN", createdAt: "2026-08-03T00:00:00.000Z", domains: ["api.vercel.com"] },
     ]);
     expect(result[0]).not.toHaveProperty("blockedBy");
+  });
+
+  it("marks a secret blocked when the allowlist restricts away every one of its hosts", () => {
+    const read = () => [
+      { name: "VERCEL_TOKEN", createdAt: "2026-08-03T00:00:00.000Z", domains: ["api.vercel.com"] },
+      { name: "OPENAI_KEY", createdAt: "2026-08-03T00:00:00.000Z", domains: ["api.openai.com"] },
+    ];
+    const restricted = {
+      ...offline,
+      internetAccess: true,
+      domainAllowlist: { restricted: true, domains: ["api.vercel.com"] },
+    };
+    const result = listWorkspaceSecrets("ws-1", lookup(restricted), secretStore({ read }));
+    expect(result[0]).not.toHaveProperty("blockedBy");
+    expect(result[1]).toMatchObject({ name: "OPENAI_KEY", blockedBy: "domainAllowlist" });
   });
 
   it("lists no secrets for an unknown workspace instead of reading the secret store", () => {

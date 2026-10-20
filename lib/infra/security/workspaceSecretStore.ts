@@ -1,6 +1,7 @@
 // Per-workspace secret vault (its own key, separate from provider keys). The API returns metadata only; the
 // container gets opaque proxy tokens, swapped for real values on outbound HTTPS.
 import { createHash } from "crypto";
+import { normalizeDomain } from "../../workspace/domain";
 import { createAuditLogger } from "../logger";
 import {
   WORKSPACE_SECRET_VAULT_FILE,
@@ -24,17 +25,6 @@ type Store = VaultWorkspaceSecrets;
 export interface DomainRule {
   domain: string;
   tokenMap: Map<string, string>;
-}
-
-// Reduce user input to a bare hostname: strip scheme, path, port, and trailing dot.
-export function normalizeDomain(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/:\d+$/, "")
-    .replace(/\.$/, "");
 }
 
 const store: Store = workspaceSecretRecords();

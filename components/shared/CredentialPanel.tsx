@@ -3,8 +3,11 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useConfirm } from "@/lib/client/hooks/useConfirm";
 import { AsyncState } from "./AsyncState";
+import CredentialConfirm, { type CredentialAction } from "./CredentialConfirm";
 import CredentialReveal from "./CredentialReveal";
+import { Switch } from "./Switch";
 
 interface CredentialPanelProps {
   title: string;
@@ -26,8 +29,8 @@ interface CredentialPanelProps {
   /** Issues the channel's first credential. Offered only while it has none. */
   onGenerate: () => void;
   /** Replaces the existing credential. Offered only while it has one. */
-  onRotate: () => void;
-  onRevoke: () => void;
+  onRotate: () => Promise<void>;
+  onRevoke: () => Promise<void>;
   onDismissPlaintext: () => void;
   /** Channel-specific content rendered while enabled, above the controls (MCP's tools and URL). */
   children?: ReactNode;
@@ -52,6 +55,8 @@ export default function CredentialPanel({
   onDismissPlaintext,
   children,
 }: CredentialPanelProps) {
+  const confirmation = useConfirm<CredentialAction>((action) => (action === "rotate" ? onRotate() : onRevoke()));
+
   if (loading || loadError) {
     return (
       <div className="flex flex-col mt-4 border border-border rounded-card p-[16px_18px] bg-bg-tint">
@@ -74,16 +79,12 @@ export default function CredentialPanel({
             {statusLabel(enabled, hasKey)}
           </span>
         </div>
-        <button
-          className={`relative w-9 h-5 rounded-[10px] border-0 cursor-pointer transition-colors duration-200 p-0 flex-shrink-0 ${enabled ? "bg-primary" : "bg-border"}`}
-          onClick={onToggle}
+        <Switch
+          checked={enabled}
+          onChange={onToggle}
           disabled={busy}
-          aria-label={enabled ? `Disable ${toggleLabel}` : `Enable ${toggleLabel}`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 block ${enabled ? "translate-x-4" : ""}`}
-          />
-        </button>
+          ariaLabel={enabled ? `Disable ${toggleLabel}` : `Enable ${toggleLabel}`}
+        />
       </div>
 
       {error && (
@@ -108,16 +109,25 @@ export default function CredentialPanel({
 
       {hasKey && !plaintext && (
         <div className="flex items-center gap-2.5">
-          <button className="linkbtn" onClick={onRotate} disabled={busy}>
+          <button className="linkbtn" onClick={() => confirmation.ask("rotate")} disabled={busy}>
             Rotate
           </button>
-          <button className="linkbtn text-danger" onClick={onRevoke} disabled={busy}>
+          <button className="linkbtn text-danger" onClick={() => confirmation.ask("revoke")} disabled={busy}>
             Revoke
           </button>
         </div>
       )}
 
       {plaintext && <CredentialReveal plaintext={plaintext} onDismiss={onDismissPlaintext} />}
+
+      {confirmation.pending && (
+        <CredentialConfirm
+          action={confirmation.pending}
+          busy={busy}
+          onConfirm={() => void confirmation.confirm()}
+          onCancel={confirmation.cancel}
+        />
+      )}
     </div>
   );
 }
