@@ -45,7 +45,7 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   internetAccess: { type: "boolean" },
   domainRestriction: {
     type: "boolean",
-    rule: "while true and allowedDomains is non-empty, the container reaches only allowedDomains",
+    rule: "while true, the container reaches only allowedDomains; an empty list blocks every host",
   },
   allowedDomains: {
     type: "string[]",
