@@ -17,6 +17,9 @@ export interface WorkspaceDetails extends WorkspaceSummary {
   maxIterations: number;
   maxRunMinutes: number;
   internetAccess: boolean;
+  /** While true, the container reaches only `allowedDomains`; false when no list was ever saved. */
+  domainRestriction: boolean;
+  allowedDomains: string[];
   llmProvider: string;
   llmModel: string;
   /** Whether the selected provider currently has an API key configured. */
@@ -81,6 +84,8 @@ export function getWorkspace(
     maxIterations: workspace.maxIterations,
     maxRunMinutes: workspace.maxRunMinutes,
     internetAccess: workspace.internetAccess,
+    domainRestriction: workspace.domainAllowlist?.restricted ?? false,
+    allowedDomains: [...(workspace.domainAllowlist?.domains ?? [])],
     ...publicModelSelection(modelSelection),
     llmProviderHasKey: hasProviderKey(modelSelection.provider),
   };
