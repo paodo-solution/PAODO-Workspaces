@@ -77,13 +77,11 @@ describe("workspace record queries", () => {
     expect(result).not.toHaveProperty("warning");
   });
 
-  it("warns while the restriction is on with no domain", () => {
+  it("reports an empty enforced list without a warning, which only the update gives", () => {
     const blocked: Workspace = { ...workspace, domainAllowlist: { restricted: true, domains: [] } };
-    expect(getWorkspace("ws-1", { ...store, getWorkspace: () => blocked }, () => false)).toMatchObject({
-      domainRestriction: true,
-      allowedDomains: [],
-      warning: expect.stringMatching(/^No allowed domain is set: /),
-    });
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => blocked }, () => false);
+    expect(result).toMatchObject({ domainRestriction: true, allowedDomains: [] });
+    expect(result).not.toHaveProperty("warning");
   });
 
   it("returns an explicitly selected model instead of the defaults", () => {

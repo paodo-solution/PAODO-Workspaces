@@ -3,7 +3,6 @@ import type { IWorkspaceStore } from "@/lib/infra/interfaces";
 import { getStore } from "@/lib/infra/services";
 import { defaultModelSelection, modelReasoningEfforts } from "@/lib/agent/buildModel";
 import { providerHasKey } from "@/lib/operations/settings/providerKeys";
-import { allowlistWarning } from "@/lib/workspace/domain";
 import type { DomainAllowlist, Workspace } from "@/lib/workspace/types";
 import type { ModelSelection } from "@/lib/models/selection";
 
@@ -22,8 +21,6 @@ export interface WorkspaceDetails extends WorkspaceSummary {
   domainRestriction: boolean;
   /** Omitted while `domainRestriction` is false, since nothing enforces it then. */
   allowedDomains?: string[];
-  /** Present only while the restriction is on with no domain, which blocks every host. */
-  warning?: string;
   llmProvider: string;
   llmModel: string;
   /** Whether the selected provider currently has an API key configured. */
@@ -62,13 +59,15 @@ export function publicModelSelection(selection: ModelSelection): PublicModelSele
   };
 }
 
-/** The allowlist as the workspace read shows it: its domains only while they are enforced. */
+/**
+ * The allowlist as the workspace read shows it: its domains only while they are enforced. No warning
+ * here: the update that leaves the list empty already gives one, and `allowedDomains: []` says the rest.
+ */
 function publicDomainAllowlist(
   allowlist: DomainAllowlist | undefined,
-): Pick<WorkspaceDetails, "domainRestriction" | "allowedDomains" | "warning"> {
-  const warning = allowlistWarning(allowlist);
+): Pick<WorkspaceDetails, "domainRestriction" | "allowedDomains"> {
   return allowlist?.restricted
-    ? { domainRestriction: true, allowedDomains: [...allowlist.domains], ...(warning ? { warning } : {}) }
+    ? { domainRestriction: true, allowedDomains: [...allowlist.domains] }
     : { domainRestriction: false };
 }
 
