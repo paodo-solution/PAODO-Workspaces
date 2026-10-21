@@ -52,12 +52,22 @@ describe("workspace record queries", () => {
       maxRunMinutes: 20,
       internetAccess: false,
       domainRestriction: false,
-      allowedDomains: [],
       llmProvider: "deepseek",
       llmModel: "deepseek-flash",
       llmProviderHasKey: true,
     });
     expect(result).not.toHaveProperty("dir");
+    expect(result).not.toHaveProperty("allowedDomains");
+  });
+
+  it("hides a saved list while the restriction is off", () => {
+    const unrestricted: Workspace = {
+      ...workspace,
+      domainAllowlist: { restricted: false, domains: ["api.vercel.com"] },
+    };
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => unrestricted }, () => false);
+    expect(result).toMatchObject({ domainRestriction: false });
+    expect(result).not.toHaveProperty("allowedDomains");
   });
 
   it("reports the saved domain allowlist", () => {
