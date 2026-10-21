@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  allowlistWarning,
   blockedHosts,
+  egressWarning,
   enforcedDomains,
   hostMatches,
   isHostAllowed,
@@ -39,12 +39,61 @@ describe("enforcedDomains", () => {
   });
 });
 
-describe("allowlistWarning", () => {
-  it("warns only while the restriction is on with no domain", () => {
-    expect(allowlistWarning({ restricted: true, domains: [] })).toMatch(/^No allowed domain is set: /);
-    expect(allowlistWarning({ restricted: true, domains: ["api.vercel.com"] })).toBeUndefined();
-    expect(allowlistWarning({ restricted: false, domains: [] })).toBeUndefined();
-    expect(allowlistWarning(undefined)).toBeUndefined();
+describe("egressWarning", () => {
+  const listed = { restricted: true, domains: ["github.com", "api.vercel.com"] };
+  const empty = { restricted: true, domains: [] };
+  const open = { restricted: false, domains: ["github.com"] };
+
+  it("says an allowlist sent while offline is saved for later, and whether it will block every host", () => {
+    expect(egressWarning(false, listed, { domainRestriction: true })).toBe(
+      "internetAccess is false: the allowlist is saved and applies once internetAccess is true",
+    );
+    expect(egressWarning(false, open, { domainRestriction: false })).toMatch(/^internetAccess is false: /);
+    expect(egressWarning(false, empty, { allowedDomains: [] })).toMatch(
+      /, and with no allowed domain it will then block every host$/,
+    );
+  });
+
+  it("names the saved hosts to an update that turns internet on without sending the list", () => {
+    expect(egressWarning(true, listed, { internetAccess: true })).toBe(
+      "domainRestriction is on: only github.com, api.vercel.com are reachable",
+    );
+    expect(egressWarning(true, { restricted: true, domains: ["github.com"] }, { internetAccess: true })).toBe(
+      "domainRestriction is on: only github.com is reachable",
+    );
+  });
+
+  it("names a restored list to an update that turns the restriction on without sending it", () => {
+    expect(egressWarning(true, listed, { domainRestriction: true })).toMatch(/only github.com, api.vercel.com are/);
+  });
+
+  it("counts the hosts instead of naming them past ten", () => {
+    const many = { restricted: true, domains: Array.from({ length: 11 }, (_, i) => `h${i}.example.com`) };
+    expect(egressWarning(true, many, { internetAccess: true })).toBe(
+      "domainRestriction is on: only the 11 allowedDomains are reachable",
+    );
+  });
+
+  it("warns whenever an egress update leaves the restriction on with no domain", () => {
+    for (const sent of [{ internetAccess: true }, { domainRestriction: true }, { allowedDomains: [] }]) {
+      expect(egressWarning(true, empty, sent)).toMatch(/^No allowed domain is set: /);
+    }
+  });
+
+  it("stays silent when the sent fields already say what is reachable", () => {
+    expect(
+      egressWarning(true, listed, { internetAccess: true, domainRestriction: true, allowedDomains: listed.domains }),
+    ).toBeUndefined();
+    expect(egressWarning(true, listed, { allowedDomains: listed.domains })).toBeUndefined();
+    expect(egressWarning(false, listed, { internetAccess: false })).toBeUndefined();
+    expect(egressWarning(false, empty, { internetAccess: false })).toBeUndefined();
+    expect(egressWarning(true, open, { internetAccess: true })).toBeUndefined();
+    expect(egressWarning(true, undefined, { internetAccess: true })).toBeUndefined();
+  });
+
+  it("stays silent for an update that sends no egress field", () => {
+    expect(egressWarning(true, listed, {})).toBeUndefined();
+    expect(egressWarning(true, empty, {})).toBeUndefined();
   });
 });
 

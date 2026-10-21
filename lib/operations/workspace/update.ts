@@ -22,7 +22,7 @@ import {
   type WorkspaceSecretInput,
 } from "./secrets";
 import { WorkspaceUpdateFailure } from "./errors";
-import { allowlistWarning } from "@/lib/workspace/domain";
+import { egressWarning } from "@/lib/workspace/domain";
 
 // The PATCH wire fields, shared by the route and the published contract so they can't drift. `secret`
 // is absent on purpose: secrets have their own endpoints.
@@ -73,7 +73,7 @@ export interface UpdateWorkspaceResult {
   // Normalized values from the shared validators, not a transport echo. A secret appears only as
   // metadata, never its value.
   values: WorkspaceUpdateValues;
-  /** Set when an allowlist change leaves the restriction on with no domain, which blocks every host. */
+  /** Set when what the workspace can now reach differs from what the sent egress fields suggest. */
   warning?: string;
 }
 
@@ -162,7 +162,7 @@ export async function updateWorkspace(
   }
 
   // One write for both allowlist fields; the latest record is read so a field left out keeps its saved value.
-  let warning: string | undefined;
+  let savedAllowlist = existing.domainAllowlist;
   if (changesAllowlist) {
     const latest = store.getWorkspace(id);
     const fields: Array<keyof WorkspaceUpdateValues> = [
@@ -181,7 +181,7 @@ export async function updateWorkspace(
       deps.egress,
     );
     applied(fields, allowlist.applied);
-    warning = allowlistWarning(next);
+    savedAllowlist = next;
   }
 
   // These three write through capabilities that raise rather than return a flag, so reaching the next
@@ -201,6 +201,11 @@ export async function updateWorkspace(
     applied(["secret"], true);
   }
 
+  const warning = egressWarning(internetAccess ?? existing.internetAccess, savedAllowlist, {
+    internetAccess,
+    domainRestriction,
+    allowedDomains,
+  });
   return {
     ok: true,
     workspaceId: id,

@@ -28,14 +28,49 @@ export function enforcedDomains(allowlist: DomainAllowlist | undefined): string[
   return allowlist?.restricted ? allowlist.domains : null;
 }
 
-/** The UI's line for a restriction with no domain; the API's warning starts with it. */
+/** The UI's line for a restriction with no domain; the update's warning for it starts with it. */
 export const NO_ALLOWED_DOMAIN = "No allowed domain is set";
 
-/** The warning the read and the update receipt carry while the restriction blocks every host. */
-export function allowlistWarning(allowlist: DomainAllowlist | undefined): string | undefined {
-  return enforcedDomains(allowlist)?.length === 0
-    ? `${NO_ALLOWED_DOMAIN}: domainRestriction blocks every host until one is added`
+const BLOCKS_EVERY_HOST = `${NO_ALLOWED_DOMAIN}: domainRestriction blocks every host until one is added`;
+const SAVED_OFFLINE = "internetAccess is false: the allowlist is saved and applies once internetAccess is true";
+/** Above this, the warning counts the reachable hosts instead of naming them. */
+const NAMED_HOSTS_MAX = 10;
+
+/** The egress fields an update sent, each undefined when left out. */
+export interface EgressFieldsSent {
+  internetAccess?: boolean;
+  domainRestriction?: boolean;
+  allowedDomains?: string[];
+}
+
+/**
+ * The update receipt's warning: what the workspace can reach afterwards, whenever the fields the update
+ * sent suggest otherwise. A field sent in the same update needs no explaining; one already saved may,
+ * since the read hides a list while it is not enforced.
+ */
+export function egressWarning(
+  internetAccess: boolean,
+  allowlist: DomainAllowlist | undefined,
+  sent: EgressFieldsSent,
+): string | undefined {
+  const enforced = enforcedDomains(allowlist);
+  const sentAllowlist = sent.domainRestriction !== undefined || sent.allowedDomains !== undefined;
+  if (!internetAccess) {
+    if (!sentAllowlist) return undefined;
+    return enforced?.length === 0
+      ? `${SAVED_OFFLINE}, and with no allowed domain it will then block every host`
+      : SAVED_OFFLINE;
+  }
+  if (enforced === null || (!sentAllowlist && sent.internetAccess === undefined)) return undefined;
+  if (enforced.length === 0) return BLOCKS_EVERY_HOST;
+  return sent.allowedDomains === undefined
+    ? `domainRestriction is on: only ${reachableHosts(enforced)} reachable`
     : undefined;
+}
+
+function reachableHosts(domains: string[]): string {
+  if (domains.length > NAMED_HOSTS_MAX) return `the ${domains.length} allowedDomains are`;
+  return `${domains.join(", ")} ${domains.length === 1 ? "is" : "are"}`;
 }
 
 // Exact host only: a key for "api.openai.com" must never reach another "*.openai.com" host.

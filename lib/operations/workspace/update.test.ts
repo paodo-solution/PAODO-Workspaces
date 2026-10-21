@@ -355,14 +355,14 @@ describe("the update contract", () => {
       return { written, policies, d };
     }
 
-    it("turns the restriction on and keeps the saved list", async () => {
+    it("turns the restriction on, keeps the saved list and names it, since the read hid it", async () => {
       const { written, policies, d } = recording();
       const result = await updateWorkspace("ws-1", { domainRestriction: true }, d);
       expect(written).toEqual([{ restricted: true, domains: ["api.vercel.com"] }]);
       expect(policies).toEqual([{ enabled: true, allowlist: { restricted: true, domains: ["api.vercel.com"] } }]);
       expect(result?.applied).toEqual(["domainRestriction"]);
       expect(result?.values).toEqual({ domainRestriction: true });
-      expect(result).not.toHaveProperty("warning");
+      expect(result?.warning).toBe("domainRestriction is on: only api.vercel.com is reachable");
     });
 
     it("warns when the change leaves the restriction on with no domain", async () => {
@@ -370,6 +370,23 @@ describe("the update contract", () => {
       const result = await updateWorkspace("ws-1", { domainRestriction: true, allowedDomains: [] }, d);
       expect(result?.warning).toMatch(/^No allowed domain is set: /);
       expect((await updateWorkspace("ws-1", { allowedDomains: [] }, d))?.warning).toBeUndefined();
+    });
+
+    it("names the saved hosts when internet is turned on into a saved restriction", async () => {
+      const offline = {
+        ...saved,
+        internetAccess: false,
+        domainAllowlist: { restricted: true, domains: ["api.vercel.com"] },
+      };
+      const d = deps({ store: storeStub({ getWorkspace: () => offline }) });
+      const result = await updateWorkspace("ws-1", { internetAccess: true }, d);
+      expect(result?.warning).toBe("domainRestriction is on: only api.vercel.com is reachable");
+    });
+
+    it("says an allowlist sent while internet stays off is saved for later", async () => {
+      const { d } = recording();
+      const result = await updateWorkspace("ws-1", { internetAccess: false, domainRestriction: true }, d);
+      expect(result?.warning).toMatch(/^internetAccess is false: the allowlist is saved/);
     });
 
     it("replaces the list, normalized, and keeps the saved restriction", async () => {
