@@ -57,11 +57,10 @@ Decision
    the agent that subdomains and redirect targets need their own entry, and that a refused host
    should be named to the user rather than retried.
 8. **Updates.** `domainRestriction` and `allowedDomains` join the shared update path, so UI, REST,
-   CLI and MCP all go through it. The list holds at most 100 valid domains, normalized and
-   deduplicated, and either field can be sent alone. `addAllowedDomains` and `removeAllowedDomains`
-   change the list in place (combinable, but not with `allowedDomains`), and the app uses them too,
-   so two clients editing at once never overwrite each other. The list is read again right before
-   the write, and every list change reports the saved list back. The registry is written first, then the
+   CLI and MCP all go through it. `allowedDomains` always replaces the whole list, and an empty
+   list clears it. The list holds at most 100 valid domains, normalized and deduplicated, and
+   either field can be sent alone. One invalid entry refuses the whole list, so nothing is saved
+   half-changed. The receipt reports the list as saved. The registry is written first, then the
    policy file; if the policy write fails, the registry is rolled back. The container is never
    touched.
 
@@ -99,6 +98,10 @@ Alternatives considered
   domain is added; the red warning makes that visible.
 - Allowing a secret's hosts automatically: rejected, because then the list on screen would no
   longer show everything the agent can reach.
+- Editing the list one domain at a time (`addAllowedDomains`/`removeAllowedDomains`, or separate
+  add/remove routes), so two clients editing at once never overwrite each other: tried and
+  dropped. It gave the CLI and the app two ways to change one list. A workspace has one person
+  configuring it, so a single whole-list field is simpler; the last save wins.
 
 Notes
 See [prd-workspace-internet-access-toggle.md](../prd/accepted/prd-workspace-internet-access-toggle.md) for the product framing.

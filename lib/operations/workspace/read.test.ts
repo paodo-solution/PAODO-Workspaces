@@ -72,9 +72,17 @@ describe("workspace record queries", () => {
 
   it("reports the saved domain allowlist", () => {
     const restricted: Workspace = { ...workspace, domainAllowlist: { restricted: true, domains: ["api.vercel.com"] } };
-    expect(getWorkspace("ws-1", { ...store, getWorkspace: () => restricted }, () => false)).toMatchObject({
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => restricted }, () => false);
+    expect(result).toMatchObject({ domainRestriction: true, allowedDomains: ["api.vercel.com"] });
+    expect(result).not.toHaveProperty("warning");
+  });
+
+  it("warns while the restriction is on with no domain", () => {
+    const blocked: Workspace = { ...workspace, domainAllowlist: { restricted: true, domains: [] } };
+    expect(getWorkspace("ws-1", { ...store, getWorkspace: () => blocked }, () => false)).toMatchObject({
       domainRestriction: true,
-      allowedDomains: ["api.vercel.com"],
+      allowedDomains: [],
+      warning: expect.stringMatching(/^No allowed domain is set: /),
     });
   });
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { blockedHosts, enforcedDomains, hostMatches, isHostAllowed, isValidDomain, normalizeDomain } from "./domain";
+import {
+  allowlistWarning,
+  blockedHosts,
+  enforcedDomains,
+  hostMatches,
+  isHostAllowed,
+  isValidDomain,
+  normalizeDomain,
+} from "./domain";
 
 describe("normalizeDomain", () => {
   it("reduces a pasted URL to its bare lowercase hostname", () => {
@@ -28,6 +36,15 @@ describe("enforcedDomains", () => {
     expect(enforcedDomains({ restricted: true, domains: [] })).toEqual([]);
     expect(enforcedDomains({ restricted: false, domains: ["api.vercel.com"] })).toBeNull();
     expect(enforcedDomains(undefined)).toBeNull();
+  });
+});
+
+describe("allowlistWarning", () => {
+  it("warns only while the restriction is on with no domain", () => {
+    expect(allowlistWarning({ restricted: true, domains: [] })).toMatch(/^No allowed domain is set: /);
+    expect(allowlistWarning({ restricted: true, domains: ["api.vercel.com"] })).toBeUndefined();
+    expect(allowlistWarning({ restricted: false, domains: [] })).toBeUndefined();
+    expect(allowlistWarning(undefined)).toBeUndefined();
   });
 });
 

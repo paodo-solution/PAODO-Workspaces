@@ -16,24 +16,16 @@ interface Access {
 
 const NO_ACCESS: Access = { enabled: false, domainRestriction: false, allowedDomains: [] };
 
-/** One PATCH body. Domains go as add/remove, so an edit never overwrites one another client just saved. */
-export interface AccessChange {
-  enabled?: boolean;
-  domainRestriction?: boolean;
-  addAllowedDomains?: string[];
-  removeAllowedDomains?: string[];
-}
+/** One PATCH body; `allowedDomains` is the whole new list. */
+export type AccessChange = Partial<Access>;
 
 interface PendingEdit {
   seq: number;
   change: AccessChange;
 }
 
-/** The change applied locally, the way the server merges it: removals drop out, additions go last. */
 export function applyChange(access: Access, change: AccessChange): Access {
-  const { addAllowedDomains: add = [], removeAllowedDomains: remove = [], ...flags } = change;
-  const kept = access.allowedDomains.filter((domain) => !remove.includes(domain));
-  return { ...access, ...flags, allowedDomains: [...kept, ...add.filter((domain) => !kept.includes(domain))] };
+  return { ...access, ...change };
 }
 
 /** The server-confirmed state plus the edits still awaiting an answer, tagged with the load they apply to. */
@@ -114,7 +106,8 @@ export function useWorkspaceInternetAccess(workspaceId: string | null) {
   const enqueue = useMemo(() => createSerialQueue(), []);
   const nextSeq = useRef(0);
 
-  // Optimistic: the change renders immediately; a rejected one is removed without undoing edits made after it.
+  // Optimistic: the change renders immediately; a rejected one is removed without undoing edits made after it,
+  // and a later list edit already holds the whole list as shown, so it saves the rejected one's change too.
   const change = useCallback(
     async (change: AccessChange) => {
       if (!workspaceId) return;
@@ -136,8 +129,15 @@ export function useWorkspaceInternetAccess(workspaceId: string | null) {
     () => change({ domainRestriction: !access.domainRestriction }),
     [change, access.domainRestriction],
   );
-  const addAllowedDomain = useCallback((domain: string) => change({ addAllowedDomains: [domain] }), [change]);
-  const removeAllowedDomain = useCallback((domain: string) => change({ removeAllowedDomains: [domain] }), [change]);
+  // Each sends the whole list as shown, pending edits included; the serial queue keeps them in order.
+  const addAllowedDomain = useCallback(
+    (domain: string) => change({ allowedDomains: [...access.allowedDomains, domain] }),
+    [change, access.allowedDomains],
+  );
+  const removeAllowedDomain = useCallback(
+    (domain: string) => change({ allowedDomains: access.allowedDomains.filter((listed) => listed !== domain) }),
+    [change, access.allowedDomains],
+  );
   const allowlist = useMemo<DomainAllowlist>(
     () => ({ restricted: access.domainRestriction, domains: access.allowedDomains }),
     [access.domainRestriction, access.allowedDomains],

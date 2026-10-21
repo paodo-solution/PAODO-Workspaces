@@ -28,6 +28,16 @@ export function enforcedDomains(allowlist: DomainAllowlist | undefined): string[
   return allowlist?.restricted ? allowlist.domains : null;
 }
 
+/** The UI's line for a restriction with no domain; the API's warning starts with it. */
+export const NO_ALLOWED_DOMAIN = "No allowed domain is set";
+
+/** The warning the read and the update receipt carry while the restriction blocks every host. */
+export function allowlistWarning(allowlist: DomainAllowlist | undefined): string | undefined {
+  return enforcedDomains(allowlist)?.length === 0
+    ? `${NO_ALLOWED_DOMAIN}: domainRestriction blocks every host until one is added`
+    : undefined;
+}
+
 // Exact host only: a key for "api.openai.com" must never reach another "*.openai.com" host.
 export function hostMatches(hostname: string, domain: string): boolean {
   return hostname.toLowerCase() === domain.toLowerCase();

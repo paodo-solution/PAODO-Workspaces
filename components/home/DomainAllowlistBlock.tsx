@@ -6,7 +6,7 @@ import { useState } from "react";
 import DomainField from "@/components/shared/DomainField";
 import RemoveButton from "@/components/shared/RemoveButton";
 import { Switch } from "@/components/shared/Switch";
-import { isValidDomain, normalizeDomain } from "@/lib/workspace/domain";
+import { isValidDomain, NO_ALLOWED_DOMAIN, normalizeDomain } from "@/lib/workspace/domain";
 
 interface Props {
   enabled: boolean;
@@ -87,7 +87,7 @@ export default function DomainAllowlistBlock({ enabled, domains, onToggle, onAdd
               + Add domain
             </button>
           )}
-          {domains.length === 0 && <p className="text-xs text-danger m-0">No allowed domain is set</p>}
+          {domains.length === 0 && <p className="text-xs text-danger m-0">{NO_ALLOWED_DOMAIN}</p>}
         </div>
       )}
     </div>

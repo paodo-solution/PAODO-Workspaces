@@ -15,6 +15,7 @@ export interface WorkspaceUpdateReceipt {
   ok: true;
   workspaceId: string;
   applied: WorkspaceUpdateValues;
+  warning?: string;
 }
 
 export function workspaceUpdateReceipt(result: UpdateWorkspaceResult): WorkspaceUpdateReceipt {
@@ -25,6 +26,7 @@ export function workspaceUpdateReceipt(result: UpdateWorkspaceResult): Workspace
     ok: result.ok,
     workspaceId: result.workspaceId,
     applied,
+    ...(result.warning ? { warning: result.warning } : {}),
   };
 }
 
