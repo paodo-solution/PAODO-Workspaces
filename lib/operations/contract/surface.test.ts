@@ -212,7 +212,7 @@ it("pins the platform routes and the contract's shape to the contract version", 
         "POST ^\\/api\\/connections$",
         "DELETE ^\\/api\\/connections\\/[^/]+$",
       ],
-      "version": 1,
+      "version": 2,
     }
   `);
 });
