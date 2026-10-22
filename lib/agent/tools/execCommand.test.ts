@@ -414,3 +414,34 @@ describe("ExecCommandTool output limits", () => {
     }
   });
 });
+
+describe("ExecCommandTool egress note", () => {
+  const offline = () => ({ internetAccess: false });
+  const tool = (exec: StreamingExecFn) =>
+    new ExecCommandTool(
+      exec,
+      fakeBackground().fn,
+      () => {},
+      { silenceTimeoutMs: 60_000, maxTimeoutMs: 60_000 },
+      "/workspace/test",
+      fakeSink().fn,
+      offline,
+    );
+
+  it("does not read a refusal into the command's own text", async () => {
+    const result = await tool(fakeExec({ code: 1 })).invoke({ command: "grep -r '403 Forbidden' logs/" });
+    expect(result).not.toContain("Cannot reach");
+  });
+
+  it("ignores a refusal logged long before the command's final error", async () => {
+    const stderr = ["GET https://example.com 403 Forbidden", ...Array(30).fill("ok"), "1 test failed"].join("\n");
+    const result = await tool(fakeExec({ stderr, code: 1 })).invoke({ command: "npm test" });
+    expect(result).not.toContain("Cannot reach");
+  });
+
+  it("names the host from the command when the relay refused it", async () => {
+    const exec = fakeExec({ stderr: "curl: (56) CONNECT tunnel failed, response 403", code: 56 });
+    const result = await tool(exec).invoke({ command: "curl https://example.com/x" });
+    expect(result).toContain("Cannot reach example.com: internet access is off for this workspace.");
+  });
+});

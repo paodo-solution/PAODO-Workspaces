@@ -23,6 +23,14 @@ const schema = z.object({
     ),
 });
 
+// The egress note reads only stderr's last lines, where a failed command reports why it stopped,
+// so a 403 in a failing test suite's earlier logs isn't taken for a refusal.
+const EGRESS_TAIL_LINES = 20;
+
+function stderrTail(output: ExecOutput): string {
+  return output.stderrText().trimEnd().split("\n").slice(-EGRESS_TAIL_LINES).join("\n");
+}
+
 // Maps known stderr signatures to actionable user guidance appended to the tool result.
 // Returns "" when stderr is empty so callers can filter it out cleanly.
 function diagnoseStderr(stderr: string): string {
@@ -213,9 +221,7 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
           const body = output.overflowed
             ? [output.overflowNotice(), diagnoseStderr(output.stderrText())]
             : [output.stdoutText().trim(), diagnoseStderr(output.stderrText())];
-          const egressNote = failed
-            ? egressBlockMessage(this.egressPolicy?.(), `${command}\n${output.stderrText()}`)
-            : "";
+          const egressNote = failed ? egressBlockMessage(this.egressPolicy?.(), stderrTail(output), command) : "";
           const parts = [errorLine, ...body, egressNote].filter(Boolean);
           finish(parts.join("\n") || "Command executed successfully with no output.");
         })

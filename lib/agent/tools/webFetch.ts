@@ -134,7 +134,7 @@ For GitHub repos/PRs/issues, prefer gh CLI via execute_command instead.`;
       const { message, metaLine } = splitStderr(r.stderr);
       if (r.code !== 0) {
         const error = `Error: ${message || `request failed (curl exit ${r.code})`} — ${target}`;
-        const note = egressBlockMessage(this.egressPolicy?.(), `${target}\n${message}`);
+        const note = egressBlockMessage(this.egressPolicy?.(), message, target);
         return note ? `${error}\n${note}` : error;
       }
 
