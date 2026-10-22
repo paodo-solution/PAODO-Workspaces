@@ -126,3 +126,27 @@ describe("apt_install records what a rebuilt container must reinstall", () => {
     expect(recorded).toEqual([]);
   });
 });
+
+describe("apt_install explains a mirror the allowlist refuses", () => {
+  const restricted = () => ({ internetAccess: true, domainAllowlist: { restricted: true, domains: ["pypi.org"] } });
+  const refused = "W: Failed to fetch http://deb.debian.org/debian/dists/trixie/InRelease  403  Forbidden";
+
+  it("names the mirror even when apt-get update exited 0 and only the install failed", async () => {
+    const { runner, record } = makeRunner({
+      update: { code: 0, stdout: "", stderr: refused },
+      install: { code: 100, stdout: "", stderr: "E: Unable to locate package ffmpeg" },
+    });
+    const out = await new AptInstallTool(runner, record, restricted).invoke({ packages: ["ffmpeg"] });
+
+    expect(out).toContain("Cannot reach deb.debian.org: this workspace can only access pypi.org.");
+  });
+
+  it("adds nothing for an unrestricted workspace", async () => {
+    const { runner, record } = makeRunner({ update: { code: 100, stdout: "", stderr: refused } });
+    const out = await new AptInstallTool(runner, record, () => ({ internetAccess: true })).invoke({
+      packages: ["ffmpeg"],
+    });
+
+    expect(out).not.toContain("Cannot reach");
+  });
+});

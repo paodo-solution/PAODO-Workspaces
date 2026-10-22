@@ -5,6 +5,7 @@ import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { toolError } from "../toolUtils";
 import type { ExecRunner } from "../interfaces";
+import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
 
 const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_SECONDS = 15;
@@ -119,7 +120,10 @@ For GitHub repos/PRs/issues, prefer gh CLI via execute_command instead.`;
   schema = schema;
 
   // Runs through the workspace container, like every other tool. Tests inject a fake runner.
-  constructor(private readonly runner: ExecRunner) {
+  constructor(
+    private readonly runner: ExecRunner,
+    private readonly egressPolicy?: () => EgressPolicy | undefined,
+  ) {
     super();
   }
 
@@ -128,7 +132,11 @@ For GitHub repos/PRs/issues, prefer gh CLI via execute_command instead.`;
       const target = normalizeUrl(url);
       const r = await this.runner.exec(buildCurlArgs(target));
       const { message, metaLine } = splitStderr(r.stderr);
-      if (r.code !== 0) return `Error: ${message || `request failed (curl exit ${r.code})`} — ${target}`;
+      if (r.code !== 0) {
+        const error = `Error: ${message || `request failed (curl exit ${r.code})`} — ${target}`;
+        const note = egressBlockMessage(this.egressPolicy?.(), `${target}\n${message}`);
+        return note ? `${error}\n${note}` : error;
+      }
 
       const { status, contentType, finalUrl, body } = parseOutcome(r.stdout, metaLine, target);
       if (status < 200 || status >= 300) return `Error: HTTP ${status} — ${finalUrl}`;

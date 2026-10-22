@@ -9,6 +9,7 @@ import { createLogger } from "../../infra/logger";
 import { checkFreeSpace, RESERVED_FREE_BYTES } from "@/lib/infra/storage/diskSpace";
 import type { StreamingExecFn, BackgroundExecFn, ExecConfig, OutputSinkFn } from "../interfaces";
 import { ExecOutput } from "./execOutput";
+import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
 
 const schema = z.object({
   command: z.string().describe("The bash command to execute"),
@@ -71,6 +72,8 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
     private readonly execConfig: ExecConfig,
     private readonly workspaceDir: string,
     private readonly openOutputSink: OutputSinkFn,
+    /** Read at failure time, so the note reflects the settings now, not at run start. */
+    private readonly egressPolicy?: () => EgressPolicy | undefined,
   ) {
     super();
   }
@@ -210,7 +213,10 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
           const body = output.overflowed
             ? [output.overflowNotice(), diagnoseStderr(output.stderrText())]
             : [output.stdoutText().trim(), diagnoseStderr(output.stderrText())];
-          const parts = [errorLine, ...body].filter(Boolean);
+          const egressNote = failed
+            ? egressBlockMessage(this.egressPolicy?.(), `${command}\n${output.stderrText()}`)
+            : "";
+          const parts = [errorLine, ...body, egressNote].filter(Boolean);
           finish(parts.join("\n") || "Command executed successfully with no output.");
         })
         .catch((err) => {
