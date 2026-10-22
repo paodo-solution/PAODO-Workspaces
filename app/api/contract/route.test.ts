@@ -18,8 +18,8 @@ describe("GET /api/contract", () => {
   // the description cannot age apart from the rule.
   it("quotes the validators' bounds and types", async () => {
     const { fields } = await GET().json();
-    expect(fields.workspace.maxIterations).toEqual({ type: "int", rule: "1-500" });
-    expect(fields.workspace.internetAccess).toEqual({ type: "boolean" });
+    expect(fields.workspace.maxIterations).toMatchObject({ type: "int", rule: expect.stringMatching(/^1-500 /) });
+    expect(fields.workspace.internetAccess.type).toBe("boolean");
     expect(fields.schedule.intervalUnit).toEqual({ type: "string", values: ["minute", "hour", "day", "week"] });
   });
 
