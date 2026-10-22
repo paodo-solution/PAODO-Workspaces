@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_ALLOWED_DOMAINS,
-  resolveDomainAllowlist,
   setDomainAllowlist,
   setInternetAccess,
   validateAllowedDomains,
@@ -171,7 +170,9 @@ describe("domain allowlist input validation", () => {
   it("refuses a non-list, a non-hostname and an oversized list", () => {
     expect(() => validateAllowedDomains("api.vercel.com")).toThrow("allowedDomains must be a list of domains");
     for (const bad of [["localhost"], ["10.0.0.1"], [5], ["*.vercel.com"]]) {
-      expect(() => validateAllowedDomains(bad)).toThrow("each allowed domain must be a hostname");
+      expect(() => validateAllowedDomains(bad)).toThrow(
+        `allowedDomains: ${JSON.stringify(bad[0])} is not a public hostname`,
+      );
     }
     const tooMany = Array.from({ length: MAX_ALLOWED_DOMAINS + 1 }, (_, i) => `h${i}.example.com`);
     expect(() => validateAllowedDomains(tooMany)).toThrow(`at most ${MAX_ALLOWED_DOMAINS}`);
@@ -249,22 +250,5 @@ describe("setting the domain allowlist", () => {
       }),
     );
     expect(result).toEqual({ applied: false });
-  });
-});
-
-describe("resolving the domain allowlist", () => {
-  it("keeps the saved value of a field that wasn't sent", () => {
-    const saved: DomainAllowlist = { restricted: true, domains: ["api.vercel.com"] };
-    expect(resolveDomainAllowlist(saved, { restricted: false })).toEqual({
-      previous: saved,
-      next: { restricted: false, domains: ["api.vercel.com"] },
-    });
-  });
-
-  it("starts from an unrestricted empty list when nothing is saved", () => {
-    expect(resolveDomainAllowlist(undefined, { domains: ["a.example.com"] })).toEqual({
-      previous: { restricted: false, domains: [] },
-      next: { restricted: false, domains: ["a.example.com"] },
-    });
   });
 });

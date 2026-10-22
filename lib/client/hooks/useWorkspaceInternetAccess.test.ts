@@ -1,5 +1,5 @@
-// Allowlist edits go as add/remove, one at a time and in order, and a refused one undoes only itself. fetch is
-// mocked to control when each save answers.
+// Each edit sends the whole list as shown, one at a time and in order, so a refused list edit is carried by the
+// next one. fetch is mocked to control when each save answers.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -21,9 +21,8 @@ beforeEach(() => {
 });
 
 describe("applyChange", () => {
-  it("drops removals and appends additions not already listed, like the server", () => {
-    const next = applyChange(confirmed, { removeAllowedDomains: ["a.com"], addAllowedDomains: ["b.com", "d.com"] });
-    expect(next.allowedDomains).toEqual(["b.com", "c.com", "d.com"]);
+  it("replaces the list with the one sent", () => {
+    expect(applyChange(confirmed, { allowedDomains: ["d.com"] }).allowedDomains).toEqual(["d.com"]);
   });
 
   it("leaves the list alone for a flag-only change", () => {
@@ -35,8 +34,8 @@ describe("shownAccess", () => {
   it("applies every unanswered edit over the confirmed state, in order", () => {
     const shown = shownAccess(
       edits([
-        { seq: 1, change: { removeAllowedDomains: ["a.com"] } },
-        { seq: 2, change: { removeAllowedDomains: ["b.com"] } },
+        { seq: 1, change: { allowedDomains: ["b.com", "c.com"] } },
+        { seq: 2, change: { allowedDomains: ["c.com"] } },
       ]),
     );
     expect(shown.allowedDomains).toEqual(["c.com"]);
@@ -46,17 +45,27 @@ describe("shownAccess", () => {
 describe("settleEdit", () => {
   it("drops a refused edit without undoing the edits made after it", () => {
     const state = edits([
-      { seq: 1, change: { removeAllowedDomains: ["a.com"] } },
-      { seq: 2, change: { removeAllowedDomains: ["b.com"] } },
+      { seq: 1, change: { domainRestriction: false } },
+      { seq: 2, change: { allowedDomains: ["c.com"] } },
     ]);
-    expect(shownAccess(settleEdit(state, 1, null)).allowedDomains).toEqual(["a.com", "c.com"]);
+    const shown = shownAccess(settleEdit(state, 1, null));
+    expect(shown.domainRestriction).toBe(true);
+    expect(shown.allowedDomains).toEqual(["c.com"]);
   });
 
-  it("takes the saved list the server reports, including another client's additions", () => {
-    const state = edits([{ seq: 1, change: { removeAllowedDomains: ["a.com"] } }]);
-    const settled = settleEdit(state, 1, { allowedDomains: ["b.com", "c.com", "from-cli.com"] });
+  it("keeps a refused list edit on screen when a later list edit already carries it", () => {
+    const state = edits([
+      { seq: 1, change: { allowedDomains: ["b.com", "c.com"] } },
+      { seq: 2, change: { allowedDomains: ["c.com"] } },
+    ]);
+    expect(shownAccess(settleEdit(state, 1, null)).allowedDomains).toEqual(["c.com"]);
+  });
+
+  it("takes the saved list the server reports", () => {
+    const state = edits([{ seq: 1, change: { allowedDomains: ["API.d.com"] } }]);
+    const settled = settleEdit(state, 1, { allowedDomains: ["api.d.com"] });
     expect(settled.pending).toEqual([]);
-    expect(settled.confirmed.allowedDomains).toEqual(["b.com", "c.com", "from-cli.com"]);
+    expect(settled.confirmed.allowedDomains).toEqual(["api.d.com"]);
   });
 
   it("applies the change itself when the receipt leaves a field out", () => {
@@ -90,7 +99,7 @@ describe("createSerialQueue", () => {
     expect(order).toEqual(["first done", "second started"]);
   });
 
-  it("sends two quick removals in the order they were made, even if the first answers slowly", async () => {
+  it("sends two quick list saves in the order they were made, even if the first answers slowly", async () => {
     const bodies: string[] = [];
     const answers: Array<() => void> = [];
     vi.stubGlobal(
@@ -101,18 +110,15 @@ describe("createSerialQueue", () => {
       }),
     );
     const enqueue = createSerialQueue();
-    const first = enqueue(() => sendAccessChange("ws", { removeAllowedDomains: ["a.com"] }));
-    const second = enqueue(() => sendAccessChange("ws", { removeAllowedDomains: ["b.com"] }));
+    const first = enqueue(() => sendAccessChange("ws", { allowedDomains: ["b.com"] }));
+    const second = enqueue(() => sendAccessChange("ws", { allowedDomains: [] }));
     await vi.waitFor(() => expect(bodies).toHaveLength(1));
     answers[0]();
     await first;
     await vi.waitFor(() => expect(bodies).toHaveLength(2));
     answers[1]();
     await second;
-    expect(bodies.map((b) => JSON.parse(b))).toEqual([
-      { removeAllowedDomains: ["a.com"] },
-      { removeAllowedDomains: ["b.com"] },
-    ]);
+    expect(bodies.map((b) => JSON.parse(b))).toEqual([{ allowedDomains: ["b.com"] }, { allowedDomains: [] }]);
   });
 });
 
@@ -120,11 +126,9 @@ describe("sendAccessChange", () => {
   it("returns only what the receipt reports, as the hook's field names", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        receipt({ addAllowedDomains: ["api.x.com"], allowedDomains: ["api.x.com"], internetAccess: true }),
-      ),
+      vi.fn(async () => receipt({ allowedDomains: ["api.x.com"], internetAccess: true })),
     );
-    expect(await sendAccessChange("ws", { addAllowedDomains: ["https://API.x.com/"] })).toEqual({
+    expect(await sendAccessChange("ws", { allowedDomains: ["https://API.x.com/"] })).toEqual({
       allowedDomains: ["api.x.com"],
       enabled: true,
     });

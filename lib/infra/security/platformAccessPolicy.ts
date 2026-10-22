@@ -21,7 +21,7 @@ function resourceRule(collection: string, method: string, suffix?: string) {
 
 // Sent as `X-Paodo-Contract` so a mismatched client can say so. Raise it when a rule is removed or a
 // route changes incompatibly; adding a rule or field does not count.
-export const PLATFORM_CONTRACT_VERSION = 1;
+export const PLATFORM_CONTRACT_VERSION = 2;
 
 // The credential channels a workspace exposes: the word a caller names one by, and its route segment.
 // The rules below are generated from it and the contract publishes it, so a channel exists in one place.

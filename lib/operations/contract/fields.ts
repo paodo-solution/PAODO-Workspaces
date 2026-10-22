@@ -21,12 +21,13 @@ import {
 } from "@/lib/workspace/limits";
 import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/workspace/name";
 
-// `type` is the expected JSON type, `values` any closed set, `rule` the rest in words. Descriptive only:
-// it may be looser than the validators but never contradict them.
+// `type` is the JSON type, `values` any closed set, `rule` the accepted format as a phrase, `effect` what the
+// setting does in sentences, where its name alone would not say. Descriptive only: never contradicts a validator.
 export interface ContractField {
   type: "string" | "int" | "boolean" | "string[]";
   values?: readonly string[];
   rule?: string;
+  effect?: string;
 }
 
 /** Keyed by a route's own field list, so a field added there fails to compile until it is described here. */
@@ -34,33 +35,59 @@ type FieldsOf<Names extends readonly string[]> = Record<Names[number], ContractF
 
 const MODEL_CATALOG = "from the model catalog (GET /api/models)";
 
+/** Workspace and drive names share one policy (lib/workspace/name.ts, lib/drives/name.ts). */
+const NAME_RULE = (max: number) => `1-${max} characters, no path separators and no leading dot`;
+
+/** Uniqueness as normalizeForUniqueness enforces it: trimmed, NFC and case-folded, accents kept. */
+const uniqueName = (noun: string) =>
+  `Unique across ${noun}s, ignoring case: an agent addresses a ${noun} by name, so a taken name is refused.`;
+
+/** A session status named in an effect, typed so a renamed status fails to compile here. */
+const endsAs = (status: SessionStatus) => `the session ends ${status}`;
+
+/** An inbound channel's toggle; its key is minted, rotated and revoked only by the key routes. */
+const channelEffect = (channel: string) =>
+  `While true, the ${channel} channel answers calls made with its key. Switching it keeps the key and never mints one.`;
+
 const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
-  name: { type: "string", rule: `1-${MAX_WORKSPACE_NAME_LENGTH} characters` },
-  description: { type: "string", rule: `0-${MAX_WORKSPACE_DESCRIPTION_LENGTH} characters` },
+  name: { type: "string", rule: NAME_RULE(MAX_WORKSPACE_NAME_LENGTH), effect: uniqueName("workspace") },
+  description: {
+    type: "string",
+    rule: `0-${MAX_WORKSPACE_DESCRIPTION_LENGTH} characters`,
+    effect: "Given to MCP clients as the workspace's instructions when they connect; empty means none.",
+  },
   llmProvider: { type: "string", rule: `a provider ${MODEL_CATALOG}` },
   llmModel: { type: "string", rule: `one of the provider's models ${MODEL_CATALOG}` },
   reasoningEffort: { type: "string", rule: `a level the model accepts ${MODEL_CATALOG}` },
-  maxIterations: { type: "int", rule: `${MIN_MAX_ITERATIONS}-${MAX_MAX_ITERATIONS}` },
-  maxRunMinutes: { type: "int", rule: `${MIN_MAX_RUN_MINUTES}-${MAX_MAX_RUN_MINUTES}` },
-  internetAccess: { type: "boolean" },
+  maxIterations: {
+    type: "int",
+    rule: `${MIN_MAX_ITERATIONS}-${MAX_MAX_ITERATIONS} model turns per session`,
+    effect: `At the limit the agent sums up without tools and ${endsAs("limit_reached")}.`,
+  },
+  maxRunMinutes: {
+    type: "int",
+    rule: `${MIN_MAX_RUN_MINUTES}-${MAX_MAX_RUN_MINUTES} minutes per session`,
+    effect: `Past it the run is stopped and ${endsAs("timeout")}.`,
+  },
+  internetAccess: {
+    type: "boolean",
+    effect: "While false, the container reaches no host. While true, it reaches every host unless domainRestriction is true.",
+  },
   domainRestriction: {
     type: "boolean",
-    rule: "while true, the container reaches only allowedDomains; an empty list blocks every host",
+    effect:
+      "While true and internetAccess is true, the container reaches only allowedDomains; an empty list blocks every host.",
   },
   allowedDomains: {
     type: "string[]",
-    rule: `at most ${MAX_ALLOWED_DOMAINS} hostnames, each matched exactly (vercel.com does not cover api.vercel.com); replaces the whole list; not combinable with add/removeAllowedDomains; the receipt reports the saved list after any list change`,
+    rule: `at most ${MAX_ALLOWED_DOMAINS} public hostnames like api.vercel.com, no wildcard or IP; a scheme, path or port is dropped`,
+    effect:
+      "Replaces the whole list; an empty one clears it. Each entry matches one host exactly and case-insensitively: " +
+      "vercel.com does not cover api.vercel.com. Kept while domainRestriction or internetAccess is false, and " +
+      "enforced once both are true.",
   },
-  addAllowedDomains: {
-    type: "string[]",
-    rule: `hostnames appended to the saved list unless already there; combinable with removeAllowedDomains; the list stays at most ${MAX_ALLOWED_DOMAINS}`,
-  },
-  removeAllowedDomains: {
-    type: "string[]",
-    rule: "hostnames dropped from the saved list; one not listed is a no-op; a domain can't be both added and removed",
-  },
-  workspaceApiAccess: { type: "boolean" },
-  workspaceMcpAccess: { type: "boolean" },
+  workspaceApiAccess: { type: "boolean", effect: channelEffect("agent API") },
+  workspaceMcpAccess: { type: "boolean", effect: channelEffect("MCP") },
 };
 
 const LOCAL_CLOCK = "YYYY-MM-DDTHH:mm on the timezone's clock, no seconds, Z or offset";
@@ -68,27 +95,27 @@ const LOCAL_CLOCK = "YYYY-MM-DDTHH:mm on the timezone's clock, no seconds, Z or 
 const schedule: FieldsOf<typeof SCHEDULE_FIELDS> = {
   prompt: {
     type: "string",
-    rule: `the message each run sends, at most ${MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters; required while enabled`,
+    rule: `at most ${MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters`,
+    effect: "The message each run sends; required while enabled.",
   },
   intervalValue: { type: "int", rule: `${MIN_INTERVAL_VALUE}-${MAX_INTERVAL_VALUE}` },
   intervalUnit: { type: "string", values: INTERVAL_UNITS },
   startAt: { type: "string", rule: `${LOCAL_CLOCK}, e.g. 2026-10-02T09:00` },
   endAt: {
     type: "string",
-    rule:
-      `optional, ${LOCAL_CLOCK}, after startAt, e.g. 2026-10-31T18:00; no run starts at or after it; ` +
-      "without one an enabled job runs until disabled; empty clears it",
+    rule: "optional, startAt's format and after it, e.g. 2026-10-31T18:00",
+    effect: "No run starts at or after it; without one an enabled job runs until disabled. Empty clears it.",
   },
   timezone: { type: "string", rule: "standard timezone name, e.g. Europe/Paris" },
-  enabled: { type: "boolean" },
+  enabled: { type: "boolean", effect: "While false, no run fires; every other setting is kept." },
 };
 
 const drive: FieldsOf<typeof DRIVE_UPDATABLE_FIELDS> = {
-  name: {
+  name: { type: "string", rule: NAME_RULE(MAX_DRIVE_NAME_LENGTH), effect: uniqueName("drive") },
+  description: {
     type: "string",
-    rule: `1-${MAX_DRIVE_NAME_LENGTH} characters, unique across drives, no path separators and no leading dot`,
+    effect: "Shown beside the drive's name to every agent connected to it, so say what belongs in it; empty means none.",
   },
-  description: { type: "string", rule: "empty clears it" },
 };
 
 /** Hard numbers a caller would otherwise quote from memory. Each is the constant its code enforces. */
@@ -216,11 +243,8 @@ function describe() {
       input: "The arguments the agent gave the tool, one field each, uncut.",
       output: "What the tool returned to the agent, uncut.",
     },
-    drive: {
-      unique:
-        "No two drives may share a name, compared case- and accent-insensitively. An agent addresses " +
-        "a drive by name, so a duplicate would be reachable only by accident; a taken name is refused.",
-    },
+    // Kept for CLIs that still print it; fields.drive.name now says the same. Drop with the next version.
+    drive: { unique: uniqueName("drive") },
     connection: {
       pairs:
         "A drive and a workspace make a drive link, in either order; two workspaces make an agent call, the " +

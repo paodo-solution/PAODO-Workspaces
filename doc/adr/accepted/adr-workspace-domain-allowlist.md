@@ -57,20 +57,28 @@ Decision
    the agent that subdomains and redirect targets need their own entry, and that a refused host
    should be named to the user rather than retried.
 8. **Updates.** `domainRestriction` and `allowedDomains` join the shared update path, so UI, REST,
-   CLI and MCP all go through it. The list holds at most 100 valid domains, normalized and
-   deduplicated, and either field can be sent alone. `addAllowedDomains` and `removeAllowedDomains`
-   change the list in place (combinable, but not with `allowedDomains`), and the app uses them too,
-   so two clients editing at once never overwrite each other. The list is read again right before
-   the write, and every list change reports the saved list back. The registry is written first, then the
+   CLI and MCP all go through it. `allowedDomains` always replaces the whole list, and an empty
+   list clears it. The list holds at most 100 valid domains, normalized and deduplicated, and
+   either field can be sent alone. One invalid entry refuses the whole list, so nothing is saved
+   half-changed. The receipt reports the list as saved. The registry is written first, then the
    policy file; if the policy write fails, the registry is rolled back. The container is never
    touched.
+9. **The update says what is reachable when the sent fields don't.** Only the update receipt
+   carries a `warning`, never the read; `egressWarning` in `lib/workspace/domain.ts` decides it. A
+   field sent in the same update needs no explaining, but a saved one may, because the read hides
+   a list while it is not enforced. So an update that touches the allowlist while internet access
+   is off says it is saved and applies once internet is on. One that turns internet or the
+   restriction on without sending the list names the hosts the agent can now reach (counted past
+   ten). One that leaves the restriction on with no domain says every host is blocked. Changing
+   the allowlist while internet is off is accepted rather than refused, unlike the UI, which hides
+   the allowlist then: the state is safe, and an agent can prepare a list before going online.
 
 Consequences
 
 - Exact matching makes the user find out every host a task uses. A git clone from GitHub, for
   example, needs only `github.com`, but a repository archive needs `codeload.github.com` and a
-  release file needs `objects.githubusercontent.com`. For now the refusal log and the agent's
-  prompt cover this; a "recently refused hosts" list in the UI would make it much easier.
+  release file needs `objects.githubusercontent.com`. The refusal log and the agent's prompt,
+  which tells it to name a refused host, cover this.
 - The allowlist limits where the agent can go, not what it does there. An allowed host is still a
   way for data to leave, and a host that serves anyone's content (`github.com`,
   `raw.githubusercontent.com`, package registries) is a way for anyone's content to reach the
@@ -99,6 +107,10 @@ Alternatives considered
   domain is added; the red warning makes that visible.
 - Allowing a secret's hosts automatically: rejected, because then the list on screen would no
   longer show everything the agent can reach.
+- Editing the list one domain at a time (`addAllowedDomains`/`removeAllowedDomains`, or separate
+  add/remove routes), so two clients editing at once never overwrite each other: tried and
+  dropped. It gave the CLI and the app two ways to change one list. A workspace has one person
+  configuring it, so a single whole-list field is simpler; the last save wins.
 
 Notes
 See [prd-workspace-internet-access-toggle.md](../prd/accepted/prd-workspace-internet-access-toggle.md) for the product framing.

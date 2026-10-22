@@ -35,15 +35,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     internetAccess: body.enabled as boolean | undefined,
     domainRestriction: body.domainRestriction as boolean | undefined,
     allowedDomains: body.allowedDomains as string[] | undefined,
-    addAllowedDomains: body.addAllowedDomains as string[] | undefined,
-    removeAllowedDomains: body.removeAllowedDomains as string[] | undefined,
   };
   if (Object.values(input).every((value) => value === undefined)) {
-    return errorResponse(
-      "INVALID_REQUEST",
-      "send at least one of: enabled, domainRestriction, allowedDomains, addAllowedDomains, removeAllowedDomains",
-      { request: req },
-    );
+    return errorResponse("INVALID_REQUEST", "send at least one of: enabled, domainRestriction, allowedDomains", {
+      request: req,
+    });
   }
 
   try {

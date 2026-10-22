@@ -51,11 +51,37 @@ describe("workspace record queries", () => {
       maxIterations: 30,
       maxRunMinutes: 20,
       internetAccess: false,
+      domainRestriction: false,
       llmProvider: "deepseek",
       llmModel: "deepseek-flash",
       llmProviderHasKey: true,
     });
     expect(result).not.toHaveProperty("dir");
+    expect(result).not.toHaveProperty("allowedDomains");
+  });
+
+  it("hides a saved list while the restriction is off", () => {
+    const unrestricted: Workspace = {
+      ...workspace,
+      domainAllowlist: { restricted: false, domains: ["api.vercel.com"] },
+    };
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => unrestricted }, () => false);
+    expect(result).toMatchObject({ domainRestriction: false });
+    expect(result).not.toHaveProperty("allowedDomains");
+  });
+
+  it("reports the saved domain allowlist", () => {
+    const restricted: Workspace = { ...workspace, domainAllowlist: { restricted: true, domains: ["api.vercel.com"] } };
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => restricted }, () => false);
+    expect(result).toMatchObject({ domainRestriction: true, allowedDomains: ["api.vercel.com"] });
+    expect(result).not.toHaveProperty("warning");
+  });
+
+  it("reports an empty enforced list without a warning, which only the update gives", () => {
+    const blocked: Workspace = { ...workspace, domainAllowlist: { restricted: true, domains: [] } };
+    const result = getWorkspace("ws-1", { ...store, getWorkspace: () => blocked }, () => false);
+    expect(result).toMatchObject({ domainRestriction: true, allowedDomains: [] });
+    expect(result).not.toHaveProperty("warning");
   });
 
   it("returns an explicitly selected model instead of the defaults", () => {

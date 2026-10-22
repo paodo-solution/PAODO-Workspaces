@@ -127,8 +127,6 @@ it("pins the platform routes and the contract's shape to the contract version", 
             "internetAccess",
             "domainRestriction",
             "allowedDomains",
-            "addAllowedDomains",
-            "removeAllowedDomains",
             "workspaceApiAccess",
             "workspaceMcpAccess",
           ],
@@ -214,7 +212,7 @@ it("pins the platform routes and the contract's shape to the contract version", 
         "POST ^\\/api\\/connections$",
         "DELETE ^\\/api\\/connections\\/[^/]+$",
       ],
-      "version": 1,
+      "version": 2,
     }
   `);
 });

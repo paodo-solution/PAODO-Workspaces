@@ -3,7 +3,7 @@ import type { IWorkspaceStore } from "@/lib/infra/interfaces";
 import { getStore } from "@/lib/infra/services";
 import { defaultModelSelection, modelReasoningEfforts } from "@/lib/agent/buildModel";
 import { providerHasKey } from "@/lib/operations/settings/providerKeys";
-import type { Workspace } from "@/lib/workspace/types";
+import type { DomainAllowlist, Workspace } from "@/lib/workspace/types";
 import type { ModelSelection } from "@/lib/models/selection";
 
 export interface WorkspaceSummary {
@@ -17,6 +17,10 @@ export interface WorkspaceDetails extends WorkspaceSummary {
   maxIterations: number;
   maxRunMinutes: number;
   internetAccess: boolean;
+  /** While true, the container reaches only `allowedDomains`; false when no list was ever saved. */
+  domainRestriction: boolean;
+  /** Omitted while `domainRestriction` is false, since nothing enforces it then. */
+  allowedDomains?: string[];
   llmProvider: string;
   llmModel: string;
   /** Whether the selected provider currently has an API key configured. */
@@ -55,6 +59,16 @@ export function publicModelSelection(selection: ModelSelection): PublicModelSele
   };
 }
 
+// Domains are shown only while enforced: with the restriction off no domain is restricted,
+// so the saved list is intentionally hidden. The update already warns about an empty list.
+function publicDomainAllowlist(
+  allowlist: DomainAllowlist | undefined,
+): Pick<WorkspaceDetails, "domainRestriction" | "allowedDomains"> {
+  return allowlist?.restricted
+    ? { domainRestriction: true, allowedDomains: [...allowlist.domains] }
+    : { domainRestriction: false };
+}
+
 export function workspaceSummary(workspace: Workspace): WorkspaceSummary {
   return {
     id: workspace.id,
@@ -81,6 +95,7 @@ export function getWorkspace(
     maxIterations: workspace.maxIterations,
     maxRunMinutes: workspace.maxRunMinutes,
     internetAccess: workspace.internetAccess,
+    ...publicDomainAllowlist(workspace.domainAllowlist),
     ...publicModelSelection(modelSelection),
     llmProviderHasKey: hasProviderKey(modelSelection.provider),
   };

@@ -6,11 +6,9 @@ import { metadataWrites, validateMetadata, type MetadataWriter, type WorkspaceMe
 import { currentModelSelection, publicModelSelection, type WorkspaceLookup } from "./read";
 import { setChannelEnabled, validateChannelEnabled, type ChannelCredentials } from "./access";
 import {
-  resolveDomainAllowlist,
   setDomainAllowlist,
   setInternetAccess,
   validateAllowedDomains,
-  validateDomainListEdit,
   validateDomainRestriction,
   validateInternetAccess,
   type EgressServices,
@@ -24,6 +22,7 @@ import {
   type WorkspaceSecretInput,
 } from "./secrets";
 import { WorkspaceUpdateFailure } from "./errors";
+import { egressWarning } from "@/lib/workspace/domain";
 
 // The PATCH wire fields, shared by the route and the published contract so they can't drift. `secret`
 // is absent on purpose: secrets have their own endpoints.
@@ -35,8 +34,6 @@ export const WORKSPACE_UPDATABLE_FIELDS = [
   "internetAccess",
   "domainRestriction",
   "allowedDomains",
-  "addAllowedDomains",
-  "removeAllowedDomains",
   "workspaceApiAccess",
   "workspaceMcpAccess",
   "llmProvider",
@@ -61,12 +58,8 @@ function field<K extends keyof WorkspaceUpdateValues>(
 export type UpdateWorkspaceInput = WorkspaceMetadataInput & {
   internetAccess?: boolean;
   domainRestriction?: boolean;
-  /** Replaces the whole list; can't be combined with add/remove. */
+  /** Replaces the whole list; an empty one clears it. */
   allowedDomains?: string[];
-  /** Appended unless already listed. */
-  addAllowedDomains?: string[];
-  /** Dropped if listed; an unlisted one is a no-op. */
-  removeAllowedDomains?: string[];
   workspaceApiAccess?: boolean;
   workspaceMcpAccess?: boolean;
   secret?: WorkspaceSecretInput;
@@ -80,6 +73,8 @@ export interface UpdateWorkspaceResult {
   // Normalized values from the shared validators, not a transport echo. A secret appears only as
   // metadata, never its value.
   values: WorkspaceUpdateValues;
+  /** Set when what the workspace can now reach differs from what the sent egress fields suggest. */
+  warning?: string;
 }
 
 export type WorkspaceUpdateValues = {
@@ -92,10 +87,8 @@ export type WorkspaceUpdateValues = {
   reasoningEffort?: ReasoningEffort;
   internetAccess?: boolean;
   domainRestriction?: boolean;
-  /** The whole list as saved, reported whenever a request changed it (replace, add or remove). */
+  /** The whole list as saved, normalized and deduplicated. */
   allowedDomains?: string[];
-  addAllowedDomains?: string[];
-  removeAllowedDomains?: string[];
   workspaceApiAccess?: boolean;
   workspaceMcpAccess?: boolean;
   secret?: ThirdPartySecret;
@@ -127,22 +120,8 @@ export async function updateWorkspace(
   const metadata = validateMetadata(input, currentModelSelection(existing));
   const internetAccess = ifDefined(input.internetAccess, validateInternetAccess);
   const domainRestriction = ifDefined(input.domainRestriction, validateDomainRestriction);
-  const allowedDomains = ifDefined(input.allowedDomains, (value) => validateAllowedDomains(value));
-  const addDomains = ifDefined(input.addAllowedDomains, (value) => validateAllowedDomains(value, "addAllowedDomains"));
-  const removeDomains = ifDefined(input.removeAllowedDomains, (value) =>
-    validateAllowedDomains(value, "removeAllowedDomains"),
-  );
-  const allowlistChanges = {
-    restricted: domainRestriction,
-    domains: allowedDomains,
-    add: addDomains,
-    remove: removeDomains,
-  };
-  const changesAllowlist = Object.values(allowlistChanges).some((value) => value !== undefined);
-  const changesDomains = allowedDomains !== undefined || addDomains !== undefined || removeDomains !== undefined;
-  validateDomainListEdit(allowlistChanges);
-  // Catches an over-full list before any write; it is resolved again at write time against the latest list.
-  if (changesAllowlist) resolveDomainAllowlist(existing.domainAllowlist, allowlistChanges);
+  const allowedDomains = ifDefined(input.allowedDomains, validateAllowedDomains);
+  const changesAllowlist = domainRestriction !== undefined || allowedDomains !== undefined;
   const apiAccess = ifDefined(input.workspaceApiAccess, (value) => validateChannelEnabled("workspaceApiAccess", value));
   const mcpAccess = ifDefined(input.workspaceMcpAccess, (value) => validateChannelEnabled("workspaceMcpAccess", value));
   const secretInput = ifDefined(input.secret, validateSecret);
@@ -151,12 +130,13 @@ export async function updateWorkspace(
   // Report what was applied, so a half-done update isn't read as a no-op.
   const appliedFields: Array<keyof WorkspaceUpdateValues> = [];
   // Takes all field names one write settles (`model` sets three), so a refusal names every one.
+  function notApplied(fields: Array<keyof WorkspaceUpdateValues>): never {
+    throw new WorkspaceUpdateFailure(
+      `workspace was deleted while updating; applied: ${appliedFields.join(", ") || "nothing"}; not applied: ${fields.join(", ")}`,
+    );
+  }
   const applied = (fields: Array<keyof WorkspaceUpdateValues>, ok: boolean): void => {
-    if (!ok) {
-      throw new WorkspaceUpdateFailure(
-        `workspace was deleted while updating; applied: ${appliedFields.join(", ") || "nothing"}; not applied: ${fields.join(", ")}`,
-      );
-    }
+    if (!ok) notApplied(fields);
     appliedFields.push(...fields);
   };
 
@@ -181,29 +161,27 @@ export async function updateWorkspace(
     applied(["internetAccess"], egress.applied);
   }
 
-  // One write for every allowlist field. Read and written with no await between, so a concurrent request's
-  // change to the list is merged with this one instead of overwritten by a list read before it landed.
-  let savedDomains: string[] | undefined;
+  // One write for both allowlist fields; the latest record is read so a field left out keeps its saved value.
+  let savedAllowlist = existing.domainAllowlist;
   if (changesAllowlist) {
     const latest = store.getWorkspace(id);
     const fields: Array<keyof WorkspaceUpdateValues> = [
       ...(domainRestriction !== undefined ? (["domainRestriction"] as const) : []),
-      ...(addDomains !== undefined ? (["addAllowedDomains"] as const) : []),
-      ...(removeDomains !== undefined ? (["removeAllowedDomains"] as const) : []),
-      ...(changesDomains ? (["allowedDomains"] as const) : []),
+      ...(allowedDomains !== undefined ? (["allowedDomains"] as const) : []),
     ];
-    if (!latest) applied(fields, false);
-    const { previous, next } = resolveDomainAllowlist(latest?.domainAllowlist, allowlistChanges);
+    if (!latest) notApplied(fields);
+    const previous = latest.domainAllowlist ?? { restricted: false, domains: [] };
+    const next = { restricted: domainRestriction ?? previous.restricted, domains: allowedDomains ?? previous.domains };
     const allowlist = setDomainAllowlist(
       id,
       next,
       previous,
-      internetAccess ?? latest?.internetAccess ?? false,
+      internetAccess ?? latest.internetAccess,
       store,
       deps.egress,
     );
     applied(fields, allowlist.applied);
-    if (changesDomains) savedDomains = next.domains;
+    savedAllowlist = next;
   }
 
   // These three write through capabilities that raise rather than return a flag, so reaching the next
@@ -223,6 +201,11 @@ export async function updateWorkspace(
     applied(["secret"], true);
   }
 
+  const warning = egressWarning(internetAccess ?? existing.internetAccess, savedAllowlist, {
+    internetAccess,
+    domainRestriction,
+    allowedDomains,
+  });
   return {
     ok: true,
     workspaceId: id,
@@ -235,12 +218,11 @@ export async function updateWorkspace(
       ...(modelValues ?? {}),
       ...field("internetAccess", internetAccess),
       ...field("domainRestriction", domainRestriction),
-      ...field("addAllowedDomains", addDomains),
-      ...field("removeAllowedDomains", removeDomains),
-      ...field("allowedDomains", savedDomains),
+      ...field("allowedDomains", allowedDomains),
       ...field("workspaceApiAccess", apiAccess),
       ...field("workspaceMcpAccess", mcpAccess),
       ...field("secret", secret),
     },
+    ...(warning ? { warning } : {}),
   };
 }
