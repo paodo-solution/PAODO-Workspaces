@@ -9,6 +9,7 @@ import { createLogger } from "../../infra/logger";
 import { checkFreeSpace, RESERVED_FREE_BYTES } from "@/lib/infra/storage/diskSpace";
 import type { StreamingExecFn, BackgroundExecFn, ExecConfig, OutputSinkFn } from "../interfaces";
 import { ExecOutput } from "./execOutput";
+import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
 
 const schema = z.object({
   command: z.string().describe("The bash command to execute"),
@@ -21,6 +22,14 @@ const schema = z.object({
         "returned; read it later with execute_command (e.g. tail -n 200 <path>). Stop it with stop_task.",
     ),
 });
+
+// The egress note reads only stderr's last lines, where a failed command reports why it stopped,
+// so a 403 in a failing test suite's earlier logs isn't taken for a refusal.
+const EGRESS_TAIL_LINES = 20;
+
+function stderrTail(output: ExecOutput): string {
+  return output.stderrText().trimEnd().split("\n").slice(-EGRESS_TAIL_LINES).join("\n");
+}
 
 // Maps known stderr signatures to actionable user guidance appended to the tool result.
 // Returns "" when stderr is empty so callers can filter it out cleanly.
@@ -71,6 +80,8 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
     private readonly execConfig: ExecConfig,
     private readonly workspaceDir: string,
     private readonly openOutputSink: OutputSinkFn,
+    /** Read at failure time, so the note reflects the settings now, not at run start. */
+    private readonly egressPolicy?: () => EgressPolicy | undefined,
   ) {
     super();
   }
@@ -210,7 +221,8 @@ You run as a NON-ROOT user, confined to the workspace. apt-get/sudo are NOT avai
           const body = output.overflowed
             ? [output.overflowNotice(), diagnoseStderr(output.stderrText())]
             : [output.stdoutText().trim(), diagnoseStderr(output.stderrText())];
-          const parts = [errorLine, ...body].filter(Boolean);
+          const egressNote = failed ? egressBlockMessage(this.egressPolicy?.(), stderrTail(output), command) : "";
+          const parts = [errorLine, ...body, egressNote].filter(Boolean);
           finish(parts.join("\n") || "Command executed successfully with no output.");
         })
         .catch((err) => {

@@ -115,19 +115,22 @@ export function buildTools(
   const backgroundExec = makeBackgroundExecFn(workspaceId, workspaceDir, containers);
   const broadcast = (msg: string) => broadcastToWorkspace(workspaceId, msg);
   const openOutputSink = (runId: string) => containers.openOutputSink(workspaceId, runId);
+  const egressPolicy = () => store.getWorkspace(workspaceId);
 
   const tools = [
-    new ExecCommandTool(streamExec, backgroundExec, broadcast, config, workspaceDir, openOutputSink),
+    new ExecCommandTool(streamExec, backgroundExec, broadcast, config, workspaceDir, openOutputSink, egressPolicy),
     new StopTaskTool(workspaceId, containers),
     // apt_install and http_get need a route out. Dropped from the bound list rather than left to
     // error, so the model cannot even attempt them when the workspace has no network.
-    ...(config.internetAccess ? [new AptInstallTool(runner, (pkgs) => recordAptPackages(workspaceId, pkgs))] : []),
+    ...(config.internetAccess
+      ? [new AptInstallTool(runner, (pkgs) => recordAptPackages(workspaceId, pkgs), egressPolicy)]
+      : []),
     new FileReadTool(runner),
     new FileEditTool(runner, workspaceDir, broadcast),
     new FileWriteTool(runner, workspaceDir, broadcast),
     new TodoWriteTool(workspaceId),
     new CompactContextTool(),
-    ...(config.internetAccess ? [new WebFetchTool(runner)] : []),
+    ...(config.internetAccess ? [new WebFetchTool(runner, egressPolicy)] : []),
     new GlobTool(runner),
     new ListDirectoryTool(runner),
     new WorkspaceHistoryTool(workspaceId, workspaceDir, versioning),

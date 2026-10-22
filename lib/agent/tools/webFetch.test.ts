@@ -158,3 +158,13 @@ describe("http_get response handling", () => {
     expect(result).toMatch(/error/i);
   });
 });
+
+describe("http_get explains a refusal by the workspace's internet settings", () => {
+  const policy = () => ({ internetAccess: true, domainAllowlist: { restricted: true, domains: ["github.com"] } });
+
+  it("still explains a refused redirect when the requested host is allowed", async () => {
+    const runner = makeRunner({ code: 56, stderr: "curl: (56) CONNECT tunnel failed, response 403\n000\t\t" });
+    const result = await callOf(new WebFetchTool(runner, policy))({ url: "https://github.com/x/releases/download/v1" });
+    expect(result).toContain("Cannot reach a host outside the allowlist (likely a redirect from github.com)");
+  });
+});

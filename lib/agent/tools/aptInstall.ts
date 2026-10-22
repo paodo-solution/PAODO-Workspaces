@@ -4,6 +4,7 @@
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { PrivilegedRunner } from "../interfaces";
+import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
 
 // name, or name=version. Lowercase apt package-name charset only; rejects `/`, spaces, and any
 // shell metacharacter, which also blocks local-file (`./foo.deb`) installs.
@@ -28,6 +29,7 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
   constructor(
     private runner: PrivilegedRunner,
     private record: (packages: string[]) => void,
+    private egressPolicy?: () => EgressPolicy | undefined,
   ) {
     super();
   }
@@ -44,7 +46,7 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
     try {
       const update = await this.runner.execAsRoot(["apt-get", "update"]);
       if (update.code !== 0) {
-        return `Error: apt-get update failed:\n${update.stderr || update.stdout}`;
+        return this.failure("apt-get update", update.stderr || update.stdout, update.stderr);
       }
 
       const install = await this.runner.execAsRoot([
@@ -55,7 +57,8 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
         ...packages,
       ]);
       if (install.code !== 0) {
-        return `Error: apt-get install failed:\n${install.stderr || install.stdout}`;
+        // apt-get update can exit 0 after a refused mirror, so its output is checked here too.
+        return this.failure("apt-get install", install.stderr || install.stdout, `${update.stderr}\n${install.stderr}`);
       }
       // Only on success: a package that failed to install must not be replayed into every future
       // rebuild of this container, where it would fail again.
@@ -64,6 +67,12 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
     } finally {
       await this.discardAptDownloads();
     }
+  }
+
+  private failure(step: string, output: string, stderr: string): string {
+    const error = `Error: ${step} failed:\n${output}`;
+    const note = egressBlockMessage(this.egressPolicy?.(), stderr);
+    return note ? `${error}\n${note}` : error;
   }
 
   // Drops the .deb cache and package lists, which would otherwise pile up in long-lived containers.

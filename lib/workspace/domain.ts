@@ -34,7 +34,7 @@ export const NO_ALLOWED_DOMAIN = "No allowed domain is set";
 const BLOCKS_EVERY_HOST = `${NO_ALLOWED_DOMAIN}: domainRestriction blocks every host until one is added`;
 const SAVED_OFFLINE = "internetAccess is false: the allowlist is saved and applies once internetAccess is true";
 /** Above this, the warning counts the reachable hosts instead of naming them. */
-const NAMED_HOSTS_MAX = 10;
+export const NAMED_HOSTS_MAX = 10;
 
 /** The egress fields an update sent, each undefined when left out. */
 export interface EgressFieldsSent {
