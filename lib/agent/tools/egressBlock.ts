@@ -10,6 +10,7 @@ const REFUSAL_SIGNATURES = [
   /CONNECT tunnel failed/i,
   /Tunnel connection failed/i,
   /tunneling socket could not be established/i,
+  /Proxy tunneling failed/i,
   /Proxy response \(403\) !== 200 when HTTP Tunneling/i,
 ];
 // The proxy or relay itself is unreachable: the block while internet is off, maybe an outage otherwise.
@@ -90,7 +91,8 @@ export function egressBlockMessage(policy: EgressPolicy | undefined, errorText: 
   if (!policy) return "";
   const failure = classify(errorText);
   if (!failure) return "";
-  const online = policy.internetAccess;
+  // A workspace saved before the field existed is online, as in buildTools and the prompt.
+  const online = policy.internetAccess ?? true;
   const allowed = online ? enforcedDomains(policy.domainAllowlist) : [];
   if (allowed === null) return "";
   const target = describeTarget(failure, online, allowed, errorText, context);

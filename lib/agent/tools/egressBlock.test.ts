@@ -204,4 +204,17 @@ describe("egressBlockMessage", () => {
       "Cannot reach github.com: this workspace can only access pypi.org.",
     );
   });
+
+  it("explains wget's tunnel refusal", () => {
+    const err = "Proxy tunneling failed: ForbiddenUnable to establish SSL connection.";
+    expect(egressBlockMessage(restricted("pypi.org"), err, "wget https://example.com/x")).toBe(
+      "Cannot reach example.com: this workspace can only access pypi.org.",
+    );
+  });
+
+  it("treats a workspace saved without internetAccess as online", () => {
+    const legacy = {} as EgressPolicy;
+    const pip = "ProxyError('Unable to connect to proxy', ... 'http://127.0.0.1:3128')";
+    expect(egressBlockMessage(legacy, pip, "pip install requests")).toBe("");
+  });
 });
