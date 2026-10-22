@@ -59,10 +59,8 @@ export function publicModelSelection(selection: ModelSelection): PublicModelSele
   };
 }
 
-/**
- * The allowlist as the workspace read shows it: its domains only while they are enforced. No warning
- * here: the update that leaves the list empty already gives one, and `allowedDomains: []` says the rest.
- */
+// Domains are shown only while enforced: with the restriction off no domain is restricted,
+// so the saved list is intentionally hidden. The update already warns about an empty list.
 function publicDomainAllowlist(
   allowlist: DomainAllowlist | undefined,
 ): Pick<WorkspaceDetails, "domainRestriction" | "allowedDomains"> {
