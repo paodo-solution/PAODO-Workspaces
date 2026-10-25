@@ -53,7 +53,7 @@ _Demo video of PAODO in action_ :
 
 - **Shared drives** — connect shared storage to selected workspaces so agents can exchange files and collaborate on the same materials.
 
-- **CLI access** — Access the app directly through console, optimized for coding agents. (still in progress)
+- **CLI access** — Access the app directly through console, optimized for coding agents.
 
 ## Quick start
 
