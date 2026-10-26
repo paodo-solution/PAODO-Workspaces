@@ -1,6 +1,7 @@
 // Root layout applied to every page — sets the HTML metadata and imports global styles.
 import type { Metadata } from "next";
 import "./globals.css";
+import SessionGuard from "@/components/shared/SessionGuard";
 
 export const metadata: Metadata = {
   title: "Workspace Agent",
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SessionGuard />
+        {children}
+      </body>
     </html>
   );
 }
