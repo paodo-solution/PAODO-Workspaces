@@ -7,7 +7,7 @@ administration, authenticated browser ingress, and the optional programmatic
 gateway separate. Remaining threats:
 
 - **Agent prompt injection** — a malicious page or file the agent fetches could instruct it to exfiltrate data or reach internal network services
-- **Container escape / Docker daemon compromise** — if any code path on the host is exploited, an attacker who pivots from the app container to the Docker socket gets root on the VPS
+- **Container escape / Docker daemon compromise** — workspace containers share the host kernel, so a kernel exploit from inside one is a host compromise; and an attacker who compromises the app container can still create containers through the socket proxy, which is enough to get root on the VPS
 - **Supply chain** — a compromised dependency introduced via a PR or dependency update
 - **Edge or credential misconfiguration** — an incorrect ingress policy, Caddy route, or leaked Bearer credential could expose more capability than intended
 
@@ -18,10 +18,10 @@ gateway separate. Remaining threats:
 **Access**
 
 - The app listener is bound to `127.0.0.1:<PORT>` on the host; the selected UI ingress publishes it without opening that port to the internet
-- The UI ingress may add an outer identity layer; PAODO Basic Auth remains the origin-level application credential
+- The UI ingress may add an outer identity layer; the origin still authenticates every request itself, with Basic Auth (`PAODO_AUTH_MODE=basic`) or by verifying the identity provider's signed JWT against its JWKS, issuer and audience (`PAODO_AUTH_MODE=iap`)
 - SSH should use a private or tightly restricted administration path
 - The DNS-direct Caddy gateway exposes only exact method/path combinations for authenticated programmatic API and Workspace MCP access; every other route returns `404`
-- Each workspace container gets its own bridge network — no inter-container traffic
+- Each workspace container gets its own `--internal` bridge network — no inter-container traffic, and the credproxy sidecar is the only egress path
 - Workspace container ports are not published to the host, so a local process cannot become a browser-facing app through the workspace
 
 **Host**
@@ -30,9 +30,11 @@ gateway separate. Remaining threats:
 
 **Process isolation**
 
-- Each workspace runs in a dedicated Docker container — agents isolated from each other and the host filesystem
-- App container runs as non-root user `app`
-- Docker socket proxy (Tecnativa) — app accesses Docker through a restricted proxy, not the raw socket
+- Each workspace runs in a dedicated Docker container — agents isolated from each other and the host filesystem, but sharing the host kernel
+- The agent runs as non-root `dev` (uid 1000) with no `sudo`; root in the container is reserved for commands the app issues itself (`apt_install` with validated package names, relay start, CA install, ownership repair)
+- Workspace containers drop all capabilities except the six those root commands need (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETGID`, `SETUID`); the non-root agent holds none of them
+- App container runs as non-root user `node`
+- Docker socket proxy (Tecnativa) — app accesses Docker through a restricted proxy, not the raw socket; only `CONTAINERS`, `IMAGES`, `NETWORKS`, `BUILD`, `INFO` and `EXEC` are enabled, with `POST` for write methods
 - `cap_drop: ALL` + `no-new-privileges:true` on the app container
 - `no-new-privileges:true` on every workspace container — setuid/setgid binaries cannot escalate privileges
 
@@ -100,8 +102,8 @@ Neither miss was visible from any one file.
 - Drive reads (`drive_read`): the same 400KB, since it is the same act — bytes into the context.
   Refused rather than truncated: the tool has no `offset`/`limit` to resume from, so the way through
   is `drive_download` followed by a paged `file_read`
-- Drive transfers (`drive_download`, `drive_upload`): 50MB per file. Judged by peak, not file size —
-  a download holds the bytes, their base64 copy, and the runner's copy of that at once, ~3.7×
+- Drive transfers (`drive_download`, `drive_upload`): 100MB per file. Judged by peak, not file size —
+  a download holds the bytes, their base64 copy, and the runner's copy of that at once, ~3.7× (~370MB)
 - Drive listings (`drive_ls`): 1,000 entries, streamed with `opendir` so the ceiling bounds the
   directory scan and not merely the text it prints
 - Every one of these reports when it cut something. A silently truncated result is the failure mode
@@ -109,24 +111,27 @@ Neither miss was visible from any one file.
 
 **Filesystem**
 
-- File tools enforce path boundaries via `fs.realpath` + prefix checks — agents cannot escape their workspace directory
+- File tools reject paths outside `/workspace` lexically; `file_write`, `file_edit` and the drive transfers also realpath the target and refuse any symlink that escapes the workspace
+- `file_read` and `list_directory` follow symlinks to container-internal paths (e.g. `/etc/passwd`) — they can show nothing the agent cannot already `cat` as `dev`
 - Glob tool rejects absolute path patterns
 
 **Agent**
 
-- SSRF protection in `webFetch`: DNS-resolved IP validation blocks all private, loopback, CGNAT, and IPv6 local ranges before any request is made
+- SSRF protection in the credential proxy (`lib/infra/proxy/destinationGuard.ts`): DNS-resolved IP validation blocks private, loopback, CGNAT, cloud-metadata, and IPv6 local ranges (including IPv4-mapped forms) before any request is made. All container egress, including `http_get` (curl inside the container), goes through it
 - Agent-to-agent calls require an explicit graph edge
 
 **Auth**
 
-- HTTP Basic Auth covers browser UI routes and WebSocket upgrades after any outer ingress policy
+- The configured UI authenticator (Basic or IAP) covers browser UI routes and WebSocket upgrades after any outer ingress policy
 - Timing-safe comparison (`crypto.timingSafeEqual`) for username and password
 - Brute-force lockout: 5 failures / 60 s → 429 + `Retry-After`; counter resets on success
 - Per-workspace Bearer tokens protect Agent API and MCP routes
 
 **Rate limiting**
 
-- 20 req/min per IP on agent, chat, and workspace-creation endpoints; 200 req/min on uploads
+- In-memory token buckets per minute (`lib/infra/security/rateLimit.ts`): 600 global per client on every `/api` request, then 300 control-plane reads, 120 writes, 30 destructive operations, and 30 UI agent runs
+- Public agent API: 60 per IP and 20 per workspace; Workspace MCP: 120 per IP and 60 per workspace
+- Uploads skip the global bucket and burst to 3,000 (one request per file), then refill at 50/s
 
 **Browser**
 
@@ -137,4 +142,4 @@ Neither miss was visible from any one file.
 **Operational**
 
 - Explicit audit events (auth failures, rate-limit trips, and credential lifecycle changes) are logged with an `audit: true` tag, alongside operational logs on container stdout. Docker's `json-file` driver stores, bounds, and rotates them in managed files on the host; they do not survive container replacement.
-- Server refuses to start if `USERNAME` or `PASSWORD` are unset — every mode, no opt-out. Previously gated on `NODE_ENV`, which meant flipping a container to debug logging served every route unauthenticated.
+- Server refuses to start without a valid `PAODO_AUTH_MODE` and that mode's credentials — `USERNAME`/`PASSWORD` for `basic`, the `PAODO_IAP_*` settings for `iap` — so there is no unauthenticated mode and no opt-out. Previously gated on `NODE_ENV`, which meant flipping a container to debug logging served every route unauthenticated.

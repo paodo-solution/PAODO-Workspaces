@@ -78,7 +78,7 @@ For VPS deployment, see the [deploy guide](deploy/README.md).
 
 Each workspace runs in its own Docker sandbox and is accessible via the chat UI, external API,
 or MCP server. Agents in connected workspaces and MCP clients can invoke skills
-using defined input/output contracts. See [Triggers and operations](doc/trigger-operation-architecture.md).
+using defined input/output contracts.
 
 ![Architectural representation of the main functionality](doc/images/loop.png)
 

@@ -1,5 +1,5 @@
 // Swaps opaque tokens for real secrets on HTTPS to each secret's exact host (MITM), redacts echoes back,
-// and tunnels everything else untouched. Design: doc/adr/accepted/adr-workspace-secrets-credential-proxy.md
+// and tunnels everything else untouched. Design: doc/adr/accepted/sandbox/adr-workspace-secrets-credential-proxy.md
 import * as net from "net";
 import * as tls from "tls";
 import * as http from "http";

@@ -3,7 +3,7 @@
 **Status:** Shipped  
 **Author:** @alxcls  
 **Related:** [VISION.md](../VISION.md),
-[adr-conversation-and-execution-data-sqlite](../../adr/accepted/adr-conversation-and-execution-data-sqlite.md)
+[adr-conversation-and-execution-data-sqlite](../../adr/accepted/agent/adr-conversation-and-execution-data-sqlite.md)
 
 ---
 
