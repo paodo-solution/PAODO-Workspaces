@@ -22,7 +22,7 @@ export interface SavedDeb extends InstalledPackage {
 /** One entry per installed package, keyed by `debKey`. */
 export type AptDebIndex = Record<string, SavedDeb>;
 
-export const debKey = (p: { package: string; arch: string }): string => `${p.package}:${p.arch}`;
+const debKey = (p: { package: string; arch: string }): string => `${p.package}:${p.arch}`;
 
 // apt names its downloads <package>_<version>_<arch>.deb, percent-encoding the epoch's ':'. Anything else,
 // including a name that could leave the folder, is not one of its files.

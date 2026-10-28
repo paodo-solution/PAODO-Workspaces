@@ -25,7 +25,6 @@ async function load() {
   process.env.WORKSPACES_VOLUME_NAME = "paodo_ws_workspaces";
   return {
     ContainerManager: (await import("./containerManager")).ContainerManager,
-    transfer: await import("./aptDebsTransfer"),
     debs: await import("../aptDebs"),
   };
 }
@@ -48,7 +47,7 @@ async function saveDebs(files: string[]) {
 
 // A container with a dpkg database and an apt download cache. Online installs land as version 1.0, and their
 // .deb survives only in the folder APT_KEEP_ARGS names: the image's docker-clean hook empties the default one.
-function makeDocker(opts: { failUpdate?: boolean; failOfflineInstall?: boolean; imagePackages?: string[] } = {}) {
+function makeDocker(opts: { failOfflineInstall?: boolean } = {}) {
   const installed = new Map<string, string>();
   const cache = new Set<string>();
   const execs: string[][] = [];
@@ -58,14 +57,10 @@ function makeDocker(opts: { failUpdate?: boolean; failOfflineInstall?: boolean; 
   const docker: IDockerClient = {
     cmd: async (...args: string[]): Promise<DockerResult> => {
       cmds.push(args);
-      if (args[0] === "inspect" && args.includes("{{.Image}}")) return { ...OK, stdout: "sha256:old-image" };
       if (args[0] === "inspect") return { stdout: "", stderr: "no such object", code: 1 };
       if (args[0] === "network" && args[1] === "inspect") {
         if (args.includes("--format")) return { stdout: "paodo_ws_credproxy ", stderr: "", code: 0 };
         return { stdout: "", stderr: "no such network", code: 1 };
-      }
-      if (args[0] === "run" && args.includes("dpkg-query")) {
-        return { ...OK, stdout: (opts.imagePackages ?? []).map((p) => line(p, "1.0")).join("\n") };
       }
       if (args[0] === "cp" && args[1].startsWith("ws_")) {
         for (const file of cache) await writeFile(path.join(args[2], file), `deb:${file}`);
@@ -81,7 +76,6 @@ function makeDocker(opts: { failUpdate?: boolean; failOfflineInstall?: boolean; 
         return { ...OK, stdout: rows.map(([n, v]) => line(n, v)).join("\n"), code: rows.length < names.length ? 1 : 0 };
       }
       if (bin === "find") return { ...OK, stdout: [...cache].join("\n") };
-      if (bin === "apt-get" && sub === "update") return opts.failUpdate ? { ...OK, code: 100 } : OK;
       if (bin === "apt-get" && sub === "install") {
         const targets = cmdArgs.slice(4);
         if (targets[0]?.startsWith("/root/")) {
@@ -249,48 +243,5 @@ describe("apt_install saves the .debs it downloaded", () => {
     };
 
     await expect(new ContainerManager(docker, deps(true)).captureAptDebs("ws1")).resolves.toBeUndefined();
-  });
-});
-
-describe("backfill saves what an existing container already has", () => {
-  it("re-downloads exactly the packages its own image lacks", async () => {
-    const { transfer, debs } = await load();
-    const { docker, execs, cmds, installed } = makeDocker({ imagePackages: ["bash"] });
-    installed.set("bash", "1.0");
-    installed.set("figlet", "1.0");
-
-    const report = await transfer.backfillDebs(docker, "ws1");
-
-    expect(cmds).toContainEqual(expect.arrayContaining(["run", "--rm", "--network", "none", "sha256:old-image"]));
-    expect(execs).toContainEqual([
-      "apt-get",
-      "install",
-      "--reinstall",
-      "--download-only",
-      "-y",
-      "--no-install-recommends",
-      ...APT_KEEP_ARGS,
-      "figlet:amd64=1.0",
-    ]);
-    expect(report).toEqual({ saved: ["figlet:amd64=1.0"], failed: [] });
-    expect(Object.keys(debs.readAptDebIndex("ws1"))).toEqual(["figlet:amd64"]);
-  });
-
-  it("never removes or recreates the container", async () => {
-    const { transfer } = await load();
-    const { docker, cmds, installed } = makeDocker();
-    installed.set("figlet", "1.0");
-
-    await transfer.backfillDebs(docker, "ws1");
-
-    expect(cmds.some((c) => c[0] === "rm" || c[0] === "create" || (c[0] === "run" && !c.includes("--rm")))).toBe(false);
-  });
-
-  it("reports a missing route instead of saving nothing silently", async () => {
-    const { transfer } = await load();
-    const { docker, installed } = makeDocker({ failUpdate: true });
-    installed.set("figlet", "1.0");
-
-    await expect(transfer.backfillDebs(docker, "ws1")).rejects.toThrow(/does the workspace have internet/);
   });
 });
