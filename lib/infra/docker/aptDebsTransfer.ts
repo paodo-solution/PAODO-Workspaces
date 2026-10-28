@@ -40,17 +40,28 @@ async function queryInstalled(docker: IDockerClient, name: string, packages: str
   return parseInstalled(r.stdout);
 }
 
-/** Recipe specs (`name` or `name=version`) with no installed package of that name. */
+const PROVIDES_FORMAT = "-f=${Package}\\t${Status}\\t${Provides}\\n";
+
+// Every name an installed package answers to: its own, plus the ones it provides. Ubuntu 24.04 renamed
+// libraries (libgtk-3-0 is now libgtk-3-0t64), and a recipe may still name them the old way.
+function installedNames(stdout: string): Set<string> {
+  const names = new Set<string>();
+  for (const [pkg, status, provides = ""] of stdout.split("\n").map((line) => line.split("\t"))) {
+    if (status !== INSTALLED) continue;
+    names.add(pkg);
+    // `name (= 1.0), other:any`: the name is everything before a space, a paren or an arch qualifier.
+    for (const entry of provides.split(",")) names.add(entry.trim().split(/[\s(:]/)[0]);
+  }
+  names.delete("");
+  return names;
+}
+
+/** Recipe specs (`name` or `name=version`) that no installed package answers to. */
 export async function missingPackages(docker: IDockerClient, name: string, specs: string[]): Promise<string[]> {
-  const installed = new Set(
-    (
-      await queryInstalled(
-        docker,
-        name,
-        specs.map((s) => s.split("=")[0]),
-      )
-    ).map((p) => p.package),
-  );
+  if (specs.length === 0) return [];
+  const r = await docker.exec(name, ["dpkg-query", "-W", PROVIDES_FORMAT], AS_ROOT);
+  if (r.code !== 0) throw new Error(`dpkg-query failed: ${r.stderr || `exit ${r.code}`}`);
+  const installed = installedNames(r.stdout);
   return specs.filter((spec) => !installed.has(spec.split("=")[0]));
 }
 

@@ -47,7 +47,7 @@ async function saveDebs(files: string[]) {
 
 // A container with a dpkg database and an apt download cache. Online installs land as version 1.0, and their
 // .deb survives only in the folder APT_KEEP_ARGS names: the image's docker-clean hook empties the default one.
-function makeDocker(opts: { failOfflineInstall?: boolean } = {}) {
+function makeDocker(opts: { failOfflineInstall?: boolean; provides?: Record<string, string> } = {}) {
   const installed = new Map<string, string>();
   const cache = new Set<string>();
   const execs: string[][] = [];
@@ -70,6 +70,10 @@ function makeDocker(opts: { failOfflineInstall?: boolean } = {}) {
     exec: async (_name: string, cmdArgs: string[]): Promise<DockerResult> => {
       execs.push(cmdArgs);
       const [bin, sub] = cmdArgs;
+      if (bin === "dpkg-query" && cmdArgs[2].includes("${Provides}")) {
+        const rows = [...installed].map(([n]) => `${n}\tinstall ok installed\t${opts.provides?.[n] ?? ""}`);
+        return { ...OK, stdout: rows.join("\n") };
+      }
       if (bin === "dpkg-query") {
         const names = cmdArgs.slice(3);
         const rows = [...installed].filter(([n]) => names.length === 0 || names.includes(n));
@@ -207,6 +211,46 @@ describe("replay downloads only what the saved set did not cover", () => {
 
     expect(aptUpdate(execs)).toBeUndefined();
     expect(installed.has("figlet")).toBe(true);
+  });
+});
+
+// Ubuntu 24.04 renamed libraries (libgtk-3-0 is now libgtk-3-0t64) and a recipe may name the old one. The new
+// package provides the old name, so it is installed, not missing: no download, and nothing reported as failed.
+describe("replay counts a name an installed package provides as installed", () => {
+  it("needs no download for a library recorded under its old name", async () => {
+    await writeRecipe(["libgtk-3-0"]);
+    await saveDebs(["libgtk-3-0t64_3.24.41_amd64.deb"]);
+    const { ContainerManager } = await load();
+    const { docker, execs } = makeDocker({ provides: { "libgtk-3-0t64": "libgtk-3-0 (= 3.24.41)" } });
+
+    await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
+
+    expect(aptUpdate(execs)).toBeUndefined();
+    expect(onlineInstalls(execs)).toHaveLength(0);
+  });
+
+  it("reads every provided name, whatever its version or arch qualifier", async () => {
+    await writeRecipe(["libasound2", "x-terminal"]);
+    await saveDebs(["libasound2t64_1.2.11_amd64.deb"]);
+    const { ContainerManager } = await load();
+    const { docker, execs } = makeDocker({ provides: { libasound2t64: "libasound2 (= 1.2.11), x-terminal:any" } });
+
+    await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
+
+    expect(onlineInstalls(execs)).toHaveLength(0);
+  });
+
+  it("still downloads a name nothing installed provides", async () => {
+    await writeRecipe(["libgtk-3-0", "htop"]);
+    await saveDebs(["libgtk-3-0t64_3.24.41_amd64.deb"]);
+    const { ContainerManager } = await load();
+    const { docker, execs } = makeDocker({ provides: { "libgtk-3-0t64": "libgtk-3-0 (= 3.24.41)" } });
+
+    await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
+
+    expect(onlineInstalls(execs)).toEqual([
+      ["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, "htop"],
+    ]);
   });
 });
 
