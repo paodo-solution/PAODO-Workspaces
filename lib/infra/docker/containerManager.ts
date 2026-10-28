@@ -25,7 +25,7 @@ import {
 import { workspaceHomeDir, workspaceHomeSeededMarker, workspaceHomeSubpath } from "../paths";
 import { readAptRecipe } from "../aptRecipe";
 import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_PREPARE } from "../../workspace/apt";
-import { backfillDebs, captureDebs, installSavedDebs, missingPackages, type BackfillReport } from "./aptDebsTransfer";
+import { captureDebs, installSavedDebs, missingPackages } from "./aptDebsTransfer";
 import { BackgroundTaskManager, type BackgroundTask } from "./backgroundTaskManager";
 import { ProxyNetworkManager } from "./proxyNetworkManager";
 import { capacityProfile } from "../capacityProfile";
@@ -827,12 +827,6 @@ export class ContainerManager implements IContainerManager {
         "failed to save apt packages — a rebuilt container will need internet to reinstall them",
       );
     }
-  }
-
-  /** Operator-run (scripts/apt-debs-backfill.ts) for packages installed before .debs were saved. */
-  async backfillAptDebs(workspaceId: string, workspaceDir: string): Promise<BackfillReport> {
-    await this.ensure(workspaceId, workspaceDir);
-    return backfillDebs(this.docker, workspaceId);
   }
 
   // The only agent-facing root exec, for the `apt_install` tool. cmdArgs go as argv (no shell), so

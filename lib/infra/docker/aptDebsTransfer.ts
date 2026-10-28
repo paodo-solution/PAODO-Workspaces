@@ -5,7 +5,6 @@ import { createLogger } from "../logger";
 import { workspaceAptDebsDir } from "../paths";
 import {
   createDebStaging,
-  debKey,
   parseDebFileName,
   readAptDebIndex,
   storeCapturedDebs,
@@ -14,7 +13,7 @@ import {
 } from "../aptDebs";
 import { containerName } from "./naming";
 import type { IDockerClient } from "./dockerClient";
-import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_DIR, APT_KEEP_PREPARE } from "../../workspace/apt";
+import { APT_KEEP_DIR } from "../../workspace/apt";
 
 const log = createLogger("aptDebs");
 
@@ -122,62 +121,4 @@ export async function installSavedDebs(docker: IDockerClient, workspaceId: strin
   } finally {
     await docker.exec(name, ["rm", "-rf", REPLAY_DIR], AS_ROOT).catch(() => {});
   }
-}
-
-export interface BackfillReport {
-  saved: string[];
-  failed: string[];
-}
-
-const specOf = (p: InstalledPackage) =>
-  p.arch === "all" ? `${p.package}=${p.version}` : `${p.package}:${p.arch}=${p.version}`;
-
-// For a container that installed packages before .debs were saved. The packages it added are the ones its
-// own image lacks, and the container's image, not the current one, is what it was created from.
-export async function backfillDebs(docker: IDockerClient, workspaceId: string): Promise<BackfillReport> {
-  const name = containerName(workspaceId);
-  const image = await docker.cmd("inspect", "--format", "{{.Image}}", name);
-  if (image.code !== 0 || !image.stdout) throw new Error(`cannot read the image of ${name}: ${image.stderr}`);
-  const base = await docker.cmd("run", "--rm", "--network", "none", image.stdout, "dpkg-query", "-W", QUERY_FORMAT);
-  if (base.code !== 0) throw new Error(`listing the image's packages failed: ${base.stderr || `exit ${base.code}`}`);
-  const current = await docker.exec(name, ["dpkg-query", "-W", QUERY_FORMAT], AS_ROOT);
-  if (current.code !== 0) throw new Error(`listing ${name}'s packages failed: ${current.stderr}`);
-
-  const inImage = new Set(parseInstalled(base.stdout).map(specOf));
-  const added = parseInstalled(current.stdout).filter((p) => !inImage.has(specOf(p)));
-  if (added.length === 0) return { saved: [], failed: [] };
-
-  const specs = added.map(specOf);
-  try {
-    await docker.exec(name, APT_KEEP_PREPARE, AS_ROOT);
-    const update = await docker.exec(name, ["apt-get", "update"], AS_ROOT);
-    if (update.code !== 0)
-      throw new Error(`apt-get update failed (does the workspace have internet?): ${update.stderr}`);
-    const download = (pkgs: string[]) =>
-      docker.exec(
-        name,
-        [
-          "apt-get",
-          "install",
-          "--reinstall",
-          "--download-only",
-          "-y",
-          "--no-install-recommends",
-          ...APT_KEEP_ARGS,
-          ...pkgs,
-        ],
-        AS_ROOT,
-      );
-    // All-or-nothing like any apt-get install, so one version the mirror no longer serves sinks the rest.
-    if ((await download(specs)).code !== 0) {
-      for (const spec of specs) await download([spec]);
-    }
-    await captureDebs(docker, workspaceId);
-  } finally {
-    await docker.exec(name, ["/bin/sh", "-c", APT_CLEANUP_SCRIPT], AS_ROOT).catch(() => {});
-  }
-
-  const index = readAptDebIndex(workspaceId);
-  const isSaved = (p: InstalledPackage) => index[debKey(p)]?.version === p.version;
-  return { saved: added.filter(isSaved).map(specOf), failed: added.filter((p) => !isSaved(p)).map(specOf) };
 }
