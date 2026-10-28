@@ -16,7 +16,7 @@ Replace the raw socket mount with `tecnativa/docker-socket-proxy:v0.5.0`. The pr
 - `BUILD: 1` — /build
 - `INFO: 1` — /info
 - `EXEC: 1` — /exec/\*
-- `POST: 1` — enables POST and DELETE in addition to GET for all groups above
+- `POST: 1` — enables every write method (POST, PUT, DELETE) for all groups above; `docker cp` into a container is a PUT
 
 The app service sets `DOCKER_HOST=tcp://socket-proxy:2375`; the Docker CLI reads this automatically, so the app code is unaware of the proxy. The proxy port is not exposed outside the compose stack.
 

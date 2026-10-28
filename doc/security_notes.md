@@ -31,7 +31,7 @@ gateway separate. Remaining threats:
 **Process isolation**
 
 - Each workspace runs in a dedicated Docker container — agents isolated from each other and the host filesystem, but sharing the host kernel
-- The agent runs as non-root `dev` (uid 1000) with no `sudo`; root in the container is reserved for commands the app issues itself (`apt_install` with validated package names, relay start, CA install, ownership repair)
+- The agent runs as non-root `dev` (uid 1000) with no `sudo`; root in the container is reserved for commands the app issues itself (`apt_install` with validated package names, reinstalling saved .deb files, relay start, CA install, ownership repair)
 - Workspace containers drop all capabilities except the six those root commands need (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETGID`, `SETUID`); the non-root agent holds none of them
 - App container runs as non-root user `node`
 - Docker socket proxy (Tecnativa) — app accesses Docker through a restricted proxy, not the raw socket; only `CONTAINERS`, `IMAGES`, `NETWORKS`, `BUILD`, `INFO` and `EXEC` are enabled, with `POST` for write methods

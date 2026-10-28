@@ -1,7 +1,7 @@
 # Offsite backups with restic
 
 One responsibility each: **PAODO builds a correct, self-describing backup set** (graph + database +
-drives + workspaces + manifest) with `npm run backup:all`; **restic owns everything after** — offsite
+drives + workspaces + manifest) with `npm run backup`; **restic owns everything after** — offsite
 push, encryption, dedup, pruning, repo checks.
 
 [`scripts/backup-offsite.sh`](../scripts/backup-offsite.sh) is the seam: it builds the set and hands
@@ -43,7 +43,7 @@ COMPOSE_FILES='-f docker-compose.yml -f docker-compose.dev.yml' npm run backup:o
 ## Restore runbook
 
 Deliberate, operator-run disaster recovery: you SSH in and put the box back to one past day. Two
-halves mirror backup — **restic fetches the set to disk**, then **`backup:restore` applies it into
+halves mirror backup — **restic fetches the set to disk**, then **`npm run restore` applies it into
 live state**. Needs `restic`, the `.env` S3 keys and the `restic-password` file. Export the repo env
 (or run from the repo dir, which maps it for you):
 
@@ -64,7 +64,7 @@ restic restore <snapshot-id> --target ~/restore     # restore a whole day
 Restore into a path with room and **not on tmpfs** (a set is a few GB; some hosts mount `/tmp` as a
 small RAM disk). The set lands at `~/restore/<instance>/<stamp>-<id>/` (the dir holding `backup.json`).
 
-**2. Take the app down, apply the set, bring it back.** The app must be stopped — `backup:restore`
+**2. Take the app down, apply the set, bring it back.** The app must be stopped — `npm run restore`
 overwrites the live database, graph and registry in place, and those are read once at startup. Apply
 in a one-off container on the same volume:
 
@@ -72,16 +72,16 @@ in a one-off container on the same volume:
 SET=~/restore/<instance>/<stamp>-<id>
 docker compose -f docker-compose.yml -f docker-compose.workspace-api.yml stop app
 docker compose -f docker-compose.yml -f docker-compose.workspace-api.yml \
-  run --rm -v "$SET":/restore:ro app npm run backup:restore -- /restore
+  run --rm -v "$SET":/restore:ro app npm run restore -- /restore
 docker compose -f docker-compose.yml -f docker-compose.workspace-api.yml start app
 ```
 
-`backup:restore` **verifies every archive against `backup.json` and its own manifest before writing a
-byte** — a torn set, or one from another deployment, aborts with nothing changed. It restores in
-dependency order (workspaces, database + registry, drives, then graph), keyed by each workspace's
-**original id** so conversation rows, drive connections and graph edges stay connected; a set
-predating drives carries none and restore skips it. Overwriting live state, or a set from a
-**different** deployment, requires `--force` (append it after `/restore`).
+`npm run restore` **verifies every archive against `backup.json` and its manifest before writing a byte**
+— a torn set, or one from another deployment, aborts with nothing changed. It restores in dependency
+order (workspaces, database + registry, drives, graph), keyed by each workspace's **original id** so
+conversation rows, drive connections and graph edges stay connected. Each workspace brings back its
+saved apt packages, reinstalled offline when its container is recreated. Overwriting live state, or a
+set from a **different** deployment, requires `--force` (append it after `/restore`).
 
 Verification is all-or-nothing but writing is not: once the first byte lands, a mid-restore failure
 leaves the box **half-restored**. The audit log's `phase` field records where it stopped — fix the
@@ -96,5 +96,5 @@ restic mount /mnt/restic   # browse snapshots to grab a single file by hand
 
 - Retention lives in the script (`7 daily + 4 weekly + 12 monthly + 1 yearly`); override any of
   `KEEP_DAILY` / `KEEP_WEEKLY` / `KEEP_MONTHLY` / `KEEP_YEARLY`.
-- Restic is the only offsite path; `backup:all` builds a set on disk and restic ships it.
+- Restic is the only offsite path; `npm run backup` builds a set on disk and restic ships it.
 - Each box has its own bucket and repo, so losing one never touches the other.
