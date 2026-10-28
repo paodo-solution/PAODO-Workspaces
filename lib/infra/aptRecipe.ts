@@ -1,5 +1,5 @@
 // Records apt packages (the only installs outside the durable $HOME) so a rebuilt container can reinstall them.
-// Names, not files, so replays get current versions; AptInstallTool is the sole path, so the list is exact.
+// Names say what to install; saved .debs (aptDebs.ts) let replay do it offline. AptInstallTool is the sole path.
 import { workspaceAptRecipeFile } from "./paths";
 import { atomicSaveJson, readJson } from "./jsonPersist";
 import { createLogger } from "./logger";

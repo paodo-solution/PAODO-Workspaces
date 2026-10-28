@@ -157,9 +157,8 @@ describe("apt recipe — replaying it into a rebuilt container", () => {
     expect(aptInstall(execs)).toBeUndefined();
   });
 
-  // An internet-less workspace is on an --internal network with no route to the repos at all, so
-  // this is an expected skip rather than a failure to report.
-  it("skips the replay for a workspace with no internet access", async () => {
+  // An internet-less workspace has no route to the repos, so with no saved .debs there is nothing to try.
+  it("does not try to download for a workspace with no internet access", async () => {
     const ContainerManager = await loadManager();
     await writeRecipe("ws1", ["ffmpeg"]);
     const { docker, execs } = makeDocker();

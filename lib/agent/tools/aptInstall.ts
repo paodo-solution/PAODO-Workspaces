@@ -1,5 +1,5 @@
 // The one channel for system packages: apt-get as root via execAsRoot, with names strictly validated and passed
-// as argv (no shell, paths or .debs). Successes are recorded for replay (aptRecipe.ts).
+// as argv (no shell, paths or .debs). Successes are recorded, with their .debs, for replay (aptRecipe.ts).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -24,11 +24,11 @@ Provide bare package names (optionally pinned as name=version). Paths, URLs, and
 Node version managers (nvm) and Python (pyenv) and language package managers (npm, pip) still work from execute_command — only system packages go through this tool.`;
   schema = schema;
 
-  // `record` saves installs for rebuilds (aptRecipe.ts). Injected, so the tool stays fs-free and can't
-  // record against the wrong workspace.
+  // `record` saves installs and their .debs for rebuilds (aptRecipe.ts). Injected, so the tool stays fs-free
+  // and can't record against the wrong workspace.
   constructor(
     private runner: PrivilegedRunner,
-    private record: (packages: string[]) => void,
+    private record: (packages: string[]) => void | Promise<void>,
     private egressPolicy?: () => EgressPolicy | undefined,
   ) {
     super();
@@ -61,8 +61,12 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
         return this.failure("apt-get install", install.stderr || install.stdout, `${update.stderr}\n${install.stderr}`);
       }
       // Only on success: a package that failed to install must not be replayed into every future
-      // rebuild of this container, where it would fail again.
-      this.record(packages);
+      // rebuild of this container, where it would fail again. Awaited so the .debs are saved before cleanup.
+      try {
+        await this.record(packages);
+      } catch {
+        // Ignore: the packages are installed and usable either way.
+      }
       return `Installed: ${packages.join(", ")}\n${install.stdout}`.trim();
     } finally {
       await this.discardAptDownloads();

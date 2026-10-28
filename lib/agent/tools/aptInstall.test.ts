@@ -16,7 +16,9 @@ function makeRunner(results: Partial<Record<string, ExecResult>> = {}) {
       return results[cmd[1] ?? ""] ?? OK;
     },
   };
-  const record = (pkgs: string[]) => recorded.push(pkgs);
+  const record = (pkgs: string[]) => {
+    recorded.push(pkgs);
+  };
   return { runner, calls, record, recorded };
 }
 
@@ -117,6 +119,35 @@ describe("apt_install records what a rebuilt container must reinstall", () => {
 
     expect(out).toContain("Error: invalid package name");
     expect(recorded).toEqual([]);
+  });
+
+  // Recording also saves the .debs apt just downloaded, which the cleanup deletes, so it must finish first.
+  it("finishes recording before the download cache is cleaned", async () => {
+    const order: string[] = [];
+    const runner: PrivilegedRunner = {
+      exec: async () => OK,
+      execAsRoot: async (cmd) => {
+        if (cmd[0] === "/bin/sh") order.push("cleanup");
+        return OK;
+      },
+    };
+    const record = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push("record");
+    };
+    await new AptInstallTool(runner, record).invoke({ packages: ["ffmpeg"] });
+
+    expect(order).toEqual(["record", "cleanup"]);
+  });
+
+  it("still reports success when recording fails", async () => {
+    const { runner } = makeRunner();
+    const record = async () => {
+      throw new Error("disk full");
+    };
+    const out = await new AptInstallTool(runner, record).invoke({ packages: ["ffmpeg"] });
+
+    expect(out).toContain("Installed: ffmpeg");
   });
 
   it("records nothing when asked to install no packages at all", async () => {

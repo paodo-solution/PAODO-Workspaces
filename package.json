@@ -24,6 +24,7 @@
     "update-pricing": "tsx scripts/update-pricing.ts",
     "backup": "tsx scripts/backup-all.ts",
     "restore": "tsx scripts/backup-restore.ts",
+    "apt:backfill": "tsx scripts/apt-debs-backfill.ts",
     "backup:offsite": "bash scripts/backup-offsite.sh",
     "backup:schedule": "bash scripts/install-backup-schedule.sh",
     "check:mocks": "tsx scripts/check-mock-drift.ts",

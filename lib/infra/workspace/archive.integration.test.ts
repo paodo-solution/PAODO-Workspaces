@@ -7,9 +7,10 @@ import os from "os";
 import path from "path";
 import { WorkspaceVersioning } from "../git/workspaceVersioning";
 import { archiveWorkspace, archiveFileName } from "./archive";
+import { applyWorkspaceArchive } from "./apply";
 import { verifyArchive } from "../archive/core";
 import { MANIFEST_MEMBER } from "../../archive/manifest";
-import { HOME_MEMBER } from "../../workspace/archive";
+import { APT_DEBS_MEMBER, HOME_MEMBER } from "../../workspace/archive";
 import type { Workspace } from "../../workspace/types";
 
 const ID = "ws-archive-int";
@@ -232,5 +233,41 @@ describe("archiveWorkspace (real git + tar)", () => {
     const result = await archiveWorkspace(workspace, out, { rootDir: root });
     expect(listMembers(result.path)).not.toContain("files.bundle");
     expect((await verifyArchive(result.path)).ok).toBe(true);
+  });
+  describe("saved apt packages", () => {
+    beforeEach(() => {
+      const debs = path.join(root, ".homes", `${ID}.apt-debs`);
+      fs.mkdirSync(debs, { recursive: true });
+      fs.writeFileSync(path.join(debs, "ripgrep_14.1.0-1_amd64.deb"), "deb bytes");
+      fs.writeFileSync(
+        path.join(debs, "index.json"),
+        JSON.stringify({ "ripgrep:amd64": { file: "ripgrep_14.1.0-1_amd64.deb" } }),
+      );
+    });
+
+    // gzip would hide identical .debs from restic's dedup, so every night would upload them again.
+    it("are carried as a plain, uncompressed tar", async () => {
+      const result = await archiveWorkspace(workspace, out, { rootDir: root });
+
+      expect(listMembers(result.path)).toContain(APT_DEBS_MEMBER);
+      const member = execFileSync("tar", ["-xOf", result.path, APT_DEBS_MEMBER]);
+      expect(member.subarray(0, 2).equals(Buffer.from([0x1f, 0x8b]))).toBe(false);
+      expect(execFileSync("tar", ["-tf", "-"], { input: member, encoding: "utf-8" })).toContain(
+        "ripgrep_14.1.0-1_amd64.deb",
+      );
+    });
+
+    it("come back where replay looks for them", async () => {
+      const result = await archiveWorkspace(workspace, out, { rootDir: root });
+      const target = fs.mkdtempSync(path.join(os.tmpdir(), "archive-int-restore-"));
+      try {
+        await applyWorkspaceArchive(result.path, { rootDir: target });
+
+        const restored = path.join(target, ".homes", `${ID}.apt-debs`, "ripgrep_14.1.0-1_amd64.deb");
+        expect(fs.readFileSync(restored, "utf-8")).toBe("deb bytes");
+      } finally {
+        fs.rmSync(target, { recursive: true, force: true });
+      }
+    });
   });
 });

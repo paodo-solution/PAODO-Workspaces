@@ -151,6 +151,8 @@ export interface IContainerExec {
     opts: { onStdout: (chunk: string) => void; onStderr: (chunk: string) => void; signal?: AbortSignal },
   ): Promise<{ code: number | null }>;
   execAsRoot(workspaceId: string, workspaceDir: string, cmdArgs: string[]): Promise<DockerResult>;
+  /** Saves the installed .debs apt just downloaded, so a rebuilt container reinstalls offline. Never rejects. */
+  captureAptDebs(workspaceId: string): Promise<void>;
   /** Opens a sink for one command's over-cap output. Called only after the inline cap is blown. */
   openOutputSink(workspaceId: string, runId: string): OutputSink;
 }

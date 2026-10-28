@@ -24,6 +24,7 @@ import {
 } from "./naming";
 import { workspaceHomeDir, workspaceHomeSeededMarker, workspaceHomeSubpath } from "../paths";
 import { readAptRecipe } from "../aptRecipe";
+import { backfillDebs, captureDebs, installSavedDebs, missingPackages, type BackfillReport } from "./aptDebsTransfer";
 import { BackgroundTaskManager, type BackgroundTask } from "./backgroundTaskManager";
 import { ProxyNetworkManager } from "./proxyNetworkManager";
 import { capacityProfile } from "../capacityProfile";
@@ -378,14 +379,22 @@ export class ContainerManager implements IContainerManager {
     );
   }
 
-  /** Refreshes the index and installs the recipe. Resolves however it goes; never rejects. */
+  // Saved .debs first, with no network, so internet off and allowlists don't matter. Only what they left
+  // missing is downloaded, and only with internet on. Resolves however it goes; never rejects.
   private async runRecipeReplay(
     workspaceId: string,
     name: string,
     packages: string[],
+    internetAccess: boolean,
     asRoot: { asRoot: true; trimStdout: true },
   ): Promise<void> {
     try {
+      await installSavedDebs(this.docker, workspaceId);
+      const missing = await missingPackages(this.docker, name, packages);
+      if (missing.length === 0 || !internetAccess) {
+        this.reportReplay(workspaceId, packages, missing);
+        return;
+      }
       const update = await this.docker.exec(name, ["apt-get", "update"], asRoot);
       if (update.code !== 0) {
         log.error(
@@ -393,19 +402,22 @@ export class ContainerManager implements IContainerManager {
             event: "apt_recipe_replay_failed",
             outcome: "system_packages_not_restored",
             workspaceId,
-            packages,
+            packages: missing,
             stderr: update.stderr,
           },
-          "apt index refresh failed — the rebuilt container has none of its system packages",
+          "apt index refresh failed — packages without a saved .deb were not reinstalled",
         );
+        this.reportReplay(workspaceId, packages, missing);
         return;
       }
-      const failed = await this.installRecipePackages(name, packages, asRoot);
+      const failed = await this.installRecipePackages(name, missing, asRoot);
+      // Saves what was just downloaded, so the next rebuild of this workspace needs no network.
+      await this.captureAptDebs(workspaceId);
       this.reportReplay(workspaceId, packages, failed);
     } catch (err) {
       log.error(
         { event: "apt_recipe_replay_failed", outcome: "system_packages_not_restored", err, workspaceId, packages },
-        "apt recipe replay failed — the rebuilt container has none of its system packages",
+        "apt recipe replay failed — the rebuilt container may be missing some of its system packages",
       );
     }
   }
@@ -415,15 +427,6 @@ export class ContainerManager implements IContainerManager {
   private async replayAptRecipe(workspaceId: string, internetAccess: boolean): Promise<void> {
     const packages = readAptRecipe(workspaceId);
     if (packages.length === 0) return;
-    // An internet-less workspace sits on an --internal network with no route to the repos. Expected,
-    // not a failure: apt_install is not even offered to the agent in that state (see buildTools).
-    if (!internetAccess) {
-      log.info(
-        { event: "apt_recipe_replay_skipped", outcome: "system_packages_not_restored", workspaceId, packages },
-        "skipping apt recipe replay — workspace has no internet access",
-      );
-      return;
-    }
 
     const name = containerName(workspaceId);
     const asRoot = { asRoot: true, trimStdout: true } as const;
@@ -433,7 +436,10 @@ export class ContainerManager implements IContainerManager {
     });
 
     try {
-      const outcome = await Promise.race([this.runRecipeReplay(workspaceId, name, packages, asRoot), deadline]);
+      const outcome = await Promise.race([
+        this.runRecipeReplay(workspaceId, name, packages, internetAccess, asRoot),
+        deadline,
+      ]);
       if (outcome === "timeout") {
         log.error(
           {
@@ -797,6 +803,31 @@ export class ContainerManager implements IContainerManager {
         done(1);
       });
     });
+  }
+
+  // After apt_install and online replays, before the download cache is cleaned. Never rejects: the
+  // packages are installed and usable either way, only their offline reinstall is at stake.
+  async captureAptDebs(workspaceId: string): Promise<void> {
+    try {
+      const added = await captureDebs(this.docker, workspaceId);
+      if (added.length > 0) {
+        log.info(
+          { event: "apt_debs_captured", outcome: "packages_saved_for_offline_replay", workspaceId, packages: added },
+          "saved apt packages for offline reinstall",
+        );
+      }
+    } catch (err) {
+      log.error(
+        { event: "apt_debs_capture_failed", outcome: "packages_not_saved_for_offline_replay", err, workspaceId },
+        "failed to save apt packages — a rebuilt container will need internet to reinstall them",
+      );
+    }
+  }
+
+  /** Operator-run (scripts/apt-debs-backfill.ts) for packages installed before .debs were saved. */
+  async backfillAptDebs(workspaceId: string, workspaceDir: string): Promise<BackfillReport> {
+    await this.ensure(workspaceId, workspaceDir);
+    return backfillDebs(this.docker, workspaceId);
   }
 
   // The only agent-facing root exec, for the `apt_install` tool. cmdArgs go as argv (no shell), so

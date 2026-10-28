@@ -30,6 +30,7 @@ function fakeContainerManager(execCalls: string[][]): IContainerManager {
     },
     execStreaming: async () => ({ code: 0 }),
     execAsRoot: async () => ok(""),
+    captureAptDebs: async () => {},
     openOutputSink: (_id, runId) => ({
       path: `/tmp/paodo-exec/${runId}.output`,
       limit: 50 * 1024 * 1024,
