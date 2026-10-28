@@ -32,11 +32,7 @@ function parseInstalled(stdout: string): InstalledPackage[] {
 }
 
 /** Installed state of the named packages; a name dpkg does not know is simply absent from the result. */
-export async function queryInstalled(
-  docker: IDockerClient,
-  name: string,
-  packages: string[],
-): Promise<InstalledPackage[]> {
+async function queryInstalled(docker: IDockerClient, name: string, packages: string[]): Promise<InstalledPackage[]> {
   if (packages.length === 0) return [];
   const r = await docker.exec(name, ["dpkg-query", "-W", QUERY_FORMAT, ...packages], AS_ROOT);
   // Exit 1 only means some name matched no package.
@@ -86,38 +82,33 @@ export async function captureDebs(docker: IDockerClient, workspaceId: string): P
   }
 }
 
-export type SavedDebsOutcome = "none" | "installed" | "integrity_failed" | "install_failed";
-
 // Installs the saved set with no network: apt resolves dependencies from the files and the image alone.
-// A set that fails its hashes is never handed to root.
-export async function installSavedDebs(docker: IDockerClient, workspaceId: string): Promise<SavedDebsOutcome> {
+// A set that fails its hashes is never handed to root. Never throws: the caller downloads whatever is left.
+export async function installSavedDebs(docker: IDockerClient, workspaceId: string): Promise<void> {
   const { debs, problems } = await verifyAptDebs(workspaceId);
   if (problems.length > 0) {
     log.error(
       { event: "apt_debs_integrity_failed", outcome: "saved_packages_not_installed", workspaceId, problems },
       "saved apt packages failed verification — not installing them",
     );
-    return "integrity_failed";
+    return;
   }
-  if (debs.length === 0) return "none";
+  if (debs.length === 0) return;
 
   const name = containerName(workspaceId);
-  // Never throws: whatever this leaves uninstalled, the caller still downloads when it can.
-  const failed = (stderr: string): SavedDebsOutcome => {
+  const failed = (stderr: string) =>
     log.warn(
       { event: "apt_debs_install_failed", outcome: "saved_packages_not_installed", workspaceId, stderr },
       "offline install of the saved apt packages failed",
     );
-    return "install_failed";
-  };
   try {
     const cp = await docker.cmd("cp", `${workspaceAptDebsDir(workspaceId)}/.`, `${name}:${REPLAY_DIR}`);
     if (cp.code !== 0) return failed(`docker cp: ${cp.stderr || `exit ${cp.code}`}`);
     const files = debs.map((deb) => `${REPLAY_DIR}/${deb.file}`);
     const install = await docker.exec(name, ["apt-get", "install", "-y", "--no-install-recommends", ...files], AS_ROOT);
-    return install.code === 0 ? "installed" : failed(install.stderr);
+    if (install.code !== 0) failed(install.stderr);
   } catch (err) {
-    return failed(err instanceof Error ? err.message : String(err));
+    failed(err instanceof Error ? err.message : String(err));
   } finally {
     await docker.exec(name, ["rm", "-rf", REPLAY_DIR], AS_ROOT).catch(() => {});
   }
