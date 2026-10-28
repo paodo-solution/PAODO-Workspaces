@@ -1,22 +1,27 @@
-# ADR Template
+# ADR — Short descriptive title
 
-Use this template when writing Architecture Decision Records (ADRs).
+Status: Draft | Accepted | Deprecated
 
-Title: Short descriptive title
+## Context
 
-Status: Proposed / Accepted / Deprecated
+The problem and the constraints that force a decision, in one or two short paragraphs.
 
-Context
-Describe the background and the problem that requires a decision. Keep it brief and focused on the constraints that matter.
+## Decision
 
-Decision
-State the decision clearly and precisely. Include enough detail to reproduce the choice later (config names, file paths, API routes, etc.).
+One sentence stating the decision, then the details needed to reproduce it: config names, file paths, API routes, `code identifiers`.
 
-Consequences
-List the important outcomes of this decision: what it enables, what it costs, operational impact, and risks.
+- **Key point**: one short paragraph or line per mechanism.
 
-Alternatives considered
-Briefly list the reasonable alternatives that were considered and why they were rejected.
+## Consequences
 
-Notes
-Optional: links to related PRDs, issues, or implementation tasks.
+- What it enables.
+- What it costs, operationally or in complexity.
+- Does NOT stop: a risk this decision leaves open.
+
+## Alternatives considered
+
+- **Alternative name**: why it was rejected.
+
+## Notes
+
+- Related: [other ADR](../folder/adr-other.md), [PRD](../../../prd/accepted/prd-name.md).

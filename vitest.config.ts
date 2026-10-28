@@ -11,8 +11,7 @@ export default defineConfig({
     // Integration tests need real Docker — they run in their own tier
     // (vitest.integration.config.ts) so `npm test` stays fast and portable.
     exclude: ["**/node_modules/**", "**/*.integration.test.ts"],
-    // Coverage is for visibility, not a gate: no threshold, since we test invariants, not lines
-    // (adr-testing-strategy-invariants-and-primitives).
+    // Coverage is for visibility, not a gate: no threshold, since we test invariants, not lines.
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

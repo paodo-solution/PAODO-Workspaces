@@ -85,4 +85,4 @@ cost calculation but count as uncached input in the compact presentation.
 Conversation replay and execution history use separate authorities inside one application database.
 Confidentiality of their persisted plaintext relies on network isolation rather than in-app auth —
 see
-[adr-conversation-and-execution-data-sqlite](../../adr/accepted/adr-conversation-and-execution-data-sqlite.md).
+[adr-conversation-and-execution-data-sqlite](../../adr/accepted/agent/adr-conversation-and-execution-data-sqlite.md).
