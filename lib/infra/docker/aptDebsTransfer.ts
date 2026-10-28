@@ -14,10 +14,10 @@ import {
 } from "../aptDebs";
 import { containerName } from "./naming";
 import type { IDockerClient } from "./dockerClient";
+import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_DIR, APT_KEEP_PREPARE } from "../../workspace/apt";
 
 const log = createLogger("aptDebs");
 
-const APT_ARCHIVES = "/var/cache/apt/archives";
 // Under /root, which the uid-1000 agent cannot enter, and `docker cp` writes as root.
 const REPLAY_DIR = "/root/.paodo-apt-debs";
 const AS_ROOT = { asRoot: true, trimStdout: true } as const;
@@ -65,7 +65,7 @@ export async function captureDebs(docker: IDockerClient, workspaceId: string): P
   const name = containerName(workspaceId);
   const list = await docker.exec(
     name,
-    ["find", APT_ARCHIVES, "-maxdepth", "1", "-type", "f", "-name", "*.deb", "-printf", "%f\\n"],
+    ["find", APT_KEEP_DIR, "-maxdepth", "1", "-type", "f", "-name", "*.deb", "-printf", "%f\\n"],
     AS_ROOT,
   );
   if (list.code !== 0) throw new Error(`listing apt downloads failed: ${list.stderr || `exit ${list.code}`}`);
@@ -78,7 +78,7 @@ export async function captureDebs(docker: IDockerClient, workspaceId: string): P
   const staging = await createDebStaging(workspaceId);
   try {
     if (downloaded.length > 0) {
-      const cp = await docker.cmd("cp", `${name}:${APT_ARCHIVES}/.`, staging);
+      const cp = await docker.cmd("cp", `${name}:${APT_KEEP_DIR}/.`, staging);
       if (cp.code !== 0) throw new Error(`docker cp of apt downloads failed: ${cp.stderr || `exit ${cp.code}`}`);
     }
     return await storeCapturedDebs(workspaceId, staging, installed);
@@ -149,13 +149,23 @@ export async function backfillDebs(docker: IDockerClient, workspaceId: string): 
 
   const specs = added.map(specOf);
   try {
+    await docker.exec(name, APT_KEEP_PREPARE, AS_ROOT);
     const update = await docker.exec(name, ["apt-get", "update"], AS_ROOT);
     if (update.code !== 0)
       throw new Error(`apt-get update failed (does the workspace have internet?): ${update.stderr}`);
     const download = (pkgs: string[]) =>
       docker.exec(
         name,
-        ["apt-get", "install", "--reinstall", "--download-only", "-y", "--no-install-recommends", ...pkgs],
+        [
+          "apt-get",
+          "install",
+          "--reinstall",
+          "--download-only",
+          "-y",
+          "--no-install-recommends",
+          ...APT_KEEP_ARGS,
+          ...pkgs,
+        ],
         AS_ROOT,
       );
     // All-or-nothing like any apt-get install, so one version the mirror no longer serves sinks the rest.
@@ -164,7 +174,7 @@ export async function backfillDebs(docker: IDockerClient, workspaceId: string): 
     }
     await captureDebs(docker, workspaceId);
   } finally {
-    await docker.exec(name, ["/bin/sh", "-c", "apt-get clean; rm -rf /var/lib/apt/lists/*"], AS_ROOT).catch(() => {});
+    await docker.exec(name, ["/bin/sh", "-c", APT_CLEANUP_SCRIPT], AS_ROOT).catch(() => {});
   }
 
   const index = readAptDebIndex(workspaceId);

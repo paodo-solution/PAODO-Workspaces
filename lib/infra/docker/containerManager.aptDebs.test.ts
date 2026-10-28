@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { IDockerClient, DockerResult } from "./dockerClient";
+import { APT_KEEP_ARGS } from "../../workspace/apt";
 
 const OK: DockerResult = { stdout: "", stderr: "", code: 0 };
 
@@ -45,8 +46,8 @@ async function saveDebs(files: string[]) {
   await rm(staging, { recursive: true, force: true });
 }
 
-// A container with a dpkg database and an apt download cache. Online installs land as version 1.0 and
-// leave their .deb in the cache, the way apt does before `apt-get clean`.
+// A container with a dpkg database and an apt download cache. Online installs land as version 1.0, and their
+// .deb survives only in the folder APT_KEEP_ARGS names: the image's docker-clean hook empties the default one.
 function makeDocker(opts: { failUpdate?: boolean; failOfflineInstall?: boolean; imagePackages?: string[] } = {}) {
   const installed = new Map<string, string>();
   const cache = new Set<string>();
@@ -91,10 +92,12 @@ function makeDocker(opts: { failUpdate?: boolean; failOfflineInstall?: boolean; 
           }
           return OK;
         }
-        for (const t of cmdArgs.filter((a) => !a.startsWith("-") && a !== "apt-get" && a !== "install")) {
+        const keeps = cmdArgs.includes(APT_KEEP_ARGS[1]);
+        const pkgs = cmdArgs.filter((a, i) => i > 1 && !a.startsWith("-") && cmdArgs[i - 1] !== "-o");
+        for (const t of pkgs) {
           const [n, v = "1.0"] = t.split("=");
           if (!cmdArgs.includes("--download-only")) installed.set(n, v);
-          cache.add(`${n.split(":")[0]}_${v}_amd64.deb`);
+          if (keeps) cache.add(`${n.split(":")[0]}_${v}_amd64.deb`);
         }
         return OK;
       }
@@ -181,7 +184,9 @@ describe("replay downloads only what the saved set did not cover", () => {
 
     await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
 
-    expect(onlineInstalls(execs)).toEqual([["apt-get", "install", "-y", "--no-install-recommends", "htop"]]);
+    expect(onlineInstalls(execs)).toEqual([
+      ["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, "htop"],
+    ]);
     expect(Object.keys(debs.readAptDebIndex("ws1")).sort()).toEqual(["figlet:amd64", "htop:amd64"]);
   });
 
@@ -193,7 +198,9 @@ describe("replay downloads only what the saved set did not cover", () => {
 
     await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
 
-    expect(onlineInstalls(execs)).toEqual([["apt-get", "install", "-y", "--no-install-recommends", "figlet"]]);
+    expect(onlineInstalls(execs)).toEqual([
+      ["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, "figlet"],
+    ]);
   });
 
   it("does not try to download for a workspace with internet off", async () => {
@@ -210,11 +217,23 @@ describe("replay downloads only what the saved set did not cover", () => {
 });
 
 describe("apt_install saves the .debs it downloaded", () => {
+  const install = ["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, "ffmpeg"];
+
+  it("saves what an install downloaded into the kept folder", async () => {
+    const { ContainerManager, debs } = await load();
+    const { docker } = makeDocker();
+    await docker.exec("ws_ws1", install);
+
+    await new ContainerManager(docker, deps(true)).captureAptDebs("ws1");
+
+    expect(Object.keys(debs.readAptDebIndex("ws1"))).toEqual(["ffmpeg:amd64"]);
+  });
+
   it("captures only the installed versions", async () => {
     const { ContainerManager, debs } = await load();
     const { docker, installed } = makeDocker();
     const manager = new ContainerManager(docker, deps(true));
-    await docker.exec("ws_ws1", ["apt-get", "install", "-y", "--no-install-recommends", "ffmpeg"]);
+    await docker.exec("ws_ws1", install);
     installed.set("ffmpeg", "2.0");
 
     await manager.captureAptDebs("ws1");
@@ -250,6 +269,7 @@ describe("backfill saves what an existing container already has", () => {
       "--download-only",
       "-y",
       "--no-install-recommends",
+      ...APT_KEEP_ARGS,
       "figlet:amd64=1.0",
     ]);
     expect(report).toEqual({ saved: ["figlet:amd64=1.0"], failed: [] });

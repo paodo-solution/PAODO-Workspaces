@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { AptInstallTool } from "./aptInstall";
 import type { ExecResult, PrivilegedRunner } from "../interfaces";
+import { APT_KEEP_ARGS, APT_KEEP_PREPARE } from "../../workspace/apt";
 
 const OK: ExecResult = { code: 0, stdout: "", stderr: "" };
 
@@ -119,6 +120,16 @@ describe("apt_install records what a rebuilt container must reinstall", () => {
 
     expect(out).toContain("Error: invalid package name");
     expect(recorded).toEqual([]);
+  });
+
+  // The image's docker-clean hook empties apt's default cache after dpkg, so the .debs must land elsewhere.
+  it("downloads into the kept folder, prepared first", async () => {
+    const { runner, calls, record } = makeRunner();
+    await new AptInstallTool(runner, record).invoke({ packages: ["ffmpeg"] });
+
+    const install = calls.findIndex((c) => c[1] === "install");
+    expect(calls[install]).toEqual(["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, "ffmpeg"]);
+    expect(calls.findIndex((c) => c.join(" ") === APT_KEEP_PREPARE.join(" "))).toBeLessThan(install);
   });
 
   // Recording also saves the .debs apt just downloaded, which the cleanup deletes, so it must finish first.

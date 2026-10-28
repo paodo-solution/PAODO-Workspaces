@@ -24,6 +24,7 @@ import {
 } from "./naming";
 import { workspaceHomeDir, workspaceHomeSeededMarker, workspaceHomeSubpath } from "../paths";
 import { readAptRecipe } from "../aptRecipe";
+import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_PREPARE } from "../../workspace/apt";
 import { backfillDebs, captureDebs, installSavedDebs, missingPackages, type BackfillReport } from "./aptDebsTransfer";
 import { BackgroundTaskManager, type BackgroundTask } from "./backgroundTaskManager";
 import { ProxyNetworkManager } from "./proxyNetworkManager";
@@ -344,7 +345,13 @@ export class ContainerManager implements IContainerManager {
     asRoot: { asRoot: true; trimStdout: true },
   ): Promise<string[]> {
     const install = (pkgs: string[]) =>
-      this.docker.exec(name, ["apt-get", "install", "-y", "--no-install-recommends", ...pkgs], asRoot);
+      this.docker.exec(
+        name,
+        ["apt-get", "install", "-y", "--no-install-recommends", ...APT_KEEP_ARGS, ...pkgs],
+        asRoot,
+      );
+
+    await this.docker.exec(name, APT_KEEP_PREPARE, asRoot);
 
     if ((await install(packages)).code === 0) return [];
 
@@ -455,9 +462,7 @@ export class ContainerManager implements IContainerManager {
       }
       // Same reason as the apt_install tool: the .debs and the index are pure download cache, and
       // this container is never recreated, so anything left here accumulates for its whole life.
-      await this.docker
-        .exec(name, ["/bin/sh", "-c", "apt-get clean; rm -rf /var/lib/apt/lists/*"], asRoot)
-        .catch(() => {});
+      await this.docker.exec(name, ["/bin/sh", "-c", APT_CLEANUP_SCRIPT], asRoot).catch(() => {});
     } finally {
       clearTimeout(timer);
     }

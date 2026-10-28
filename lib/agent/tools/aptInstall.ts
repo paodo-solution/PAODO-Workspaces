@@ -5,6 +5,7 @@ import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { PrivilegedRunner } from "../interfaces";
 import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
+import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_PREPARE } from "../../workspace/apt";
 
 // name, or name=version. Lowercase apt package-name charset only; rejects `/`, spaces, and any
 // shell metacharacter, which also blocks local-file (`./foo.deb`) installs.
@@ -49,11 +50,13 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
         return this.failure("apt-get update", update.stderr || update.stdout, update.stderr);
       }
 
+      await this.runner.execAsRoot(APT_KEEP_PREPARE);
       const install = await this.runner.execAsRoot([
         "apt-get",
         "install",
         "-y",
         "--no-install-recommends",
+        ...APT_KEEP_ARGS,
         ...packages,
       ]);
       if (install.code !== 0) {
@@ -83,7 +86,7 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
   // Best-effort, and also runs after a failed install, since `update` may already have written lists.
   private async discardAptDownloads(): Promise<void> {
     try {
-      await this.runner.execAsRoot(["/bin/sh", "-c", "apt-get clean; rm -rf /var/lib/apt/lists/*"]);
+      await this.runner.execAsRoot(["/bin/sh", "-c", APT_CLEANUP_SCRIPT]);
     } catch {
       // Ignore: the packages are installed and usable either way.
     }
