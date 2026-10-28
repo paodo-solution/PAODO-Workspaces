@@ -4,12 +4,20 @@ import { MANIFEST_MEMBER, type ArchiveManifest } from "../archive/manifest";
 
 export const CONFIG_MEMBER = "config.json";
 export const APT_MEMBER = "apt.json";
+export const APT_DEBS_MEMBER = "apt-debs.tar";
 export const FILES_MEMBER = "files.bundle";
 export const HOME_MEMBER = "home.tar.gz";
 
 // Tar member order. The manifest leads so `tar xOf archive.tar manifest.json` answers "what is
 // this?" without decompressing gigabytes of home.
-export const MEMBER_ORDER = [MANIFEST_MEMBER, CONFIG_MEMBER, APT_MEMBER, FILES_MEMBER, HOME_MEMBER] as const;
+export const MEMBER_ORDER = [
+  MANIFEST_MEMBER,
+  CONFIG_MEMBER,
+  APT_MEMBER,
+  APT_DEBS_MEMBER,
+  FILES_MEMBER,
+  HOME_MEMBER,
+] as const;
 
 /** The workspace image the home and apt recipe were captured against. */
 export interface ArchiveImage {

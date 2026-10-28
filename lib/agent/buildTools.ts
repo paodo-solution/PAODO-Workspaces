@@ -123,7 +123,16 @@ export function buildTools(
     // apt_install and http_get need a route out. Dropped from the bound list rather than left to
     // error, so the model cannot even attempt them when the workspace has no network.
     ...(config.internetAccess
-      ? [new AptInstallTool(runner, (pkgs) => recordAptPackages(workspaceId, pkgs), egressPolicy)]
+      ? [
+          new AptInstallTool(
+            runner,
+            async (pkgs) => {
+              recordAptPackages(workspaceId, pkgs);
+              await containers.captureAptDebs(workspaceId);
+            },
+            egressPolicy,
+          ),
+        ]
       : []),
     new FileReadTool(runner),
     new FileEditTool(runner, workspaceDir, broadcast),

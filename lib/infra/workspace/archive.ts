@@ -14,10 +14,12 @@ import {
   writeArchive,
 } from "../archive/core";
 import { createAuditLogger, createLogger } from "../logger";
-import { WORKSPACES_ROOT, workspaceDir, workspaceHomeDir, workspaceAptRecipeFile } from "../paths";
+import { WORKSPACES_ROOT, workspaceDir, workspaceHomeDir, workspaceAptRecipeFile, workspaceAptDebsDir } from "../paths";
+import { APT_DEBS_INDEX } from "../aptDebs";
 import { GitClient, type IGitClient } from "../git/gitClient";
 import { SCHEMA_VERSIONS, MANIFEST_MEMBER } from "../../archive/manifest";
 import {
+  APT_DEBS_MEMBER,
   APT_MEMBER,
   CONFIG_MEMBER,
   FILES_MEMBER,
@@ -83,6 +85,16 @@ async function writeHomeArchive(homeDir: string, out: string): Promise<boolean> 
   return true;
 }
 
+// Plain tar, never gzip: .debs are already compressed, and an uncompressed member is what lets restic
+// upload each package once however many nights and workspaces carry it.
+async function writeAptDebsArchive(debsDir: string, out: string): Promise<boolean> {
+  if (!(await exists(path.join(debsDir, APT_DEBS_INDEX)))) return false;
+  const result = await run("tar", ["-cf", out, "-C", debsDir, "."]);
+  if (result.code > 1) throw new Error(`tar of saved apt packages failed: ${result.stderr || result.stdout}`);
+  if (result.code === 1) log.warn({ event: "archive_apt_debs_changed_during_read", debsDir }, result.stderr);
+  return true;
+}
+
 function configOf(workspace: Workspace): WorkspaceArchiveManifest["config"] {
   return {
     llmProvider: workspace.llmProvider,
@@ -95,7 +107,7 @@ function configOf(workspace: Workspace): WorkspaceArchiveManifest["config"] {
   };
 }
 
-// Archives config, snapshot history, durable home and apt recipe. No absolute host paths or assumed
+// Archives config, snapshot history, durable home, apt recipe and its saved .debs. No absolute host paths or assumed
 // free id, so it restores onto a different tenant.
 export async function archiveWorkspace(
   workspace: Workspace,
@@ -121,6 +133,8 @@ export async function archiveWorkspace(
       await copyFile(recipe, path.join(stageDir, APT_MEMBER));
       present.push(APT_MEMBER);
     }
+    const debsOut = path.join(stageDir, APT_DEBS_MEMBER);
+    if (await writeAptDebsArchive(workspaceAptDebsDir(workspace.id, root), debsOut)) present.push(APT_DEBS_MEMBER);
 
     const gitDir = path.join(root, ".versioning", workspace.id);
     const workTree = workspaceDir(workspace.id, root);

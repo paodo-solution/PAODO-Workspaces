@@ -36,6 +36,11 @@ export const workspaceHomeSeededMarker = (workspaceId: string, root: string = WO
 export const workspaceAptRecipeFile = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   `${workspaceHomeDir(workspaceId, root)}.apt.json`;
 
+// The installed versions of those packages as .deb files, so a rebuilt container reinstalls them
+// offline. Never mounted: the agent shares the app's uid, so it must not see where root installs from.
+export const workspaceAptDebsDir = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
+  `${workspaceHomeDir(workspaceId, root)}.apt-debs`;
+
 /** A workspace's work-tree directory, keyed by its immutable id. */
 export const workspaceDir = (workspaceId: string, root: string = WORKSPACES_ROOT): string =>
   path.join(root, workspaceId);
@@ -50,5 +55,6 @@ export const workspaceArtifactPaths = (workspaceId: string, root: string = WORKS
   workspaceHomeDir(workspaceId, root),
   workspaceVersioningDir(workspaceId, root),
   workspaceAptRecipeFile(workspaceId, root),
+  workspaceAptDebsDir(workspaceId, root),
   workspaceHomeSeededMarker(workspaceId, root),
 ];

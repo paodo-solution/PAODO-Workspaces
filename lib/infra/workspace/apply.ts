@@ -1,5 +1,5 @@
 // Restores one workspace from its archive: the inverse of archiveWorkspace. Rebuilds the durable
-// home, apt recipe and versioning repo (checked out into the work-tree), keyed by the original id.
+// home, apt recipe, saved .debs and versioning repo (checked out into the work-tree), keyed by the original id.
 import { copyFile, mkdir, writeFile, readFile } from "fs/promises";
 import path from "path";
 import { withExtractedArchive, extractArchive, exists, removeTree } from "../archive/core";
@@ -10,12 +10,13 @@ import {
   workspaceHomeDir,
   workspaceVersioningDir,
   workspaceAptRecipeFile,
+  workspaceAptDebsDir,
   workspaceHomeSeededMarker,
   workspaceArtifactPaths,
 } from "../paths";
 import { GitClient, type IGitClient } from "../git/gitClient";
 import { MANIFEST_MEMBER, type ArchiveManifest } from "../../archive/manifest";
-import { APT_MEMBER, FILES_MEMBER, HOME_MEMBER, isWorkspaceManifest } from "../../workspace/archive";
+import { APT_DEBS_MEMBER, APT_MEMBER, FILES_MEMBER, HOME_MEMBER, isWorkspaceManifest } from "../../workspace/archive";
 
 const audit = createAuditLogger("restore");
 
@@ -83,6 +84,9 @@ export async function applyWorkspaceArchive(
     // The restored home is already seeded; the marker stops the container reseeding over it on boot.
     await writeFile(workspaceHomeSeededMarker(id, root), "");
     if (await exists(path.join(stageDir, APT_MEMBER))) await copyFile(path.join(stageDir, APT_MEMBER), aptFile);
+    // Absent from sets taken before .debs were saved; replay then downloads, as it did then.
+    const debs = path.join(stageDir, APT_DEBS_MEMBER);
+    if (await exists(debs)) await extractArchive(debs, workspaceAptDebsDir(id, root));
     if (await exists(path.join(stageDir, FILES_MEMBER))) {
       await restoreVersioning(git, gitDir, wsDir, path.join(stageDir, FILES_MEMBER));
     }

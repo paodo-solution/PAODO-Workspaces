@@ -1,10 +1,11 @@
 // The one channel for system packages: apt-get as root via execAsRoot, with names strictly validated and passed
-// as argv (no shell, paths or .debs). Successes are recorded for replay (aptRecipe.ts).
+// as argv (no shell, paths or .debs). Successes are recorded, with their .debs, for replay (aptRecipe.ts).
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { PrivilegedRunner } from "../interfaces";
 import { egressBlockMessage, type EgressPolicy } from "./egressBlock";
+import { APT_CLEANUP_SCRIPT, APT_KEEP_ARGS, APT_KEEP_PREPARE } from "../../workspace/apt";
 
 // name, or name=version. Lowercase apt package-name charset only; rejects `/`, spaces, and any
 // shell metacharacter, which also blocks local-file (`./foo.deb`) installs.
@@ -24,11 +25,11 @@ Provide bare package names (optionally pinned as name=version). Paths, URLs, and
 Node version managers (nvm) and Python (pyenv) and language package managers (npm, pip) still work from execute_command — only system packages go through this tool.`;
   schema = schema;
 
-  // `record` saves installs for rebuilds (aptRecipe.ts). Injected, so the tool stays fs-free and can't
-  // record against the wrong workspace.
+  // `record` saves installs and their .debs for rebuilds (aptRecipe.ts). Injected, so the tool stays fs-free
+  // and can't record against the wrong workspace.
   constructor(
     private runner: PrivilegedRunner,
-    private record: (packages: string[]) => void,
+    private record: (packages: string[]) => void | Promise<void>,
     private egressPolicy?: () => EgressPolicy | undefined,
   ) {
     super();
@@ -49,11 +50,13 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
         return this.failure("apt-get update", update.stderr || update.stdout, update.stderr);
       }
 
+      await this.runner.execAsRoot(APT_KEEP_PREPARE);
       const install = await this.runner.execAsRoot([
         "apt-get",
         "install",
         "-y",
         "--no-install-recommends",
+        ...APT_KEEP_ARGS,
         ...packages,
       ]);
       if (install.code !== 0) {
@@ -61,8 +64,12 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
         return this.failure("apt-get install", install.stderr || install.stdout, `${update.stderr}\n${install.stderr}`);
       }
       // Only on success: a package that failed to install must not be replayed into every future
-      // rebuild of this container, where it would fail again.
-      this.record(packages);
+      // rebuild of this container, where it would fail again. Awaited so the .debs are saved before cleanup.
+      try {
+        await this.record(packages);
+      } catch {
+        // Ignore: the packages are installed and usable either way.
+      }
       return `Installed: ${packages.join(", ")}\n${install.stdout}`.trim();
     } finally {
       await this.discardAptDownloads();
@@ -79,7 +86,7 @@ Node version managers (nvm) and Python (pyenv) and language package managers (np
   // Best-effort, and also runs after a failed install, since `update` may already have written lists.
   private async discardAptDownloads(): Promise<void> {
     try {
-      await this.runner.execAsRoot(["/bin/sh", "-c", "apt-get clean; rm -rf /var/lib/apt/lists/*"]);
+      await this.runner.execAsRoot(["/bin/sh", "-c", APT_CLEANUP_SCRIPT]);
     } catch {
       // Ignore: the packages are installed and usable either way.
     }

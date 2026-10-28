@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import path from "path";
 import type { IDockerClient, DockerResult } from "./dockerClient";
 import { APT_REPLAY_TIMEOUT_MS } from "../limits";
+import { APT_KEEP_ARGS } from "../../workspace/apt";
 
 const OK: DockerResult = { stdout: "", stderr: "", code: 0 };
 
@@ -88,11 +89,12 @@ const deps = (internetAccess: boolean) => ({
 
 const aptInstall = (execs: string[][]) => execs.find((c) => c[0] === "apt-get" && c[1] === "install");
 const aptInstalls = (execs: string[][]) => execs.filter((c) => c[0] === "apt-get" && c[1] === "install");
+const packagesOf = (c: string[]) => c.slice(4 + APT_KEEP_ARGS.length);
 const installedPackages = (execs: string[][]) =>
   aptInstalls(execs)
     .slice(1)
-    .filter((c) => c.length === 5)
-    .map((c) => c[4]);
+    .filter((c) => packagesOf(c).length === 1)
+    .map((c) => packagesOf(c)[0]);
 const aptUpdate = (execs: string[][]) => execs.find((c) => c[0] === "apt-get" && c[1] === "update");
 const aptCleanup = (execs: string[][]) => execs.find((c) => c.join(" ").includes("apt-get clean"));
 
@@ -105,7 +107,15 @@ describe("apt recipe — replaying it into a rebuilt container", () => {
     await new ContainerManager(docker, deps(true)).ensure("ws1", "/w");
 
     expect(aptUpdate(execs)).toBeDefined();
-    expect(aptInstall(execs)).toEqual(["apt-get", "install", "-y", "--no-install-recommends", "ffmpeg", "htop"]);
+    expect(aptInstall(execs)).toEqual([
+      "apt-get",
+      "install",
+      "-y",
+      "--no-install-recommends",
+      ...APT_KEEP_ARGS,
+      "ffmpeg",
+      "htop",
+    ]);
   });
 
   // apt reaches the repos through the credential proxy, and the image's GitHub CLI source is HTTPS,
@@ -157,9 +167,8 @@ describe("apt recipe — replaying it into a rebuilt container", () => {
     expect(aptInstall(execs)).toBeUndefined();
   });
 
-  // An internet-less workspace is on an --internal network with no route to the repos at all, so
-  // this is an expected skip rather than a failure to report.
-  it("skips the replay for a workspace with no internet access", async () => {
+  // An internet-less workspace has no route to the repos, so with no saved .debs there is nothing to try.
+  it("does not try to download for a workspace with no internet access", async () => {
     const ContainerManager = await loadManager();
     await writeRecipe("ws1", ["ffmpeg"]);
     const { docker, execs } = makeDocker();
