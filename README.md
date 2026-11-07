@@ -33,7 +33,7 @@ _Demo video of PAODO in action_ :
 
 - **Isolated workspaces** — one Docker container per workspace, with its own agent and `AGENTS.md` instructions, running as a restricted non-root user
 
-- **Internet access** — sealed by default: a workspace only reaches the network once you enable it, per workspace
+- **Internet access** — sealed by default: a workspace only reaches the network once you enable it, and can then be restricted to an allowlist of exact domains that the proxy enforces, per workspace
 
 - **ReAct agent** — full tool set (file read/edit/write, shell, glob, directory listing, `apt_install`, web fetch, todo list, context compaction); streams progress live and is interruptible (press escape to kill the running command)
 
