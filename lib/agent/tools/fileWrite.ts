@@ -6,6 +6,7 @@ import { z } from "zod";
 import { containWorkspacePath } from "../pathUtils";
 import { writeContainerFile } from "./containerWrite";
 import type { ExecRunner } from "../interfaces";
+import { KeyedAsyncLock, getFileLockKey, workspaceFileLocks } from "./fileLock";
 
 const schema = z.object({
   file_path: z.string().describe("File path relative to workspace root"),
@@ -20,12 +21,16 @@ Use for creating new files or complete rewrites. For targeted edits to existing 
 If the file already exists and you need to preserve or merge its content, read it first with file_read. If you are replacing it wholesale or creating a new file, skip the read.`;
   schema = schema;
 
+  private lockManager: KeyedAsyncLock;
+
   constructor(
     private runner: ExecRunner,
     private workspaceDir: string,
     private broadcast: (msg: string) => void,
+    lockManager?: KeyedAsyncLock,
   ) {
     super();
+    this.lockManager = lockManager ?? workspaceFileLocks;
   }
 
   protected async _call({ file_path, content }: z.infer<typeof schema>): Promise<string> {
@@ -33,7 +38,11 @@ If the file already exists and you need to preserve or merge its content, read i
     // check (see lib/files/containment.ts).
     const relpath = await containWorkspacePath(this.workspaceDir, file_path);
     if (relpath === null) return "Error: path is outside the workspace";
-    const err = await writeContainerFile(this.runner, this.workspaceDir, relpath, content, this.broadcast);
-    return err ?? `Written ${file_path} (${content.length} chars)`;
+
+    const lockKey = getFileLockKey(this.workspaceDir, relpath);
+    return this.lockManager.withLock(lockKey, async () => {
+      const err = await writeContainerFile(this.runner, this.workspaceDir, relpath, content, this.broadcast);
+      return err ?? `Written ${file_path} (${content.length} chars)`;
+    });
   }
 }

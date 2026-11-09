@@ -8,6 +8,7 @@ import { toolError } from "../toolUtils";
 import { writeContainerFile } from "./containerWrite";
 import { requireFreeSpace } from "@/lib/infra/storage/diskSpace";
 import type { ExecRunner } from "../interfaces";
+import { KeyedAsyncLock, getFileLockKey, workspaceFileLocks } from "./fileLock";
 
 const schema = z.object({
   file_path: z.string().describe("File path relative to workspace root"),
@@ -26,12 +27,16 @@ export class FileEditTool extends StructuredTool<typeof schema> {
 - Set old_string to "" to create a new file (new_string becomes the full content).`;
   schema = schema;
 
+  private lockManager: KeyedAsyncLock;
+
   constructor(
     private runner: ExecRunner,
     private workspaceDir: string,
     private broadcast: (msg: string) => void,
+    lockManager?: KeyedAsyncLock,
   ) {
     super();
+    this.lockManager = lockManager ?? workspaceFileLocks;
   }
 
   protected async _call({ file_path, old_string, new_string, replace_all }: z.infer<typeof schema>): Promise<string> {
@@ -39,39 +44,42 @@ export class FileEditTool extends StructuredTool<typeof schema> {
     const relpath = await containWorkspacePath(this.workspaceDir, file_path);
     if (relpath === null) return "Error: path is outside the workspace";
 
-    if (old_string === "") {
-      // Create new file branch — same mkdir + write as file_write.
-      const err = await writeContainerFile(this.runner, this.workspaceDir, relpath, new_string, this.broadcast);
-      return err ?? `Created ${file_path}`;
-    }
-
-    // Edit existing file branch
-    try {
-      // stdout must NOT be trimmed (preserves trailing newlines for correct string matching)
-      const readR = await this.runner.exec(["cat", `/workspace/${relpath}`]);
-      if (readR.code !== 0) return `Error: ${readR.stderr || "file not found or unreadable"}`;
-
-      const content = readR.stdout;
-      if (!content.includes(old_string)) {
-        return `Error: old_string not found in ${file_path}. Ensure exact match including whitespace and indentation.`;
+    const lockKey = getFileLockKey(this.workspaceDir, relpath);
+    return this.lockManager.withLock(lockKey, async () => {
+      if (old_string === "") {
+        // Create new file branch — same mkdir + write as file_write.
+        const err = await writeContainerFile(this.runner, this.workspaceDir, relpath, new_string, this.broadcast);
+        return err ?? `Created ${file_path}`;
       }
-      const count = content.split(old_string).length - 1;
-      if (count > 1 && !replace_all) {
-        return `Error: old_string appears ${count} times. Add more surrounding lines to make it unique, or set replace_all: true.`;
+
+      // Edit existing file branch
+      try {
+        // stdout must NOT be trimmed (preserves trailing newlines for correct string matching)
+        const readR = await this.runner.exec(["cat", `/workspace/${relpath}`]);
+        if (readR.code !== 0) return `Error: ${readR.stderr || "file not found or unreadable"}`;
+
+        const content = readR.stdout;
+        if (!content.includes(old_string)) {
+          return `Error: old_string not found in ${file_path}. Ensure exact match including whitespace and indentation.`;
+        }
+        const count = content.split(old_string).length - 1;
+        if (count > 1 && !replace_all) {
+          return `Error: old_string appears ${count} times. Add more surrounding lines to make it unique, or set replace_all: true.`;
+        }
+        const updated = replace_all
+          ? content.replaceAll(old_string, new_string)
+          : content.replace(old_string, new_string);
+
+        const spaceErr = await requireFreeSpace(this.workspaceDir, Buffer.byteLength(updated));
+        if (spaceErr) return spaceErr;
+
+        const writeR = await this.runner.exec(["tee", `/workspace/${relpath}`], { stdin: updated });
+        if (writeR.code !== 0) return `Error: ${writeR.stderr || "write failed"}`;
+        this.broadcast(JSON.stringify({ type: "files_changed", paths: [relpath] }));
+        return `Updated ${file_path}`;
+      } catch (err: unknown) {
+        return toolError(err);
       }
-      const updated = replace_all
-        ? content.replaceAll(old_string, new_string)
-        : content.replace(old_string, new_string);
-
-      const spaceErr = await requireFreeSpace(this.workspaceDir, Buffer.byteLength(updated));
-      if (spaceErr) return spaceErr;
-
-      const writeR = await this.runner.exec(["tee", `/workspace/${relpath}`], { stdin: updated });
-      if (writeR.code !== 0) return `Error: ${writeR.stderr || "write failed"}`;
-      this.broadcast(JSON.stringify({ type: "files_changed", paths: [relpath] }));
-      return `Updated ${file_path}`;
-    } catch (err: unknown) {
-      return toolError(err);
-    }
+    });
   }
 }
