@@ -16,6 +16,7 @@ import {
 } from "../driveAccess";
 import { toolError } from "../toolUtils";
 import { MAX_DRIVE_TRANSFER_BYTES } from "@/lib/infra/limits";
+import { requireFreeSpace } from "@/lib/infra/storage/diskSpace";
 
 const schema = z.object({
   drive_name: z.string().describe("Drive to download from, by name or id"),
@@ -92,6 +93,9 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
     // traversal segment must not land the write outside the workspace tree.
     const absDest = await resolveWorkspacePath(this.workspaceDir, dest);
     if (absDest === null) return { error: `Error: download destination escapes the workspace: ${dest}` };
+
+    const spaceErr = await requireFreeSpace(this.workspaceDir, content.length);
+    if (spaceErr) return { error: spaceErr };
 
     try {
       await fs.mkdir(path.dirname(absDest), { recursive: true });

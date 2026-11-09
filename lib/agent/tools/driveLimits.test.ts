@@ -6,6 +6,9 @@ import os from "os";
 import path from "path";
 import { MAX_FILE_READ_BYTES, MAX_DRIVE_TRANSFER_BYTES, MAX_DRIVE_LISTING_ENTRIES } from "@/lib/infra/limits";
 
+const requireFreeSpace = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/infra/storage/diskSpace", () => ({ requireFreeSpace }));
+
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "drivelimits-test-"));
 afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
@@ -28,6 +31,8 @@ type Mods = Awaited<ReturnType<typeof freshModules>>;
 let mods: Mods;
 
 beforeEach(async () => {
+  requireFreeSpace.mockReset();
+  requireFreeSpace.mockResolvedValue(null);
   mods = await freshModules();
 });
 
@@ -121,6 +126,24 @@ describe("drive transfer ceiling", () => {
 
     expect(result).toContain("(4 bytes)");
     expect(fs.readFileSync(path.join(dir, "small.bin")).equals(bytes)).toBe(true);
+  });
+
+  it("drive_download refuses to write and reports error when workspace is out of disk space", async () => {
+    requireFreeSpace.mockResolvedValue("Error: not enough free disk space to write this file.");
+    const dir = seedDrive("data");
+    const workspaceDir = path.join(ROOT, "ws1-files");
+    const bytes = Buffer.from("test payload");
+    fs.mkdirSync(workspaceDir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "test.bin"), bytes);
+
+    const result = await new mods.DriveDownloadTool("ws1", workspaceDir).invoke({
+      drive_name: "data",
+      path: "test.bin",
+    });
+
+    expect(result).toMatch(/^Error:/);
+    expect(result).toContain("not enough free disk space");
+    expect(fs.existsSync(path.join(workspaceDir, "downloads/data/test.bin"))).toBe(false);
   });
 });
 
