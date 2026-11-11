@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { KeyedAsyncLock, getFileLockKey } from "./fileLock";
 
 function createDeferred<T = void>() {
@@ -153,5 +153,15 @@ describe("KeyedAsyncLock", () => {
     expect(getFileLockKey("/data/workspaces/ws1", "config.env")).not.toBe(
       getFileLockKey("/data/workspaces/ws2", "config.env"),
     );
+  });
+});
+
+describe("workspaceFileLocks", () => {
+  it("is one shared lock even when the module is loaded twice, as the custom server and Next bundles do", async () => {
+    vi.resetModules();
+    const first = (await import("./fileLock")).workspaceFileLocks;
+    vi.resetModules();
+    const second = (await import("./fileLock")).workspaceFileLocks;
+    expect(second).toBe(first);
   });
 });

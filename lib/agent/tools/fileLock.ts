@@ -3,6 +3,7 @@
 // Operations on different keys run concurrently.
 
 import path from "path";
+import { globalSingleton } from "@/lib/infra/globalSingleton";
 
 export class KeyedAsyncLock {
   private queues = new Map<string, Promise<unknown>>();
@@ -60,4 +61,4 @@ export function getFileLockKey(workspaceDir: string, relpath: string): string {
 /**
  * Process-wide singleton lock instance shared across agent tools.
  */
-export const workspaceFileLocks = new KeyedAsyncLock();
+export const workspaceFileLocks = globalSingleton("workspaceFileLocks", () => new KeyedAsyncLock());
