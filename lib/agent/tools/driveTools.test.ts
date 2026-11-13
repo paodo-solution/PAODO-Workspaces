@@ -18,7 +18,8 @@ async function freshModules() {
   const store = await import("@/lib/drives/store");
   const { DriveDownloadTool } = await import("./driveDownload");
   const { DriveReadTool } = await import("./driveRead");
-  return { store, DriveDownloadTool, DriveReadTool };
+  const { DriveUploadTool } = await import("./driveUpload");
+  return { store, DriveDownloadTool, DriveReadTool, DriveUploadTool };
 }
 
 // A workspace dir the download tool can write into. It must exist, since the containment check
@@ -89,5 +90,128 @@ describe("drive_read binary detection", () => {
     const tool = new mods.DriveReadTool("ws1");
     const result = await tool.invoke({ drive_name: "notes", path: "readme.txt" });
     expect(result).toBe(text);
+  });
+});
+
+describe("drive_upload workspace containment and symlink safety", () => {
+  it("uploads a regular file inside the workspace", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+    fs.writeFileSync(path.join(workspaceDir, "regular.txt"), "regular content");
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "regular.txt", drive_name: "data" });
+
+    expect(result).toContain("Uploaded");
+    expect(result).toContain("regular.txt in drive \"data\"");
+    expect(fs.readFileSync(path.join(driveDir, "regular.txt"), "utf-8")).toBe("regular content");
+  });
+
+  it("refuses to upload an external file symlink pointing outside the workspace", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const outsideFile = path.join(ROOT, "outside.txt");
+    fs.writeFileSync(outsideFile, "outside secret");
+    fs.symlinkSync(outsideFile, path.join(workspaceDir, "escaping.txt"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "escaping.txt", drive_name: "data" });
+
+    expect(result).toBe("Error: source path is outside the workspace");
+    expect(fs.existsSync(path.join(driveDir, "escaping.txt"))).toBe(false);
+  });
+
+  it("uploads an internal file symlink pointing to a file inside the workspace", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    fs.writeFileSync(path.join(workspaceDir, "target.txt"), "target content");
+    fs.symlinkSync(path.join(workspaceDir, "target.txt"), path.join(workspaceDir, "internal_link.txt"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "internal_link.txt", drive_name: "data" });
+
+    expect(result).toContain("Uploaded");
+    expect(result).toContain("internal_link.txt in drive \"data\"");
+    expect(fs.readFileSync(path.join(driveDir, "internal_link.txt"), "utf-8")).toBe("target content");
+  });
+
+  it("uploads safe files from a directory and skips an escaping symlink", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const outsideFile = path.join(ROOT, "outside.txt");
+    fs.writeFileSync(outsideFile, "outside secret");
+
+    const folder = path.join(workspaceDir, "proj");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "safe.txt"), "safe content");
+    fs.symlinkSync(outsideFile, path.join(folder, "leak.txt"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "proj", drive_name: "data" });
+
+    expect(result).toContain("Uploaded 1 file");
+    expect(result).toContain("Skipped 1: leak.txt (source path is outside the workspace: proj/leak.txt)");
+    expect(fs.readFileSync(path.join(driveDir, "proj/safe.txt"), "utf-8")).toBe("safe content");
+    expect(fs.existsSync(path.join(driveDir, "proj/leak.txt"))).toBe(false);
+  });
+
+  it("uploads safe files from a directory and skips a nested directory symlink pointing outside", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const outsideDir = path.join(ROOT, "outside_dir");
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, "external.txt"), "external secret content");
+
+    const folder = path.join(workspaceDir, "parent_folder");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "safe.txt"), "safe content");
+    fs.symlinkSync(outsideDir, path.join(folder, "nested_dir_link"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "parent_folder", drive_name: "data" });
+
+    expect(result).toContain("Uploaded 1 file");
+    expect(result).toContain(
+      "Skipped 1: nested_dir_link (source path is outside the workspace: parent_folder/nested_dir_link)",
+    );
+    expect(fs.readFileSync(path.join(driveDir, "parent_folder/safe.txt"), "utf-8")).toBe("safe content");
+    expect(fs.existsSync(path.join(driveDir, "parent_folder/nested_dir_link"))).toBe(false);
+    expect(fs.existsSync(path.join(driveDir, "parent_folder/nested_dir_link/external.txt"))).toBe(false);
+  });
+
+  it("refuses a top-level symlink pointing to an external directory", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const outsideFolder = path.join(ROOT, "outside_folder");
+    fs.mkdirSync(outsideFolder, { recursive: true });
+    fs.writeFileSync(path.join(outsideFolder, "secret.txt"), "secret");
+    fs.symlinkSync(outsideFolder, path.join(workspaceDir, "escaping_dir"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "escaping_dir", drive_name: "data" });
+
+    expect(result).toBe("Error: source path is outside the workspace");
+    expect(fs.existsSync(path.join(driveDir, "escaping_dir"))).toBe(false);
+  });
+
+  it("retains the existing error behavior for a missing file", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "missing.txt", drive_name: "data" });
+
+    expect(result).toBe("Error: workspace path not found: missing.txt");
   });
 });
