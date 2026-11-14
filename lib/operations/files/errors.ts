@@ -19,6 +19,10 @@ const BY_ERRNO: Record<string, Classification> = {
   // A path that runs *through* a file, e.g. "notes.txt/inner".
   ENOTDIR: { code: "INVALID_REQUEST", message: (p) => `${p} is not a directory` },
 
+  // rootedFs refusals: a symbolic link anywhere on the path, or a FIFO, socket or device at its end.
+  ELOOP: { code: "INVALID_REQUEST", message: (p) => `${p} is a symbolic link; the app does not follow links` },
+  ENOTREG: { code: "INVALID_REQUEST", message: (p) => `${p} is not a regular file` },
+
   // Retrying cannot help until someone changes the permissions, so this is not a 400 asking the client
   // to fix its request.
   EACCES: { code: "FILE_NOT_WRITABLE", message: (p) => `${p} is not writable` },

@@ -2,13 +2,13 @@
 // outcomes and one snapshot. Paths are relative; `destinationDirectory: null` means the root.
 
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
 import path from "path";
 import { createLogger } from "@/lib/infra/logger";
 import { AppError, publicErrorBody, type AppErrorCode, type ErrorDetails } from "@/lib/errors/appError";
 import { errorResponse, readJsonObject, requestIdOf, statusForCode } from "@/lib/api/errorResponse";
 import { fileSystemAppError } from "@/lib/operations/files/errors";
-import { requireDirPath, requireEntryPath, resolveHostPath } from "@/lib/operations/files/paths";
+import { requireDirPath, requireEntryPath } from "@/lib/operations/files/paths";
+import { createDir, linkEntry, removeEmptyDir, renameEntry, statEntry, unlinkEntry } from "./rootedFs";
 import type { FileBackend } from "./backend";
 
 interface MoveBody {
@@ -38,58 +38,54 @@ function isFailure<T extends object>(result: T | MoveFailure): result is MoveFai
 }
 
 interface MoveTarget {
-  /** Real host paths used by filesystem operations. */
+  rootDir: string;
+  /** Root-relative paths; every filesystem call resolves them without following a link. */
   source: string;
   destination: string;
-  /** Wire-space relative path returned to the client. */
-  clientDestination: string;
   unchanged: boolean;
   destinationLabel: string;
-  sourceStat: Awaited<ReturnType<typeof fs.stat>>;
+  isDirectory: boolean;
 }
 
 class DestinationConflictError extends Error {}
 
 async function resolveMoveTarget(be: FileBackend, body: MoveBody): Promise<MoveTarget | MoveFailure> {
-  // Containment first, so an out-of-tree path is refused as such before anything else looks at it.
-  // The root cannot appear here at all: requireEntryPath refuses "" for exactly this reason.
-  const source = await resolveHostPath(be.dir, body.sourcePath, "sourcePaths");
-
-  // lstat the lexical path: resolveHostPath returns the symlink's target, hiding the link itself.
-  if ((await fs.lstat(path.join(be.dir, body.sourcePath))).isSymbolicLink()) {
+  // lstat, so a link is seen as a link. The root cannot appear here: requireEntryPath refuses "".
+  const sourceStat = await statEntry(be.dir, body.sourcePath);
+  if (sourceStat.isSymbolicLink()) {
     return { code: "INVALID_REQUEST", error: "Symbolic links cannot be moved" };
   }
 
-  const destinationDirectory = await resolveHostPath(be.dir, body.destinationDirectory, "destinationDirectory");
-  if (!(await fs.stat(destinationDirectory)).isDirectory()) {
+  if (!(await statEntry(be.dir, body.destinationDirectory)).isDirectory()) {
     return { code: "INVALID_REQUEST", error: "Destination must be a directory" };
   }
 
-  const sourceStat = await fs.stat(source);
+  // Wire paths are normalized and no link is followed, so comparing them is comparing the entries.
   if (
     sourceStat.isDirectory() &&
-    (destinationDirectory === source || destinationDirectory.startsWith(source + path.sep))
+    (body.destinationDirectory === body.sourcePath || body.destinationDirectory.startsWith(`${body.sourcePath}/`))
   ) {
     return { code: "INVALID_REQUEST", error: "Cannot move a folder into itself" };
   }
 
-  const name = path.basename(body.sourcePath);
-  const destination = path.join(destinationDirectory, name);
+  const name = path.posix.basename(body.sourcePath);
+  const destination = body.destinationDirectory === "" ? name : `${body.destinationDirectory}/${name}`;
   return {
-    source,
+    rootDir: be.dir,
+    source: body.sourcePath,
     destination,
-    clientDestination: body.destinationDirectory === "" ? name : `${body.destinationDirectory}/${name}`,
-    unchanged: destination === source,
+    unchanged: destination === body.sourcePath,
     destinationLabel: body.destinationDirectory || "workspace root",
-    sourceStat,
+    isDirectory: sourceStat.isDirectory(),
   };
 }
 
 /** Move one item without ever replacing an existing destination. */
 async function moveWithoutOverwrite(target: MoveTarget): Promise<void> {
-  if (!target.sourceStat.isDirectory()) {
+  const { rootDir, source, destination } = target;
+  if (!target.isDirectory) {
     try {
-      await fs.link(target.source, target.destination);
+      await linkEntry(rootDir, source, destination);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") {
         throw new DestinationConflictError();
@@ -98,10 +94,10 @@ async function moveWithoutOverwrite(target: MoveTarget): Promise<void> {
     }
 
     try {
-      await fs.unlink(target.source);
+      await unlinkEntry(rootDir, source);
     } catch (err) {
       // Both names reference the same inode, so this rollback cannot remove another writer's file.
-      await fs.unlink(target.destination).catch(() => undefined);
+      await unlinkEntry(rootDir, destination).catch(() => undefined);
       throw err;
     }
     return;
@@ -109,7 +105,7 @@ async function moveWithoutOverwrite(target: MoveTarget): Promise<void> {
 
   // Reserve the directory name so rename cannot silently replace an empty directory.
   try {
-    await fs.mkdir(target.destination);
+    await createDir(rootDir, destination);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       throw new DestinationConflictError();
@@ -118,10 +114,10 @@ async function moveWithoutOverwrite(target: MoveTarget): Promise<void> {
   }
 
   try {
-    await fs.rename(target.source, target.destination);
+    await renameEntry(rootDir, source, destination);
   } catch (err) {
     // Only remove our still-empty reservation. A populated reservation is deliberately retained.
-    await fs.rmdir(target.destination).catch(() => undefined);
+    await removeEmptyDir(rootDir, destination).catch(() => undefined);
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EEXIST" || code === "ENOTEMPTY") throw new DestinationConflictError();
     throw err;
@@ -140,9 +136,9 @@ async function moveOne(
 
     const outcome: MoveOutcome = {
       sourcePath,
-      path: target.clientDestination,
+      path: target.destination,
       unchanged: target.unchanged,
-      name: path.basename(target.source),
+      name: path.posix.basename(target.source),
       destinationLabel: target.destinationLabel,
     };
     if (target.unchanged) return outcome;
@@ -153,7 +149,7 @@ async function moveOne(
       if (err instanceof DestinationConflictError) {
         return {
           code: "CONFLICT",
-          error: `An item named ${path.basename(target.destination)} already exists in that folder`,
+          error: `An item named ${path.posix.basename(target.destination)} already exists in that folder`,
         };
       }
 

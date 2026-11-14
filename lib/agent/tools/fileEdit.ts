@@ -3,7 +3,7 @@
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import { containWorkspacePath } from "../pathUtils";
+import { normalizeRelpath } from "../pathUtils";
 import { toolError } from "../toolUtils";
 import { writeContainerFile } from "./containerWrite";
 import { requireFreeSpace } from "@/lib/infra/storage/diskSpace";
@@ -40,8 +40,8 @@ export class FileEditTool extends StructuredTool<typeof schema> {
   }
 
   protected async _call({ file_path, old_string, new_string, replace_all }: z.infer<typeof schema>): Promise<string> {
-    // Realpath containment (catches symlinks), resolved once for both branches.
-    const relpath = await containWorkspacePath(this.workspaceDir, file_path);
+    // Lexical only: the read and write happen inside the container, which is the boundary for a link.
+    const relpath = normalizeRelpath(file_path);
     if (relpath === null) return "Error: path is outside the workspace";
 
     const lockKey = getFileLockKey(this.workspaceDir, relpath);

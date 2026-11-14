@@ -1,5 +1,5 @@
 // The file API's only path space: POSIX, relative to the workspace or drive root (spelled ""), so host paths
-// stay private. Lexical only; symlink escapes are caught by ./containment.ts, which also runs on every request.
+// stay private. Lexical only; symlinks are ./rootedFs.ts's job, which every disk access goes through.
 
 import path from "path";
 
@@ -7,7 +7,7 @@ import path from "path";
 // than a bare "invalid path".
 export const CONTAINER_MOUNT = "/workspace";
 
-/** A path a caller is not allowed to say. Lexical only — see resolveContained for the disk half. */
+/** A path a caller is not allowed to say. Lexical only — see rootedFs.ts for the disk half. */
 export class InvalidPathError extends Error {
   constructor(
     readonly attemptedPath: string,

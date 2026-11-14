@@ -1,16 +1,13 @@
-// One-file upload handler for workspace and drive routes. Streams to a temp file inside the realpath'd root
-// (resolveContained), renamed into place only when complete; folders are N requests to keep memory flat.
+// One-file upload handler for workspace and drive routes. Streams to a temp file beside the destination
+// (rootedFs), renamed into place only when complete; folders are N requests to keep memory flat.
 import { type NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import { createWriteStream } from "fs";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import path from "path";
-import { randomBytes } from "crypto";
 import { createLogger } from "@/lib/infra/logger";
 import { MAX_UPLOAD_BYTES, formatBytes } from "@/lib/uploads/limits";
 import { checkFreeSpace, RESERVED_FREE_BYTES } from "@/lib/infra/storage/diskSpace";
-import { resolveContained } from "@/lib/files/containment";
+import { createPendingFile, type PendingFile } from "@/lib/files/rootedFs";
 import { requireEntryPath } from "@/lib/operations/files/paths";
 import { fileSystemAppError } from "@/lib/operations/files/errors";
 import { AppError } from "@/lib/errors/appError";
@@ -77,7 +74,7 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
     });
   };
 
-  // requireEntryPath keeps `?path=` relative: resolveContained alone would accept an absolute path inside the root.
+  // requireEntryPath keeps `?path=` a relative entry path; rootedFs refuses any link on the way to it.
   const { searchParams } = new URL(req.url);
   let filePath: string;
   try {
@@ -85,15 +82,6 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
   } catch (err) {
     if (!(err instanceof AppError)) throw err;
     return errorResponse(err.code, err.message, { request: req, details: err.details });
-  }
-
-  const dir = await fs.realpath(be.dir);
-  const resolved = await resolveContained(dir, filePath);
-  if (resolved === null) {
-    return errorResponse("INVALID_REQUEST", "Path resolves outside the workspace", {
-      request: req,
-      details: { field: "path" },
-    });
   }
 
   // Refuse on the declared size before reading a byte, so a doomed body is never spooled to disk.
@@ -105,12 +93,19 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
   // Chunked bodies declare no length, so assume the worst case (the per-file cap) rather than
   // skip the check — same conservative stance the size limit above takes.
   const neededBytes = Number.isFinite(declared) && declared > 0 ? declared : MAX_UPLOAD_BYTES;
-  const space = await checkFreeSpace(dir, neededBytes, RESERVED_FREE_BYTES);
+  const space = await checkFreeSpace(be.dir, neededBytes, RESERVED_FREE_BYTES);
   if (!space.ok) return insufficientStorage(filePath, neededBytes, space.freeBytes);
 
-  await fs.mkdir(path.dirname(resolved), { recursive: true });
-  // Temp sibling in the destination directory, so it shares a filesystem and the rename is atomic.
-  const tmp = `${resolved}.${randomBytes(6).toString("hex")}.part`;
+  // Written beside its destination, in a directory reached without following a link, and renamed into
+  // place only when complete.
+  let pending: PendingFile;
+  try {
+    pending = await createPendingFile(be.dir, filePath);
+  } catch (err) {
+    const known = fileSystemAppError(err, filePath);
+    if (!known) throw err;
+    return errorResponse(known.code, known.message, { request: req, details: known.details });
+  }
 
   try {
     await pipeline(
@@ -127,11 +122,12 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
           yield chunk;
         }
       },
-      createWriteStream(tmp),
+      // The stream closes the handle when it finishes; pipeline would otherwise wait for a close forever.
+      pending.handle.createWriteStream(),
     );
-    await fs.rename(tmp, resolved);
+    await pending.commit();
   } catch (err) {
-    await fs.rm(tmp, { force: true });
+    await pending.discard();
     if (err instanceof PayloadTooLargeError) return tooLarge(filePath, err.receivedBytes, "stream");
     log.error(
       {
@@ -150,6 +146,6 @@ export async function handleUpload(req: NextRequest, be: UploadBackend): Promise
       : errorResponse("INTERNAL_ERROR", "The upload could not be written", { request: req });
   }
 
-  await be.afterWrite?.(path.basename(resolved));
+  await be.afterWrite?.(path.posix.basename(filePath));
   return NextResponse.json({ ok: true });
 }

@@ -5,7 +5,8 @@ import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import path from "path";
 import fs from "fs/promises";
-import { resolveWorkspacePath } from "../pathUtils";
+import { normalizeRelpath } from "../pathUtils";
+import { writeFile } from "@/lib/files/rootedFs";
 import {
   resolveDrivePath,
   readFileBounded,
@@ -56,7 +57,7 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
   }
 
   private async downloadFolder(resolved: ResolvedDrivePath): Promise<string> {
-    const files = await enumerateDriveFolder(resolved.absPath);
+    const files = await enumerateDriveFolder(resolved.driveDir, resolved.relPath);
     if (!files.length) return `Error: "${resolved.relPath || "/"}" holds no files to download`;
 
     let moved = 0;
@@ -89,18 +90,21 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
     if (typeof content === "string") return { error: content };
 
     const dest = path.posix.join("downloads", driveName, relPath);
-    // Realpath-contained just as file_write is: a drive whose name or a file whose path carried a
-    // traversal segment must not land the write outside the workspace tree.
-    const absDest = await resolveWorkspacePath(this.workspaceDir, dest);
-    if (absDest === null) return { error: `Error: download destination escapes the workspace: ${dest}` };
+    // A drive name or file path carrying a traversal segment must not land the write outside the workspace.
+    const destRel = normalizeRelpath(dest);
+    if (destRel === null) return { error: `Error: download destination escapes the workspace: ${dest}` };
 
     const spaceErr = await requireFreeSpace(this.workspaceDir, content.length);
     if (spaceErr) return { error: spaceErr };
 
     try {
-      await fs.mkdir(path.dirname(absDest), { recursive: true });
-      await fs.writeFile(absDest, content);
+      // Reached without following a link, so a link planted under downloads/ cannot redirect the write.
+      await writeFile(this.workspaceDir, destRel, content);
     } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ELOOP" || code === "EINVAL") {
+        return { error: `Error: download destination escapes the workspace: ${dest}` };
+      }
       return { error: toolError(err) };
     }
     return { bytes: content.length, dest };
