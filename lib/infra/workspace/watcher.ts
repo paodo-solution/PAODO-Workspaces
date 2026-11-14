@@ -21,6 +21,8 @@ class WorkspaceWatcher {
   private watcher = chokidar.watch(this.dir, {
     ignored: /(node_modules|\.git|\.next|dist|build)/,
     ignoreInitial: true,
+    // The agent plants links; following one would watch whatever it points at, outside the workspace.
+    followSymlinks: false,
     persistent: true,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
   });

@@ -145,4 +145,22 @@ describe("addSelectedToZip", () => {
     expect(files).toEqual([]);
     expect(await skipped(["escape/secret.txt"])).toEqual(["escape/secret.txt"]);
   });
+
+  // The selection itself is an honest folder; the link sits inside it, where only the walk can see it.
+  it("skips a symlink nested in a selected folder instead of archiving its target", async () => {
+    fs.writeFileSync(path.join(OUTSIDE, "secret.txt"), "s");
+    fs.mkdirSync(path.join(WS_DIR, "proj"));
+    fs.writeFileSync(path.join(WS_DIR, "proj", "a.txt"), "a");
+    fs.symlinkSync(path.join(OUTSIDE, "secret.txt"), path.join(WS_DIR, "proj", "leak.txt"));
+    const { files } = await zipEntries(["proj"]);
+    expect(files).toEqual(["proj/a.txt"]);
+    expect(await skipped(["proj"])).toEqual(["proj/leak.txt"]);
+  });
+
+  it("skips a nested symlink even when its target is inside the workspace", async () => {
+    fs.mkdirSync(path.join(WS_DIR, "proj"));
+    fs.writeFileSync(path.join(WS_DIR, "real.txt"), "r");
+    fs.symlinkSync(path.join(WS_DIR, "real.txt"), path.join(WS_DIR, "proj", "alias.txt"));
+    expect(await skipped(["proj"])).toEqual(["proj/alias.txt"]);
+  });
 });

@@ -123,6 +123,23 @@ describe("tar transfers", () => {
     ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });
 
+  // Collection saw a regular file; the agent swaps it for a link before the bytes are streamed.
+  it("refuses to stream a file that became a symlink after it was collected", async () => {
+    const outside = path.join(ROOT, "outside-secret.txt");
+    fs.writeFileSync(outside, "secret");
+    fs.writeFileSync(path.join(SOURCE, "notes.txt"), "public");
+    const items = await collectTransfer(SOURCE, ".");
+    fs.rmSync(path.join(SOURCE, "notes.txt"));
+    fs.symlinkSync(outside, path.join(SOURCE, "notes.txt"));
+
+    const chunks: Buffer[] = [];
+    const read = (async () => {
+      for await (const chunk of packTransfer(items)) chunks.push(chunk as Buffer);
+    })();
+    await expect(read).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    expect(Buffer.concat(chunks).includes("secret")).toBe(false);
+  });
+
   it("rejects a selected symlink rather than dereferencing it", async () => {
     fs.writeFileSync(path.join(SOURCE, "real.txt"), "secret");
     fs.symlinkSync("real.txt", path.join(SOURCE, "link.txt"));

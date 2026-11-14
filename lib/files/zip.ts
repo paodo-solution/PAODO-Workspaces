@@ -7,9 +7,19 @@ import type JSZip from "jszip";
 import { resolveContained } from "./containment";
 import { readTransferEntries } from "./entries";
 import { openFileLimiter, type Semaphore } from "./fdLimit";
+import { NotRegularFileError, readRegularFile } from "./regularFile";
 import { relativeEntryPath } from "./relpath";
 
-async function addDirToZip(zip: JSZip, sem: Semaphore, dirPath: string, zipPath: string) {
+// `skip` gets every entry that is not a directory or a regular file inside `realRoot`: a symlink here
+// was planted by the agent, and following it would archive whatever it points at.
+async function addDirToZip(
+  zip: JSZip,
+  sem: Semaphore,
+  realRoot: string,
+  dirPath: string,
+  zipPath: string,
+  skip: (entryPath: string, err: unknown) => void,
+) {
   const entries = await readTransferEntries(dirPath, sem);
   // JSZip only creates folders that hold files, so add empty directories explicitly.
   if (entries.length === 0) {
@@ -20,8 +30,13 @@ async function addDirToZip(zip: JSZip, sem: Semaphore, dirPath: string, zipPath:
     entries.map(async (entry) => {
       const fullPath = path.join(dirPath, entry.name);
       const entryZipPath = path.join(zipPath, entry.name);
-      if (entry.isDirectory()) await addDirToZip(zip, sem, fullPath, entryZipPath);
-      else zip.file(entryZipPath, await sem.run(() => fs.readFile(fullPath)));
+      if (entry.isDirectory()) return addDirToZip(zip, sem, realRoot, fullPath, entryZipPath, skip);
+      try {
+        if (!entry.isFile()) throw new NotRegularFileError(fullPath);
+        zip.file(entryZipPath, await sem.run(() => readRegularFile(realRoot, fullPath)));
+      } catch (err) {
+        skip(path.relative(realRoot, fullPath).split(path.sep).join("/"), err);
+      }
     }),
   );
 }
@@ -48,8 +63,8 @@ function zipEntryName(entryPath: string, prefix: string): string {
   return stripped;
 }
 
-// Unarchivable paths, symlink escapes included, go to `onSkip` instead of failing the zip. A
-// `rootFolder` (validated, no separators) nests everything in one folder.
+// Unarchivable paths, symlinks inside a selected folder included, go to `onSkip` instead of failing the
+// zip. A `rootFolder` (validated, no separators) nests everything in one folder.
 export async function addSelectedToZip(
   zip: JSZip,
   baseDir: string,
@@ -59,6 +74,7 @@ export async function addSelectedToZip(
 ) {
   const target = rootFolder ? (zip.folder(rootFolder) ?? zip) : zip;
   const sem = openFileLimiter();
+  const realRoot = await fs.realpath(baseDir);
 
   // Validate up front: the shared prefix has to be known before the first entry is named.
   const selected: { relPath: string; entryPath: string }[] = [];
@@ -78,8 +94,8 @@ export async function addSelectedToZip(
         if (resolved === null) throw new Error("Path resolves outside the workspace");
         const zipPath = zipEntryName(entryPath, prefix);
         const stat = await sem.run(() => fs.stat(resolved));
-        if (stat.isDirectory()) await addDirToZip(target, sem, resolved, zipPath);
-        else target.file(zipPath, await sem.run(() => fs.readFile(resolved)));
+        if (stat.isDirectory()) await addDirToZip(target, sem, realRoot, resolved, zipPath, onSkip);
+        else target.file(zipPath, await sem.run(() => readRegularFile(realRoot, resolved)));
       } catch (err) {
         onSkip(relPath, err);
       }
