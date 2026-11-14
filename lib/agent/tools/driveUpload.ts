@@ -5,7 +5,7 @@ import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import path from "path";
 import fs from "fs/promises";
-import { normalizeRelpath } from "../pathUtils";
+import { normalizeRelpath, resolveWorkspacePath } from "../pathUtils";
 import {
   resolveDrivePath,
   readFileBounded,
@@ -27,6 +27,11 @@ const schema = z.object({
     ),
 });
 
+// Names the workspace path, never the host path that Node's ELOOP message carries.
+function resolveError(err: unknown, srcRel: string): string {
+  return (err as NodeJS.ErrnoException).code === "ELOOP" ? `Error: symlink loop: ${srcRel}` : toolError(err);
+}
+
 export class DriveUploadTool extends StructuredTool<typeof schema> {
   name = "drive_upload";
   description = `Copy a file or a whole folder from your workspace into a shared drive so other agents can use it.
@@ -43,7 +48,13 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
   protected async _call({ source_path, drive_name, dest_path }: z.infer<typeof schema>): Promise<string> {
     const srcRel = normalizeRelpath(source_path);
     if (srcRel === null) return "Error: source path is outside the workspace";
-    const srcAbs = path.join(this.workspaceDir, srcRel);
+    let srcAbs: string | null;
+    try {
+      srcAbs = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    } catch (err: unknown) {
+      return resolveError(err, srcRel);
+    }
+    if (srcAbs === null) return "Error: source path is outside the workspace";
 
     let stat;
     try {
@@ -56,7 +67,7 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
     if (stat.isDirectory()) return this.uploadFolder(srcRel, srcAbs, drive_name, dest_path);
 
     const dest = dest_path?.trim() || path.posix.basename(srcRel);
-    const put = await this.putFile(srcAbs, drive_name, dest, source_path);
+    const put = await this.putFile(drive_name, dest, srcRel);
     if ("error" in put) return put.error;
     const where = `${put.relPath} in drive "${drive_name}"`;
     return put.existed
@@ -74,10 +85,9 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
     const skipped: string[] = [];
     for (const rel of files) {
       const put = await this.putFile(
-        path.join(srcAbs, rel),
         drive_name,
         path.posix.join(destBase, rel),
-        `${srcRel}/${rel}`,
+        path.posix.join(srcRel, rel),
       );
       if ("error" in put) {
         skipped.push(`${rel} (${compactError(put.error)})`);
@@ -90,19 +100,27 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
   }
 
   private async putFile(
-    srcAbs: string,
     drive_name: string,
     destRel: string,
-    sourceLabel: string,
+    srcRel: string,
   ): Promise<{ bytes: number; relPath: string; existed: boolean } | { error: string }> {
+    // A symlink loop makes realpath throw; return it so a folder upload skips this file and continues.
+    let containedSrc: string | null;
+    try {
+      containedSrc = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    } catch (err: unknown) {
+      return { error: resolveError(err, srcRel) };
+    }
+    if (containedSrc === null) return { error: `Error: source path is outside the workspace: ${srcRel}` };
+
     const resolved = resolveDrivePath(this.workspaceId, drive_name, destRel);
     if (typeof resolved === "string") return { error: resolved };
     if (!resolved.relPath) return { error: "Error: a destination file path within the drive is required" };
 
     // Same ceiling as drive_download: the workspace volume is read host-side, into the app's heap.
-    const content = await readFileBounded(srcAbs, MAX_DRIVE_TRANSFER_BYTES, {
-      missing: `Error: workspace file not found: ${sourceLabel}`,
-      isDirectory: `Error: "${sourceLabel}" is a directory, not a file`,
+    const content = await readFileBounded(containedSrc, MAX_DRIVE_TRANSFER_BYTES, {
+      missing: `Error: workspace file not found: ${srcRel}`,
+      isDirectory: `Error: "${srcRel}" is a directory, not a file`,
       advice: `Split it first (e.g. split -b 40m) and upload the parts.`,
     });
     if (typeof content === "string") return { error: content };
