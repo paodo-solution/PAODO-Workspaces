@@ -1,6 +1,7 @@
 // Reads skill definitions from .skills/ at call time, so skills the agent writes are picked up immediately.
 import fsAsync from "fs/promises";
 import path from "path";
+import { NotRegularFileError, readRegularFile } from "../files/regularFile";
 import { createLogger } from "../infra/logger";
 import type { SkillDefinition } from "./types";
 
@@ -41,28 +42,54 @@ function parseSkill(raw: unknown, file: string): SkillDefinition | null {
   };
 }
 
-/** Reads and parses all .skills/*.json in a workspace dir. Missing dir → empty list. */
-export async function loadSkills(workspaceDir: string): Promise<SkillDefinition[]> {
+// The agent writes .skills/, so the dir must be a real directory (not a link) and each file a regular file in it.
+async function realSkillsDir(workspaceDir: string): Promise<string | null> {
   const dir = path.join(workspaceDir, SKILLS_DIR);
-  let entries: string[];
   try {
-    entries = await fsAsync.readdir(dir);
+    if (!(await fsAsync.lstat(dir)).isDirectory()) {
+      log.warn(
+        { event: "skills_dir_not_directory", outcome: "skills_omitted", dir },
+        ".skills is not a directory — no skills",
+      );
+      return null;
+    }
+    return path.join(await fsAsync.realpath(workspaceDir), SKILLS_DIR);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       log.warn({ err, dir }, "failed to read skills directory — treating workspace as having no skills");
     }
-    return []; // no .skills/ directory — workspace declares no skills
+    return null; // no .skills/ directory — workspace declares no skills
+  }
+}
+
+/** Reads and parses all .skills/*.json in a workspace dir. Missing dir → empty list. */
+export async function loadSkills(workspaceDir: string): Promise<SkillDefinition[]> {
+  const dir = await realSkillsDir(workspaceDir);
+  if (dir === null) return [];
+  let entries: string[];
+  try {
+    entries = await fsAsync.readdir(dir);
+  } catch (err) {
+    log.warn({ err, dir }, "failed to read skills directory — treating workspace as having no skills");
+    return [];
   }
 
   const skills: SkillDefinition[] = [];
   for (const entry of entries.filter((e) => e.endsWith(".json")).sort()) {
     const file = path.join(dir, entry);
     try {
-      const raw = JSON.parse(await fsAsync.readFile(file, "utf-8")) as unknown;
+      const raw = JSON.parse((await readRegularFile(dir, file)).toString("utf-8")) as unknown;
       const skill = parseSkill(raw, file);
       if (skill) skills.push(skill);
     } catch (err) {
-      log.warn({ err, file }, "failed to read or parse skill file — skipped");
+      if (err instanceof NotRegularFileError) {
+        log.warn(
+          { event: "skill_file_not_regular", outcome: "skill_skipped", file },
+          "skill file is not a regular file — skipped",
+        );
+      } else {
+        log.warn({ err, file }, "failed to read or parse skill file — skipped");
+      }
     }
   }
   return skills;
