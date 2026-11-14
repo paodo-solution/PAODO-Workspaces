@@ -27,6 +27,11 @@ const schema = z.object({
     ),
 });
 
+// Names the workspace path, never the host path that Node's ELOOP message carries.
+function resolveError(err: unknown, srcRel: string): string {
+  return (err as NodeJS.ErrnoException).code === "ELOOP" ? `Error: symlink loop: ${srcRel}` : toolError(err);
+}
+
 export class DriveUploadTool extends StructuredTool<typeof schema> {
   name = "drive_upload";
   description = `Copy a file or a whole folder from your workspace into a shared drive so other agents can use it.
@@ -43,7 +48,12 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
   protected async _call({ source_path, drive_name, dest_path }: z.infer<typeof schema>): Promise<string> {
     const srcRel = normalizeRelpath(source_path);
     if (srcRel === null) return "Error: source path is outside the workspace";
-    const srcAbs = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    let srcAbs: string | null;
+    try {
+      srcAbs = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    } catch (err: unknown) {
+      return resolveError(err, srcRel);
+    }
     if (srcAbs === null) return "Error: source path is outside the workspace";
 
     let stat;
@@ -94,7 +104,13 @@ A folder is uploaded recursively, preserving its structure. If a file already ex
     destRel: string,
     srcRel: string,
   ): Promise<{ bytes: number; relPath: string; existed: boolean } | { error: string }> {
-    const containedSrc = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    // A symlink loop makes realpath throw; return it so a folder upload skips this file and continues.
+    let containedSrc: string | null;
+    try {
+      containedSrc = await resolveWorkspacePath(this.workspaceDir, srcRel);
+    } catch (err: unknown) {
+      return { error: resolveError(err, srcRel) };
+    }
     if (containedSrc === null) return { error: `Error: source path is outside the workspace: ${srcRel}` };
 
     const resolved = resolveDrivePath(this.workspaceId, drive_name, destRel);

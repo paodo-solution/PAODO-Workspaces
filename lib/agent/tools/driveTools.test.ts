@@ -205,6 +205,38 @@ describe("drive_upload workspace containment and symlink safety", () => {
     expect(fs.existsSync(path.join(driveDir, "escaping_dir"))).toBe(false);
   });
 
+  it("skips a self-referencing symlink in a folder and uploads the rest", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const folder = path.join(workspaceDir, "proj");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "a.txt"), "a");
+    fs.symlinkSync("loop.txt", path.join(folder, "loop.txt"));
+    fs.writeFileSync(path.join(folder, "z.txt"), "z");
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "proj", drive_name: "data" });
+
+    expect(result).toContain("Uploaded 2 files");
+    expect(result).toContain("Skipped 1: loop.txt (symlink loop: proj/loop.txt)");
+    expect(result).not.toContain(workspaceDir);
+    expect(fs.readFileSync(path.join(driveDir, "proj/a.txt"), "utf-8")).toBe("a");
+    expect(fs.readFileSync(path.join(driveDir, "proj/z.txt"), "utf-8")).toBe("z");
+  });
+
+  it("returns an error instead of throwing for a top-level self-referencing symlink", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    fs.symlinkSync("loop.txt", path.join(workspaceDir, "loop.txt"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "loop.txt", drive_name: "data" });
+
+    expect(result).toBe("Error: symlink loop: loop.txt");
+  });
+
   it("retains the existing error behavior for a missing file", async () => {
     seedDrive("data", "seed.txt", Buffer.from("seed"));
     const workspaceDir = seedWorkspace();
