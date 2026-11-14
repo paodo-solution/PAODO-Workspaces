@@ -2,10 +2,12 @@
 // present/absent combination.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import type { Drive } from "@/lib/drives/store";
+import { MAX_AGENTS_MD_BYTES } from "@/lib/infra/limits";
 
 // Drive lookup is mocked so the test owns it; formatDriveLine mirrors production so assertions see the real
 // `- <name> (id: <id>)<desc>` shape.
@@ -60,6 +62,46 @@ describe("buildWorkspacePromptInputs", () => {
   it("leaves agentsContent undefined when AGENTS.md is missing", () => {
     const { agentsContent } = buildWorkspacePromptInputs("ws1", dir);
     expect(agentsContent).toBeUndefined();
+  });
+
+  it("does not follow an AGENTS.md symlink that leads outside the workspace", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "promptctx-outside-"));
+    try {
+      fs.writeFileSync(path.join(outside, "notes.txt"), "canary-outside-7c1e");
+      fs.symlinkSync(path.join(outside, "notes.txt"), path.join(dir, "AGENTS.md"));
+      const inputs = buildWorkspacePromptInputs("ws1", dir);
+      expect(inputs.agentsContent).toBeUndefined();
+      expect(JSON.stringify(inputs)).not.toContain("canary-outside-7c1e");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("does not follow an AGENTS.md symlink even when its target is inside the workspace", () => {
+    fs.writeFileSync(path.join(dir, "instructions.md"), "# Linked rules");
+    fs.symlinkSync("instructions.md", path.join(dir, "AGENTS.md"));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("leaves agentsContent undefined when AGENTS.md is a directory", () => {
+    fs.mkdirSync(path.join(dir, "AGENTS.md"));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("leaves agentsContent undefined, without blocking, when AGENTS.md is a FIFO", () => {
+    execFileSync("mkfifo", [path.join(dir, "AGENTS.md")]);
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("reads an AGENTS.md just under the size cap in full", () => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), "a".repeat(MAX_AGENTS_MD_BYTES - 1));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toHaveLength(MAX_AGENTS_MD_BYTES - 1);
+  });
+
+  it.each([MAX_AGENTS_MD_BYTES, 1024 ** 3])("leaves agentsContent undefined when AGENTS.md is %i bytes", (size) => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), "");
+    fs.truncateSync(path.join(dir, "AGENTS.md"), size);
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
   });
 
   it("leaves drivesInfo undefined when no drives are connected", () => {

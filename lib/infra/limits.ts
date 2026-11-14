@@ -62,6 +62,11 @@ export const PROXY_RELAY_INSTALL_TIMEOUT_MS = 2 * 60_000;
 // offset/limit. Enforced before reading (`head -c` in the container, a host-side stat), never after.
 export const MAX_FILE_READ_BYTES = 400_000;
 
+// ---- Workspace instructions — lib/agent/promptContext.ts ----
+
+// AGENTS.md goes into every system prompt; one this size or larger (~25k tokens) is skipped, never truncated.
+export const MAX_AGENTS_MD_BYTES = 100_000;
+
 // ---- Drive transfers — lib/agent/tools/driveDownload.ts, driveUpload.ts, driveLs.ts ----
 
 // Ceiling on one file moved to or from a drive. Peak heap is ~3.7× the file (raw + base64 + stdin copy),
