@@ -2,7 +2,7 @@
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import fs from "fs/promises";
+import { removeEntry } from "@/lib/files/rootedFs";
 import { resolveDrivePath } from "../driveAccess";
 import { toolError } from "../toolUtils";
 
@@ -26,7 +26,8 @@ export class DriveDeleteTool extends StructuredTool<typeof schema> {
     if (!resolved.relPath) return "Error: refusing to delete the drive root; specify a path";
 
     try {
-      await fs.rm(resolved.absPath, { recursive: true, force: false });
+      // A link is unlinked, never descended, so a delete cannot reach outside the drive.
+      await removeEntry(resolved.driveDir, resolved.relPath);
       return `Deleted ${targetPath} from drive "${drive_name}"`;
     } catch (err: unknown) {
       const e = err as NodeJS.ErrnoException;

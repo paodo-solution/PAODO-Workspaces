@@ -19,6 +19,12 @@ const BY_ERRNO: Record<string, Classification> = {
   // A path that runs *through* a file, e.g. "notes.txt/inner".
   ENOTDIR: { code: "INVALID_REQUEST", message: (p) => `${p} is not a directory` },
 
+  // rootedFs refusals: a symbolic link anywhere on the path, or a FIFO, socket or device at its end.
+  ELOOP: { code: "INVALID_REQUEST", message: (p) => `${p} is a symbolic link; the app does not follow links` },
+  ENOTREG: { code: "INVALID_REQUEST", message: (p) => `${p} is not a regular file` },
+  // rootedFs's depth cap, or a name the filesystem itself finds too long.
+  ENAMETOOLONG: { code: "INVALID_REQUEST", message: (p) => `${p} is too long or too deeply nested` },
+
   // Retrying cannot help until someone changes the permissions, so this is not a 400 asking the client
   // to fix its request.
   EACCES: { code: "FILE_NOT_WRITABLE", message: (p) => `${p} is not writable` },
@@ -28,22 +34,32 @@ const BY_ERRNO: Record<string, Classification> = {
   ENOSPC: { code: "STORAGE_EXHAUSTED", message: () => "Not enough free disk space" },
 };
 
+/** Whether the operation reads or writes, which decides how a permission failure is named. */
+export type FileAccess = "read" | "write";
+
+const NOT_READABLE: Classification = { code: "FILE_NOT_READABLE", message: (p) => `${p} is not readable` };
+
 // Null for an errno with no public meaning: the caller logs it and answers 500. Messages use `relPath`,
 // never the host path.
-export function fileSystemAppError(err: unknown, relPath: string): AppError | null {
+export function fileSystemAppError(err: unknown, relPath: string, access: FileAccess = "write"): AppError | null {
   const code = (err as NodeJS.ErrnoException | null)?.code;
   if (typeof code !== "string") return null;
-  const classification = BY_ERRNO[code];
+  const denied = code === "EACCES" || code === "EPERM";
+  const classification = denied && access === "read" ? NOT_READABLE : BY_ERRNO[code];
   if (!classification) return null;
   return new AppError(classification.code, classification.message(relPath), { field: "path" });
 }
 
 // Run a filesystem operation, translating any errno it raises. Use this rather than a bare fs call so
 // a new operation cannot accidentally reintroduce the raw-errno-out-the-door behaviour.
-export async function fileSystemCall<T>(relPath: string, run: () => Promise<T>): Promise<T> {
+export async function fileSystemCall<T>(
+  relPath: string,
+  run: () => Promise<T>,
+  access: FileAccess = "write",
+): Promise<T> {
   try {
     return await run();
   } catch (err) {
-    throw fileSystemAppError(err, relPath) ?? err;
+    throw fileSystemAppError(err, relPath, access) ?? err;
   }
 }

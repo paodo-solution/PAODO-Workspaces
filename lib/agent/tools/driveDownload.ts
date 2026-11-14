@@ -4,8 +4,8 @@
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import path from "path";
-import fs from "fs/promises";
-import { resolveWorkspacePath } from "../pathUtils";
+import { normalizeRelpath } from "../pathUtils";
+import { statEntry, writeFile } from "@/lib/files/rootedFs";
 import {
   resolveDrivePath,
   readFileBounded,
@@ -42,21 +42,23 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
 
     let stat;
     try {
-      stat = await fs.stat(resolved.absPath);
+      stat = await statEntry(resolved.driveDir, resolved.relPath);
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return `Error: path not found in drive "${drive_name}"`;
-      return toolError(err);
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return `Error: path not found in drive "${drive_name}"`;
+      return code === "ELOOP" ? `Error: symbolic link not followed: ${filePath}` : toolError(err);
     }
+    if (stat.isSymbolicLink()) return `Error: symbolic link not followed: ${filePath}`;
 
     if (stat.isDirectory()) return this.downloadFolder(resolved);
 
-    const put = await this.putFile(resolved.absPath, resolved.drive.name, resolved.relPath);
+    const put = await this.putFile(resolved.driveDir, resolved.drive.name, resolved.relPath);
     if ("error" in put) return put.error;
     return `Downloaded ${filePath} from drive "${drive_name}" to ${put.dest} (${put.bytes} bytes)`;
   }
 
   private async downloadFolder(resolved: ResolvedDrivePath): Promise<string> {
-    const files = await enumerateDriveFolder(resolved.absPath);
+    const files = await enumerateDriveFolder(resolved.driveDir, resolved.relPath);
     if (!files.length) return `Error: "${resolved.relPath || "/"}" holds no files to download`;
 
     let moved = 0;
@@ -64,7 +66,7 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
     const skipped: string[] = [];
     for (const rel of files) {
       const driveRel = resolved.relPath ? path.posix.join(resolved.relPath, rel) : rel;
-      const put = await this.putFile(path.join(resolved.absPath, rel), resolved.drive.name, driveRel);
+      const put = await this.putFile(resolved.driveDir, resolved.drive.name, driveRel);
       if ("error" in put) {
         skipped.push(`${rel} (${compactError(put.error)})`);
         continue;
@@ -77,11 +79,11 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
   }
 
   private async putFile(
-    srcAbs: string,
+    driveDir: string,
     driveName: string,
     relPath: string,
   ): Promise<{ bytes: number; dest: string } | { error: string }> {
-    const content = await readFileBounded(srcAbs, MAX_DRIVE_TRANSFER_BYTES, {
+    const content = await readFileBounded(driveDir, relPath, MAX_DRIVE_TRANSFER_BYTES, {
       missing: `Error: file not found in drive "${driveName}"`,
       isDirectory: `Error: "${relPath}" is a directory, not a file`,
       advice: `Split it on the drive first (e.g. split -b 40m), or work with it where it is rather than copying it in.`,
@@ -89,18 +91,21 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
     if (typeof content === "string") return { error: content };
 
     const dest = path.posix.join("downloads", driveName, relPath);
-    // Realpath-contained just as file_write is: a drive whose name or a file whose path carried a
-    // traversal segment must not land the write outside the workspace tree.
-    const absDest = await resolveWorkspacePath(this.workspaceDir, dest);
-    if (absDest === null) return { error: `Error: download destination escapes the workspace: ${dest}` };
+    // A drive name or file path carrying a traversal segment must not land the write outside the workspace.
+    const destRel = normalizeRelpath(dest);
+    if (destRel === null) return { error: `Error: download destination escapes the workspace: ${dest}` };
 
     const spaceErr = await requireFreeSpace(this.workspaceDir, content.length);
     if (spaceErr) return { error: spaceErr };
 
     try {
-      await fs.mkdir(path.dirname(absDest), { recursive: true });
-      await fs.writeFile(absDest, content);
+      // Reached without following a link, so a link planted under downloads/ cannot redirect the write.
+      await writeFile(this.workspaceDir, destRel, content);
     } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ELOOP" || code === "EINVAL") {
+        return { error: `Error: download destination escapes the workspace: ${dest}` };
+      }
       return { error: toolError(err) };
     }
     return { bytes: content.length, dest };

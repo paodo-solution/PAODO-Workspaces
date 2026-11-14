@@ -80,6 +80,30 @@ describe("files/upload POST — path containment", () => {
     expect(fs.existsSync(path.join(WS_DIR, "sneaky.txt"))).toBe(false);
   });
 
+  // A lexical check cannot see this one: "linked/escape.txt" is an ordinary relative path.
+  it("rejects an upload whose ?path runs through a symlink out of the workspace", async () => {
+    fs.symlinkSync(ROOT, path.join(WS_DIR, "linked"));
+
+    const res = await post(`?path=${encodeURIComponent("linked/escape.txt")}`, { body: "PWNED" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/symbolic link/i);
+    expect(fs.existsSync(ESCAPE_TARGET)).toBe(false);
+  });
+
+  // The upload replaces the link itself; writing through it would overwrite a file the caller never named.
+  it("replaces a symlink at the destination instead of writing through it", async () => {
+    fs.writeFileSync(ESCAPE_TARGET, "ORIGINAL");
+    fs.symlinkSync(ESCAPE_TARGET, path.join(WS_DIR, "report.txt"));
+
+    const res = await post("?path=report.txt", { body: "new" });
+
+    expect(res.status).toBe(200);
+    expect(fs.lstatSync(path.join(WS_DIR, "report.txt")).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(path.join(WS_DIR, "report.txt"), "utf8")).toBe("new");
+    expect(fs.readFileSync(ESCAPE_TARGET, "utf8")).toBe("ORIGINAL");
+  });
+
   it("requires a path", async () => {
     const res = await post("", { body: "orphan" });
 

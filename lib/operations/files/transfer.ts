@@ -2,28 +2,31 @@
 // destination; only regular files and dirs (0755/0644) are accepted.
 
 import fs from "fs/promises";
-import { constants, createWriteStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import tar, { type ExtractEvents } from "tar-stream";
 import { AppError } from "@/lib/errors/appError";
 import { readTransferEntries } from "@/lib/files/entries";
-import { openFileLimiter, type Semaphore } from "@/lib/files/fdLimit";
+import { Fanout, MAX_CONCURRENT_WALKS, openFileLimiter, settleAll, type Semaphore } from "@/lib/files/fdLimit";
 import { ignoreRuleFor } from "@/lib/files/ignore";
+import { RootedFsError, adoptFile, ensureDir, openDir, statEntry, withDir, type RootedDir } from "@/lib/files/rootedFs";
 import { MAX_TRANSFER_BYTES, MAX_TRANSFER_ENTRIES, MAX_UPLOAD_BYTES } from "@/lib/uploads/limits";
 import { checkFreeSpace, RESERVED_FREE_BYTES } from "@/lib/infra/storage/diskSpace";
 import { fileSystemAppError, fileSystemCall } from "./errors";
-import { requireDirPath, requireEntryPath, resolveHostPath } from "./paths";
+import { requireDirPath, requireEntryPath } from "./paths";
 
 export const TRANSFER_MEDIA_TYPE = "application/x-tar";
 const PAYLOAD = "payload";
-const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 type TransferFile = {
   type: "file";
+  /** Path inside the payload, "" when the payload is this one file. */
   relPath: string;
-  hostPath: string;
+  /** Where the bytes are: a root and a path relative to it, opened only when streamed. */
+  rootDir: string;
+  entryPath: string;
   size: number;
   executable: boolean;
 };
@@ -31,7 +34,6 @@ type TransferFile = {
 type TransferDirectory = {
   type: "directory";
   relPath: string;
-  hostPath: string;
 };
 
 type TransferItem = TransferFile | TransferDirectory;
@@ -58,59 +60,75 @@ function unsupported(relPath: string): AppError {
   });
 }
 
+// A directory's own files come right after it, so the stream can read them all through one descriptor.
 async function collectDirectory(
-  hostPath: string,
+  rootDir: string,
+  dir: RootedDir,
   relPath: string,
-  sem: Semaphore,
-  items: TransferItem[],
-): Promise<void> {
-  items.push({ type: "directory", relPath, hostPath });
-  const entries = await fileSystemCall(relPath || "The root", () => readTransferEntries(hostPath, sem));
-  await Promise.all(
-    entries.map(async (entry) => {
-      const childRel = relPath === "" ? entry.name : path.posix.join(relPath, entry.name);
-      const childHost = path.join(hostPath, entry.name);
-      if (entry.isDirectory()) {
-        await collectDirectory(childHost, childRel, sem, items);
-        return;
-      }
-      if (!entry.isFile()) throw unsupported(childRel);
-      const stat = await fileSystemCall(childRel, () => sem.run(() => fs.stat(childHost)));
-      items.push({
+  limits: { sem: Semaphore; fanout: Fanout },
+): Promise<TransferItem[]> {
+  const entries = await fileSystemCall(relPath || "The root", () => readTransferEntries(dir, limits.sem), "read");
+  const childRel = (name: string) => (relPath === "" ? name : path.posix.join(relPath, name));
+  const files = entries.filter((entry) => !entry.isDirectory());
+  for (const entry of files) if (!entry.isFile()) throw unsupported(childRel(entry.name));
+
+  const fileItems = await settleAll(
+    files.map(async (entry): Promise<TransferItem> => {
+      const stat = await fileSystemCall(
+        childRel(entry.name),
+        () => limits.sem.run(() => dir.lstat(entry.name)),
+        "read",
+      );
+      if (!stat.isFile()) throw unsupported(childRel(entry.name));
+      return {
         type: "file",
-        relPath: childRel,
-        hostPath: childHost,
+        relPath: childRel(entry.name),
+        rootDir,
+        entryPath: dir.childRel(entry.name),
         size: stat.size,
         executable: (stat.mode & 0o111) !== 0,
-      });
+      };
     }),
   );
+  const subtrees = await limits.fanout.map(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      const child = await fileSystemCall(childRel(entry.name), () => dir.openDir(entry.name), "read");
+      try {
+        return await collectDirectory(rootDir, child, childRel(entry.name), limits);
+      } finally {
+        await child.close();
+      }
+    },
+  );
+  return [{ type: "directory", relPath }, ...fileItems, ...subtrees.flat()];
 }
 
 /** Validate and collect a complete manifest before response headers are sent. */
 export async function collectTransfer(rootDir: string, sourceValue: unknown): Promise<TransferItem[]> {
   const relPath = requireDirPath(sourceValue, "path");
-  const root = await fs.realpath(rootDir);
-  const hostPath = await resolveHostPath(rootDir, relPath);
-  // resolveHostPath follows contained symlinks; a transfer must not turn one into its target's bytes.
-  if (path.resolve(root, relPath) !== hostPath) throw unsupported(relPath);
-  const stat = await fileSystemCall(relPath || "The root", () => fs.lstat(hostPath));
+  // lstat: a transfer must not turn a link into its target's bytes, wherever the link points.
+  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath), "read");
   if (stat.isSymbolicLink()) throw unsupported(relPath);
   if (stat.isFile()) {
     return [
       {
         type: "file",
         relPath: "",
-        hostPath,
+        rootDir,
+        entryPath: relPath,
         size: stat.size,
         executable: (stat.mode & 0o111) !== 0,
       },
     ];
   }
   if (!stat.isDirectory()) throw unsupported(relPath);
-  const items: TransferItem[] = [];
-  await collectDirectory(hostPath, "", openFileLimiter(), items);
-  return items;
+  const limits = { sem: openFileLimiter(), fanout: new Fanout(MAX_CONCURRENT_WALKS) };
+  return fileSystemCall(
+    relPath || "The root",
+    () => withDir(rootDir, relPath, (dir) => collectDirectory(rootDir, dir, "", limits)),
+    "read",
+  );
 }
 
 function tarName(relPath: string): string {
@@ -125,21 +143,25 @@ function addHeader(pack: tar.Pack, item: TransferDirectory): Promise<void> {
   });
 }
 
-// Never by path alone: the entry was a regular file when collected, but the agent can swap it for a
-// link before it is streamed.
-async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
-  const handle = await fileSystemCall(item.relPath, () => fs.open(item.hostPath, READ_FLAGS)).catch((err) => {
-    throw (err as NodeJS.ErrnoException).code === "ELOOP" ? unsupported(item.relPath) : err;
+function streamError(err: unknown, relPath: string): unknown {
+  return err instanceof RootedFsError ? unsupported(relPath) : (fileSystemAppError(err, relPath, "read") ?? err);
+}
+
+// Opened only now, without following links: the entry was a regular file when collected, but the agent
+// can swap it for a link before it is streamed. `parent` is pinned, so a swap above it changes nothing.
+async function addFile(pack: tar.Pack, parent: RootedDir, item: TransferFile): Promise<void> {
+  const handle = await parent.openFile(path.posix.basename(item.entryPath)).catch((err) => {
+    throw streamError(err, item.relPath);
   });
   try {
-    if (!(await handle.stat()).isFile()) throw unsupported(item.relPath);
     const target = pack.entry({
       name: tarName(item.relPath),
       type: "file",
       size: item.size,
       mode: item.executable ? 0o755 : 0o644,
     });
-    await pipeline(handle.createReadStream({ autoClose: false }), target);
+    // The raw descriptor: a FileHandle stream adds overhead per file, which adds up on large trees.
+    await pipeline(createReadStream("", { fd: handle.fd, autoClose: false }), target);
   } finally {
     await handle.close();
   }
@@ -150,14 +172,31 @@ async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
 export function packTransfer(items: TransferItem[]): Readable {
   const pack = tar.pack();
   void (async () => {
+    // Siblings are consecutive, so each directory is walked to once rather than once per file.
+    let parent = null as { relPath: string; dir: RootedDir } | null;
     try {
       for (const item of items) {
-        if (item.type === "directory") await addHeader(pack, item);
-        else await addFile(pack, item);
+        if (item.type === "directory") {
+          await addHeader(pack, item);
+          continue;
+        }
+        const parentRel = path.posix.dirname(item.entryPath);
+        const wanted = parentRel === "." ? "" : parentRel;
+        if (parent?.relPath !== wanted) {
+          await parent?.dir.close();
+          parent = null;
+          const dir: RootedDir = await openDir(item.rootDir, wanted).catch((err: unknown) => {
+            throw streamError(err, item.relPath);
+          });
+          parent = { relPath: wanted, dir };
+        }
+        await addFile(pack, parent.dir, item);
       }
       pack.finalize();
     } catch (err) {
       pack.destroy(err as Error);
+    } finally {
+      await parent?.dir.close();
     }
   })();
   return Readable.from(pack);
@@ -300,14 +339,19 @@ async function extractToStage(body: Readable, stageDir: string): Promise<StagedT
   return { sourceType, items, ignored };
 }
 
-async function existingType(hostPath: string): Promise<"file" | "directory" | "unsupported" | "missing"> {
+type ExistingType = "file" | "directory" | "symlink" | "unsupported" | "missing";
+
+async function existingType(rootDir: string, relPath: string): Promise<ExistingType> {
   try {
-    const stat = await fs.lstat(hostPath);
+    const stat = await statEntry(rootDir, relPath);
     if (stat.isFile()) return "file";
     if (stat.isDirectory()) return "directory";
-    return "unsupported";
+    return stat.isSymbolicLink() ? "symlink" : "unsupported";
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return "missing";
+    // A link somewhere above the entry: the same answer as a link at the entry itself.
+    if (code === "ELOOP") return "symlink";
     throw err;
   }
 }
@@ -334,22 +378,21 @@ export async function putTransfer(
     const dest = staged.sourceType === "file" ? requireEntryPath(destValue, "dest") : requireDirPath(destValue, "dest");
     receipt.ignored = staged.ignored.map((relPath) => targetPath(staged.sourceType, dest, relPath));
 
-    const planned: Array<StagedItem & { targetRel: string; targetHost: string; existed: boolean }> = [];
+    const planned: Array<StagedItem & { targetRel: string; existed: boolean }> = [];
     for (const item of staged.items) {
       const targetRel = targetPath(staged.sourceType, dest, item.relPath);
       // The root directory marker carries the source kind but needs no filesystem operation.
       if (targetRel === "" && item.type === "directory") continue;
-      const targetHost = await resolveHostPath(root, targetRel, "dest");
+      const type = await fileSystemCall(targetRel, () => existingType(rootDir, targetRel));
       // Same symlink rule as collectTransfer: otherwise pushing onto a link would overwrite its unnamed target.
       // Refused in preflight, so nothing is touched.
-      if (path.resolve(root, targetRel) !== targetHost) {
+      if (type === "symlink") {
         throw new AppError("CONFLICT", `${targetRel} resolves through a symbolic link`, { field: "dest" });
       }
-      const type = await fileSystemCall(targetRel, () => existingType(targetHost));
       if (type === "unsupported" || (type !== "missing" && type !== item.type)) {
         throw new AppError("CONFLICT", `${targetRel} conflicts with an existing ${type} entry`, { field: "dest" });
       }
-      planned.push({ ...item, targetRel, targetHost, existed: type !== "missing" });
+      planned.push({ ...item, targetRel, existed: type !== "missing" });
     }
 
     planned.sort((a, b) => {
@@ -363,13 +406,12 @@ export async function putTransfer(
       for (const item of planned) {
         if (item.type === "directory") {
           if (!item.existed) {
-            await fileSystemCall(item.targetRel, () => fs.mkdir(item.targetHost, { recursive: true, mode: 0o755 }));
+            await fileSystemCall(item.targetRel, () => ensureDir(rootDir, item.targetRel));
             receipt.created.push(item.targetRel);
           }
           continue;
         }
-        await fileSystemCall(item.targetRel, () => fs.mkdir(path.dirname(item.targetHost), { recursive: true }));
-        await fileSystemCall(item.targetRel, () => fs.rename(item.hostPath, item.targetHost));
+        await fileSystemCall(item.targetRel, () => adoptFile(rootDir, item.targetRel, item.hostPath));
         (item.existed ? receipt.overwritten : receipt.created).push(item.targetRel);
       }
     } catch (err) {

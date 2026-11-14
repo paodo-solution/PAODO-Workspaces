@@ -8,8 +8,7 @@ import { FileWriteTool } from "./fileWrite";
 import { FileEditTool } from "./fileEdit";
 import type { ExecRunner } from "../interfaces";
 
-// Write and edit also realpath-check a real workspaceDir, so this must exist. The OS temp dir always does,
-// and nothing is written since runner.exec is mocked.
+// Only keys the file lock and the free-space check; nothing is written since runner.exec is mocked.
 const WORKSPACE_DIR = os.tmpdir();
 
 // Records every exec so we can assert it was NEVER called on an escaping path. Returns code 0 so

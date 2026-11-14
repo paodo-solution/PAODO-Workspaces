@@ -2,7 +2,7 @@
 
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import fs from "fs/promises";
+import { withDir } from "@/lib/files/rootedFs";
 import { getDrivesForWorkspace, formatDriveLine } from "@/lib/drives/store";
 import { resolveDrivePath } from "../driveAccess";
 import { toolError } from "../toolUtils";
@@ -41,13 +41,15 @@ Call with drive_name (and optional path) to list a directory inside that drive.`
       // opendir and stop at the ceiling: readdir would allocate every Dirent of a huge drive on the app's heap.
       const entries: { name: string; isDirectory: boolean }[] = [];
       let truncated = false;
-      for await (const entry of await fs.opendir(resolved.absPath)) {
-        if (entries.length === MAX_DRIVE_LISTING_ENTRIES) {
-          truncated = true;
-          break;
+      await withDir(resolved.driveDir, resolved.relPath, async (dir) => {
+        for await (const entry of await dir.opendir()) {
+          if (entries.length === MAX_DRIVE_LISTING_ENTRIES) {
+            truncated = true;
+            break;
+          }
+          entries.push({ name: entry.name, isDirectory: entry.isDirectory() });
         }
-        entries.push({ name: entry.name, isDirectory: entry.isDirectory() });
-      }
+      });
       if (!entries.length) return "(empty directory)";
 
       const lines = entries
@@ -70,6 +72,7 @@ Call with drive_name (and optional path) to list a directory inside that drive.`
       const e = err as NodeJS.ErrnoException;
       if (e.code === "ENOENT") return `Error: path not found in drive "${drive_name}"`;
       if (e.code === "ENOTDIR") return `Error: "${dirPath}" is a file, not a directory`;
+      if (e.code === "ELOOP") return `Error: symbolic link not followed: ${dirPath}`;
       return toolError(e);
     }
   }

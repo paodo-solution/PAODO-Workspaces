@@ -1,8 +1,7 @@
-// Turns a caller path into a host path or an AppError: lexical check (relpath.ts), then on-disk containment
-// (containment.ts), always both, the same for UI, CLI and agent.
+// Validates a caller path lexically (relpath.ts) into the wire-space relative path, the same for UI, CLI
+// and agent. Reaching the disk is lib/files/rootedFs.ts, which never follows a link.
 
 import { AppError, requireNonEmptyString } from "@/lib/errors/appError";
-import { resolveContained } from "@/lib/files/containment";
 import { InvalidPathError, relativeDirPath, relativeEntryPath } from "@/lib/files/relpath";
 
 /** `details.field` names which input was wrong, so a client can point at the right argument. */
@@ -34,14 +33,4 @@ export function requireDirPath(value: unknown, field = "path"): string {
   } catch (err) {
     throw invalidPath(err, field);
   }
-}
-
-// Throws instead of returning null: past the lexical check, failure means a symlink out of the tree,
-// which the file tree shows as an ordinary row.
-export async function resolveHostPath(rootDir: string, relPath: string, field = "path"): Promise<string> {
-  const resolved = await resolveContained(rootDir, relPath);
-  if (resolved === null) {
-    throw new AppError("INVALID_REQUEST", "Path resolves outside the workspace", { field });
-  }
-  return resolved;
 }

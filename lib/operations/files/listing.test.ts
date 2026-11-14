@@ -86,6 +86,19 @@ describe("listEntries", () => {
     await expect(listEntries(WS, "src/nope")).rejects.toBeInstanceOf(AppError);
   });
 
+  // Root reads anything, so the permission bits only bite for an ordinary user.
+  it.skipIf(process.getuid?.() === 0)("fails with FILE_NOT_READABLE for a folder the app cannot read", async () => {
+    fs.chmodSync(abs("src/lib"), 0o000);
+    try {
+      await expect(listEntries(WS, "src/lib")).rejects.toMatchObject({
+        code: "FILE_NOT_READABLE",
+        message: "src/lib is not readable",
+      });
+    } finally {
+      fs.chmodSync(abs("src/lib"), 0o755);
+    }
+  });
+
   it("fails when the path runs through a file", async () => {
     await expect(listEntries(WS, "AGENTS.md/inner")).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });
@@ -214,15 +227,22 @@ describe("listEntries", () => {
       fs.symlinkSync(path.join(ROOT, "outside"), abs("escape"));
       await expect(listEntries(WS, "escape")).rejects.toMatchObject({
         code: "INVALID_REQUEST",
-        message: "Path resolves outside the workspace",
+        message: "escape is a symbolic link; the app does not follow links",
       });
     });
 
-    it("lists through a symlink that stays inside it, as the tree already lists the link itself", async () => {
+    // One rule for every link: the tree shows it as a row, and the app never lists what is behind it.
+    it("refuses a symlink that stays inside the workspace too", async () => {
       fs.symlinkSync(abs("src/lib"), abs("linked"));
-      expect(await listEntries(WS, "linked", { maxDepth: Infinity })).toEqual([
-        { name: "util.ts", type: "file", path: "linked/util.ts" },
-      ]);
+      await expect(listEntries(WS, "linked", { maxDepth: Infinity })).rejects.toMatchObject({
+        code: "INVALID_REQUEST",
+        message: "linked is a symbolic link; the app does not follow links",
+      });
+    });
+
+    it("refuses a path that runs through a symlink", async () => {
+      fs.symlinkSync(abs("src"), abs("linked-src"));
+      await expect(listEntries(WS, "linked-src/lib")).rejects.toMatchObject({ code: "INVALID_REQUEST" });
     });
   });
   // Breadth, which maxDepth does not bound. The ceiling must stop the scan, not trim the result, and say so: a

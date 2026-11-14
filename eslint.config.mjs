@@ -34,6 +34,34 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    // These reach agent-writable trees only through lib/files/rootedFs.ts, which never follows a link.
+    files: [
+      "lib/operations/files/content.ts",
+      "lib/operations/files/listing.ts",
+      "lib/files/tree.ts",
+      "lib/files/entries.ts",
+      "lib/files/zip.ts",
+      "lib/files/move.ts",
+      "lib/uploads/upload.ts",
+      "lib/uploads/sweeper.ts",
+      "lib/agent/driveAccess.ts",
+      "lib/agent/tools/drive*.ts",
+    ],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: ["fs", "fs/promises", "node:fs", "node:fs/promises"].map((name) => ({
+            name,
+            message: "Use lib/files/rootedFs.ts: a path opened by name here can be redirected by a symlink.",
+            allowTypeImports: true,
+          })),
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
