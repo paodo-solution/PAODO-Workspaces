@@ -2,6 +2,7 @@
 
 import fs from "fs";
 import path from "path";
+import { MAX_AGENTS_MD_BYTES } from "../infra/limits";
 import { createLogger } from "../infra/logger";
 import { getDrivesForWorkspace, formatDriveLine } from "@/lib/drives/store";
 import { listSecretMeta } from "../infra/security/workspaceSecretStore";
@@ -21,11 +22,13 @@ export interface WorkspacePromptInputs {
 // The agent controls this path, so read it only as a regular file: never follow a link, never block on a FIFO.
 const AGENTS_MD_OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;
 
-function refuseAgentsMd(workspaceDir: string): undefined {
-  log.warn(
-    { event: "agents_md_not_regular_file", outcome: "workspace_instructions_omitted", workspaceDir },
-    "AGENTS.md is not a regular file — workspace instructions omitted",
-  );
+const REFUSALS = {
+  not_regular_file: "AGENTS.md is not a regular file — workspace instructions omitted",
+  too_large: `AGENTS.md is ${MAX_AGENTS_MD_BYTES} bytes or more — workspace instructions omitted`,
+};
+
+function refuseAgentsMd(workspaceDir: string, reason: keyof typeof REFUSALS): undefined {
+  log.warn({ event: `agents_md_${reason}`, outcome: "workspace_instructions_omitted", workspaceDir }, REFUSALS[reason]);
   return undefined;
 }
 
@@ -33,14 +36,18 @@ function readAgentsMd(workspaceDir: string): string | undefined {
   let fd: number | undefined;
   try {
     fd = fs.openSync(path.join(workspaceDir, "AGENTS.md"), AGENTS_MD_OPEN_FLAGS);
-    if (!fs.fstatSync(fd).isFile()) return refuseAgentsMd(workspaceDir);
-    return fs.readFileSync(fd, "utf-8").trim();
+    if (!fs.fstatSync(fd).isFile()) return refuseAgentsMd(workspaceDir, "not_regular_file");
+    // Bounded read, not a size check: the agent can grow the file between fstat and read.
+    const buf = Buffer.alloc(MAX_AGENTS_MD_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+    if (bytesRead === buf.length) return refuseAgentsMd(workspaceDir, "too_large");
+    return buf.toString("utf-8", 0, bytesRead).trim();
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
       log.debug({ workspaceDir }, "AGENTS.md not found — skipping");
     } else if (code === "ELOOP") {
-      return refuseAgentsMd(workspaceDir);
+      return refuseAgentsMd(workspaceDir, "not_regular_file");
     } else {
       log.warn({ err, workspaceDir }, "failed to read AGENTS.md — workspace instructions omitted");
     }

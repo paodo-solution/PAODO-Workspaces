@@ -7,6 +7,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type { Drive } from "@/lib/drives/store";
+import { MAX_AGENTS_MD_BYTES } from "@/lib/infra/limits";
 
 // Drive lookup is mocked so the test owns it; formatDriveLine mirrors production so assertions see the real
 // `- <name> (id: <id>)<desc>` shape.
@@ -89,6 +90,17 @@ describe("buildWorkspacePromptInputs", () => {
 
   it("leaves agentsContent undefined, without blocking, when AGENTS.md is a FIFO", () => {
     execFileSync("mkfifo", [path.join(dir, "AGENTS.md")]);
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("reads an AGENTS.md just under the size cap in full", () => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), "a".repeat(MAX_AGENTS_MD_BYTES - 1));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toHaveLength(MAX_AGENTS_MD_BYTES - 1);
+  });
+
+  it.each([MAX_AGENTS_MD_BYTES, 1024 ** 3])("leaves agentsContent undefined when AGENTS.md is %i bytes", (size) => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), "");
+    fs.truncateSync(path.join(dir, "AGENTS.md"), size);
     expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
   });
 
