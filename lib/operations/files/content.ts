@@ -1,13 +1,11 @@
 // Read, overwrite and remove file entries in a workspace or drive. HTTP-agnostic (plain values, AppError)
 // so transfers and agent tools can reuse them; the HTTP side is lib/api/fileContentRoutes.ts.
 
-import fs from "fs/promises";
 import path from "path";
 import { AppError } from "@/lib/errors/appError";
-import { openFileLimiter, type Semaphore } from "@/lib/files/fdLimit";
+import { overwriteFile, readFile, withParent, type RootedDir } from "@/lib/files/rootedFs";
 import { createLogger } from "@/lib/infra/logger";
 import { fileSystemAppError, fileSystemCall } from "./errors";
-import { resolveHostPath } from "./paths";
 
 /** Hooks a backend contributes. A drive supplies neither: it is passive host storage. */
 export interface FileWriteHooks {
@@ -44,8 +42,7 @@ async function classifyBuffer(bytes: Buffer): Promise<ClassifiedFile> {
 // Read one file and classify it as text, image or binary. Always returns the bytes as well, since the
 // file has been read either way and a raw-byte response would otherwise read it twice.
 export async function readFileEntry(rootDir: string, relPath: string): Promise<ClassifiedFile> {
-  const hostPath = await resolveHostPath(rootDir, relPath);
-  const bytes = await fileSystemCall(relPath, () => fs.readFile(hostPath));
+  const bytes = await fileSystemCall(relPath, () => readFile(rootDir, relPath));
   return classifyBuffer(bytes);
 }
 
@@ -110,15 +107,8 @@ export async function writeTextFile(
   content: string,
   hooks: FileWriteHooks = {},
 ): Promise<void> {
-  const hostPath = await resolveHostPath(rootDir, relPath);
   try {
-    const handle = await fs.open(hostPath, "r+");
-    try {
-      await handle.truncate(0);
-      await handle.writeFile(content, "utf-8");
-    } finally {
-      await handle.close();
-    }
+    await overwriteFile(rootDir, relPath, content);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if ((code === "EACCES" || code === "EPERM") && hooks.writeFallback) {
@@ -157,10 +147,10 @@ export interface RemoveOptions {
 // Unlike other walks, ignores nothing: `rm` takes node_modules too, and a receipt must never
 // under-report. An unreadable dir lists only itself; the removal reports the real error.
 async function collectRemovals(
-  hostPath: string,
+  parent: RootedDir,
+  name: string,
   relPath: string,
   isDirectory: boolean,
-  sem: Semaphore,
   maxReported: number,
   receipt: RemoveReceipt,
 ): Promise<void> {
@@ -168,25 +158,24 @@ async function collectRemovals(
   if (receipt.removed.length < maxReported) receipt.removed.push(relPath);
   if (!isDirectory) return;
 
-  let entries;
+  let dir: RootedDir;
   try {
-    entries = await sem.run(() => fs.readdir(hostPath, { withFileTypes: true }));
+    dir = await parent.openDir(name);
   } catch (err) {
     createLogger("api").warn({ err, relPath }, "failed to read directory while listing a removal");
     return;
   }
-
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    // isDirectory() is false for a symlink, so the walk stops at the link — which is exactly where the
-    // removal stops too, since fs.rm unlinks a symlink rather than descending through it.
-    await collectRemovals(
-      path.join(hostPath, entry.name),
-      `${relPath}/${entry.name}`,
-      entry.isDirectory(),
-      sem,
-      maxReported,
-      receipt,
-    );
+  try {
+    const entries = await dir.entries();
+    // isDirectory() is false for a symlink, so the walk stops at the link, exactly where the removal
+    // stops too: a link is unlinked, never descended.
+    for (const entry of entries.sort((x, y) => x.name.localeCompare(y.name))) {
+      await collectRemovals(dir, entry.name, `${relPath}/${entry.name}`, entry.isDirectory(), maxReported, receipt);
+    }
+  } catch (err) {
+    createLogger("api").warn({ err, relPath }, "failed to read directory while listing a removal");
+  } finally {
+    await dir.close();
   }
 }
 
@@ -198,21 +187,18 @@ export async function removeEntry(
   hooks: FileWriteHooks = {},
   options: RemoveOptions = {},
 ): Promise<RemoveReceipt> {
-  const hostPath = await resolveHostPath(rootDir, relPath);
-  // Checked up front so an unwritable parent is reported as such, rather than as whichever errno the
-  // unlink below happens to raise once part of a recursive removal has already succeeded.
-  const parent = path.posix.dirname(relPath);
-  await fileSystemCall(parent === "." ? "The root" : parent, () =>
-    fs.access(path.dirname(hostPath), fs.constants.W_OK),
-  );
-
-  const stat = await fileSystemCall(relPath, () => fs.stat(hostPath));
+  const parentRel = path.posix.dirname(relPath);
   const receipt: RemoveReceipt = { removed: [], removedCount: 0 };
   const maxReported = options.maxReported ?? MAX_REPORTED_REMOVALS;
-  await collectRemovals(hostPath, relPath, stat.isDirectory(), openFileLimiter(), maxReported, receipt);
-
   await fileSystemCall(relPath, () =>
-    stat.isDirectory() ? fs.rm(hostPath, { recursive: true }) : fs.unlink(hostPath),
+    withParent(rootDir, relPath, async (parent, name) => {
+      // Checked up front so an unwritable parent is reported as such, rather than as whichever errno a
+      // recursive removal raises once part of it has already succeeded.
+      await fileSystemCall(parentRel === "." ? "The root" : parentRel, () => parent.assertWritable());
+      const stat = await parent.lstat(name);
+      await collectRemovals(parent, name, relPath, stat.isDirectory(), maxReported, receipt);
+      await parent.remove(name);
+    }),
   );
   await hooks.afterWrite?.(`deleted ${path.basename(relPath)}`);
   if (receipt.removed.length < receipt.removedCount) {

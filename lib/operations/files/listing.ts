@@ -1,13 +1,14 @@
 // Lists one directory of a workspace or drive (walk in lib/files/tree.ts). Resolves the caller's path and maps
 // errnos, so a bad path is an error rather than an empty tree.
 
-import fs from "fs/promises";
 import path from "path";
+import { AppError } from "@/lib/errors/appError";
 import { buildTree, type TreeNode } from "@/lib/files/tree";
 import { openFileLimiter, type Semaphore } from "@/lib/files/fdLimit";
+import { statEntry } from "@/lib/files/rootedFs";
 import { countLines, readFileEntry } from "./content";
 import { fileSystemCall } from "./errors";
-import { requireDirPath, resolveHostPath } from "./paths";
+import { requireDirPath } from "./paths";
 
 // Largest file a listing reads to count lines, so a huge log isn't read just to list names. Bigger files
 // get no `lines`.
@@ -41,17 +42,24 @@ export async function listEntries(
   options: ListEntriesOptions = {},
 ): Promise<Listing> {
   const relPath = requireDirPath(pathValue);
-  const hostPath = await resolveHostPath(rootDir, relPath);
-  // stat, not lstat: escaping symlinks are already refused, and a contained one lists like a read follows it.
-  const stat = await fileSystemCall(relPath || "The root", () => fs.stat(hostPath));
+  // lstat: a link is named as one rather than listed as whatever it points at.
+  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath));
+  if (stat.isSymbolicLink()) {
+    throw new AppError("INVALID_REQUEST", `${relPath} is a symbolic link; the app does not follow links`, {
+      field: "path",
+    });
+  }
   // A path naming a file is one entry, so there is nothing a ceiling could cut.
   const { nodes, truncated } = stat.isDirectory()
-    ? await buildTree(hostPath, {
-        maxDepth: options.maxDepth,
-        maxEntries: options.maxEntries,
-        basePath: relPath,
-        countFiles: options.countFiles,
-      })
+    ? await fileSystemCall(relPath || "The root", () =>
+        buildTree(rootDir, {
+          maxDepth: options.maxDepth,
+          maxEntries: options.maxEntries,
+          startPath: relPath,
+          basePath: relPath,
+          countFiles: options.countFiles,
+        }),
+      )
     : { nodes: [{ name: path.posix.basename(relPath), type: "file" as const, path: relPath }], truncated: false };
   // After the cut, so measuring costs a read per entry the caller will actually be shown rather than
   // per entry the directory happens to hold.
@@ -66,9 +74,8 @@ async function measure(rootDir: string, nodes: TreeNode[], sem: Semaphore): Prom
     nodes.map(async (node) => {
       if (node.type === "directory") return measure(rootDir, node.children ?? [], sem);
       try {
-        const hostPath = await resolveHostPath(rootDir, node.path);
         // Sized before it is read, and never reported: the size is only ever the reason this stops.
-        const { size } = await sem.run(() => fs.stat(hostPath));
+        const { size } = await sem.run(() => statEntry(rootDir, node.path));
         if (size > MAX_MEASURED_BYTES) return;
         // Count lines via the content operation, so the count matches what the read route would slice.
         const file = await sem.run(() => readFileEntry(rootDir, node.path));

@@ -85,7 +85,7 @@ describe("files/content GET — workspace containment", () => {
   it("refuses to follow a symlink that escapes the workspace", async () => {
     const res = await getFile("escape");
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/outside the workspace/i);
+    expect((await res.json()).error).toMatch(/symbolic link/i);
   });
 
   // Use a real file we created OUTSIDE the workspace, so a passing test can only mean the path was
@@ -478,15 +478,14 @@ describe("files/content PATCH — move", () => {
     expect(fs.existsSync(abs("already-here.txt"))).toBe(true);
   });
 
-  // A symlink that escapes the workspace never reaches the symlink rule — containment resolves it
-  // to the host file and rejects it there. The host file must be left untouched either way.
+  // Where the link points makes no difference: it is refused as a link, and the host file is untouched.
   it("refuses to move a symlink that escapes the workspace", async () => {
     fs.mkdirSync(abs("sym-dest"));
 
     const res = await patchMove({ sourcePaths: ["escape"], destinationDirectory: "sym-dest" });
 
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/outside the workspace/i);
+    expect((await res.json()).error).toMatch(/symbolic links cannot be moved/i);
     expect(fs.lstatSync(abs("escape")).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(path.join(path.dirname(WS_DIR), "secret.txt"), "utf8")).toBe("TOPSECRET");
   });

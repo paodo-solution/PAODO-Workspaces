@@ -41,43 +41,62 @@ export function resolveDrivePath(workspaceId: string, driveName: string, relPath
 export async function readFileBounded(
   absPath: string,
   limit: number,
-  labels: { missing: string; isDirectory: string; advice: string },
+  labels: BoundedReadLabels,
 ): Promise<Buffer | string> {
   let handle;
   try {
-    const stat = await fs.stat(absPath);
-    if (stat.isDirectory()) return labels.isDirectory;
-    if (stat.size > limit) {
-      return (
-        `Error: file is ${formatOutputBytes(stat.size)}, over the ${formatOutputBytes(limit)} limit for this tool. ` +
-        labels.advice
-      );
-    }
-
     handle = await fs.open(absPath, "r");
-    // Read one byte past the stat size so a growing file reads as changed, not silently short.
-    const expected = Math.min(stat.size, limit);
-    const buf = Buffer.alloc(expected + 1);
-    const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
-    if (bytesRead > expected) {
-      // Being written right now: copying a torn read would report success over a corrupt file.
-      return `Error: "${path.basename(absPath)}" changed while being read — it is being written to. Try again once the write has finished.`;
-    }
-    return buf.subarray(0, bytesRead);
+    return await readHandleBounded(handle, path.basename(absPath), limit, labels);
   } catch (err: unknown) {
-    const e = err as NodeJS.ErrnoException;
-    if (e.code === "ENOENT") return labels.missing;
-    if (e.code === "EISDIR") return labels.isDirectory;
-    return toolError(e);
+    return boundedReadError(err, labels);
   } finally {
     await handle?.close();
   }
 }
 
-// Files under `absDir` for a folder transfer, with the shared ignore rules. No count cap: each file is
-// bounded on transfer, so heap use never exceeds the largest file.
-export async function enumerateDriveFolder(absDir: string): Promise<string[]> {
-  const { nodes } = await buildTree(absDir, { maxDepth: Infinity });
+export interface BoundedReadLabels {
+  missing: string;
+  isDirectory: string;
+  advice: string;
+}
+
+export function boundedReadError(err: unknown, labels: BoundedReadLabels): string {
+  const e = err as NodeJS.ErrnoException;
+  if (e.code === "ENOENT") return labels.missing;
+  if (e.code === "EISDIR") return labels.isDirectory;
+  return toolError(e);
+}
+
+/** The bounded read on an already-open file, for a caller that opened it without following links. */
+export async function readHandleBounded(
+  handle: fs.FileHandle,
+  name: string,
+  limit: number,
+  labels: BoundedReadLabels,
+): Promise<Buffer | string> {
+  const stat = await handle.stat();
+  if (stat.isDirectory()) return labels.isDirectory;
+  if (stat.size > limit) {
+    return (
+      `Error: file is ${formatOutputBytes(stat.size)}, over the ${formatOutputBytes(limit)} limit for this tool. ` +
+      labels.advice
+    );
+  }
+  // Read one byte past the stat size so a growing file reads as changed, not silently short.
+  const expected = Math.min(stat.size, limit);
+  const buf = Buffer.alloc(expected + 1);
+  const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+  if (bytesRead > expected) {
+    // Being written right now: copying a torn read would report success over a corrupt file.
+    return `Error: "${name}" changed while being read — it is being written to. Try again once the write has finished.`;
+  }
+  return buf.subarray(0, bytesRead);
+}
+
+// Files under the folder `relPath` of `rootDir`, relative to that folder, with the shared ignore rules.
+// No count cap: each file is bounded on transfer, so heap use never exceeds the largest file.
+export async function enumerateDriveFolder(rootDir: string, relPath: string): Promise<string[]> {
+  const { nodes } = await buildTree(rootDir, { startPath: relPath === "." ? "" : relPath, maxDepth: Infinity });
   const files: string[] = [];
   collectFiles(nodes, files);
   return files;

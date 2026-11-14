@@ -111,8 +111,10 @@ Neither miss was visible from any one file.
 
 **Filesystem**
 
-- File tools reject paths outside `/workspace` lexically; `file_write`, `file_edit` and the drive transfers also realpath the target and refuse any symlink that escapes the workspace
-- `file_read` and `list_directory` follow symlinks to container-internal paths (e.g. `/etc/passwd`) — they can show nothing the agent cannot already `cat` as `dev`
+- The agent can plant symlinks in its workspace, and the app shares its uid, so the app never follows one. Every host-side file operation on a workspace or drive (file panel, uploads, ZIP and tar transfers, moves, `drive_upload`, `drive_download`) goes through `lib/files/rootedFs.ts`, which opens each directory on the path with `O_NOFOLLOW` and reaches the next one through that descriptor (`/proc/self/fd`), so swapping a component for a link mid-operation cannot redirect it. A link is refused or skipped wherever it points, inside the workspace included; deleting a link removes the link. This guarantee is Linux-only: on macOS dev a link is still refused, but a swap can race
+- `AGENTS.md` and `.skills/*.json` are read as regular files only, checked on the opened descriptor
+- The file watcher does not follow symlinks
+- File tools reject paths outside `/workspace` lexically. `file_read`, `file_write`, `file_edit` and `list_directory` run inside the container, so they follow symlinks to container-internal paths (e.g. `/etc/passwd`) — they can reach nothing the agent cannot already reach as `dev`
 - Glob tool rejects absolute path patterns
 
 **Agent**

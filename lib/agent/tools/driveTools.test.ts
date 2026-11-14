@@ -75,6 +75,44 @@ describe("drive_download binary fidelity", () => {
   });
 });
 
+// The agent controls downloads/, so it can aim the app's write anywhere the app can write.
+describe("drive_download symlink safety", () => {
+  it("refuses a destination that runs through a symlinked downloads folder", async () => {
+    seedDrive("data", "report.txt", Buffer.from("from the drive"));
+    const workspaceDir = seedWorkspace();
+    const outsideDir = path.join(ROOT, "download_target");
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.symlinkSync(outsideDir, path.join(workspaceDir, "downloads"));
+
+    const result = await new mods.DriveDownloadTool("ws1", workspaceDir).invoke({
+      drive_name: "data",
+      path: "report.txt",
+    });
+
+    expect(result).toBe("Error: download destination escapes the workspace: downloads/data/report.txt");
+    expect(fs.readdirSync(outsideDir)).toEqual([]);
+  });
+
+  it("replaces a symlink planted at the destination instead of writing through it", async () => {
+    seedDrive("data", "report.txt", Buffer.from("from the drive"));
+    const workspaceDir = seedWorkspace();
+    const victim = path.join(ROOT, "victim.txt");
+    fs.writeFileSync(victim, "ORIGINAL");
+    fs.mkdirSync(path.join(workspaceDir, "downloads/data"), { recursive: true });
+    fs.symlinkSync(victim, path.join(workspaceDir, "downloads/data/report.txt"));
+
+    const result = await new mods.DriveDownloadTool("ws1", workspaceDir).invoke({
+      drive_name: "data",
+      path: "report.txt",
+    });
+
+    expect(result).toContain("Downloaded");
+    expect(fs.readFileSync(victim, "utf8")).toBe("ORIGINAL");
+    expect(fs.lstatSync(path.join(workspaceDir, "downloads/data/report.txt")).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(path.join(workspaceDir, "downloads/data/report.txt"), "utf8")).toBe("from the drive");
+  });
+});
+
 describe("drive_read binary detection", () => {
   it("refuses a binary file and points to drive_download", async () => {
     seedDrive("dbdrive", "data.db", Buffer.from([0x00, 0x01, 0x02, 0x00]));
@@ -104,11 +142,11 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const result = await tool.invoke({ source_path: "regular.txt", drive_name: "data" });
 
     expect(result).toContain("Uploaded");
-    expect(result).toContain("regular.txt in drive \"data\"");
+    expect(result).toContain('regular.txt in drive "data"');
     expect(fs.readFileSync(path.join(driveDir, "regular.txt"), "utf-8")).toBe("regular content");
   });
 
-  it("refuses to upload an external file symlink pointing outside the workspace", async () => {
+  it("refuses to upload a file symlink pointing outside the workspace", async () => {
     seedDrive("data", "seed.txt", Buffer.from("seed"));
     const workspaceDir = seedWorkspace();
     const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
@@ -120,11 +158,12 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const tool = new mods.DriveUploadTool("ws1", workspaceDir);
     const result = await tool.invoke({ source_path: "escaping.txt", drive_name: "data" });
 
-    expect(result).toBe("Error: source path is outside the workspace");
+    expect(result).toBe("Error: symbolic link not followed: escaping.txt");
     expect(fs.existsSync(path.join(driveDir, "escaping.txt"))).toBe(false);
   });
 
-  it("uploads an internal file symlink pointing to a file inside the workspace", async () => {
+  // One rule for every link: the app does not follow it, wherever it points.
+  it("refuses a file symlink even when its target is inside the workspace", async () => {
     seedDrive("data", "seed.txt", Buffer.from("seed"));
     const workspaceDir = seedWorkspace();
     const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
@@ -135,9 +174,25 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const tool = new mods.DriveUploadTool("ws1", workspaceDir);
     const result = await tool.invoke({ source_path: "internal_link.txt", drive_name: "data" });
 
-    expect(result).toContain("Uploaded");
-    expect(result).toContain("internal_link.txt in drive \"data\"");
-    expect(fs.readFileSync(path.join(driveDir, "internal_link.txt"), "utf-8")).toBe("target content");
+    expect(result).toBe("Error: symbolic link not followed: internal_link.txt");
+    expect(fs.existsSync(path.join(driveDir, "internal_link.txt"))).toBe(false);
+  });
+
+  it("refuses a file reached through a symlinked directory", async () => {
+    seedDrive("data", "seed.txt", Buffer.from("seed"));
+    const workspaceDir = seedWorkspace();
+    const driveDir = mods.store.driveContentDir(mods.store.getDrivesForWorkspace("ws1")[0].id);
+
+    const outsideDir = path.join(ROOT, "outside_reach");
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, "secret.txt"), "secret");
+    fs.symlinkSync(outsideDir, path.join(workspaceDir, "via"));
+
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+    const result = await tool.invoke({ source_path: "via/secret.txt", drive_name: "data" });
+
+    expect(result).toBe("Error: symbolic link not followed: via/secret.txt");
+    expect(fs.existsSync(path.join(driveDir, "via"))).toBe(false);
   });
 
   it("uploads safe files from a directory and skips an escaping symlink", async () => {
@@ -157,7 +212,7 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const result = await tool.invoke({ source_path: "proj", drive_name: "data" });
 
     expect(result).toContain("Uploaded 1 file");
-    expect(result).toContain("Skipped 1: leak.txt (source path is outside the workspace: proj/leak.txt)");
+    expect(result).toContain("Skipped 1: leak.txt (symbolic link not followed: proj/leak.txt)");
     expect(fs.readFileSync(path.join(driveDir, "proj/safe.txt"), "utf-8")).toBe("safe content");
     expect(fs.existsSync(path.join(driveDir, "proj/leak.txt"))).toBe(false);
   });
@@ -180,9 +235,7 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const result = await tool.invoke({ source_path: "parent_folder", drive_name: "data" });
 
     expect(result).toContain("Uploaded 1 file");
-    expect(result).toContain(
-      "Skipped 1: nested_dir_link (source path is outside the workspace: parent_folder/nested_dir_link)",
-    );
+    expect(result).toContain("Skipped 1: nested_dir_link (symbolic link not followed: parent_folder/nested_dir_link)");
     expect(fs.readFileSync(path.join(driveDir, "parent_folder/safe.txt"), "utf-8")).toBe("safe content");
     expect(fs.existsSync(path.join(driveDir, "parent_folder/nested_dir_link"))).toBe(false);
     expect(fs.existsSync(path.join(driveDir, "parent_folder/nested_dir_link/external.txt"))).toBe(false);
@@ -201,7 +254,7 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const tool = new mods.DriveUploadTool("ws1", workspaceDir);
     const result = await tool.invoke({ source_path: "escaping_dir", drive_name: "data" });
 
-    expect(result).toBe("Error: source path is outside the workspace");
+    expect(result).toBe("Error: symbolic link not followed: escaping_dir");
     expect(fs.existsSync(path.join(driveDir, "escaping_dir"))).toBe(false);
   });
 
@@ -220,7 +273,7 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const result = await tool.invoke({ source_path: "proj", drive_name: "data" });
 
     expect(result).toContain("Uploaded 2 files");
-    expect(result).toContain("Skipped 1: loop.txt (symlink loop: proj/loop.txt)");
+    expect(result).toContain("Skipped 1: loop.txt (symbolic link not followed: proj/loop.txt)");
     expect(result).not.toContain(workspaceDir);
     expect(fs.readFileSync(path.join(driveDir, "proj/a.txt"), "utf-8")).toBe("a");
     expect(fs.readFileSync(path.join(driveDir, "proj/z.txt"), "utf-8")).toBe("z");
@@ -234,7 +287,7 @@ describe("drive_upload workspace containment and symlink safety", () => {
     const tool = new mods.DriveUploadTool("ws1", workspaceDir);
     const result = await tool.invoke({ source_path: "loop.txt", drive_name: "data" });
 
-    expect(result).toBe("Error: symlink loop: loop.txt");
+    expect(result).toBe("Error: symbolic link not followed: loop.txt");
   });
 
   it("retains the existing error behavior for a missing file", async () => {

@@ -1,8 +1,7 @@
-// Path containment for agent file tools: a cheap lexical pre-check, then resolveWorkspacePath realpaths
-// to catch symlinks. Host and container see the same volume, so a host-side check covers container writes.
+// Lexical path normalization for agent file tools. The tools that touch the volume host-side go through
+// lib/files/rootedFs.ts, which never follows a link; the rest run inside the container.
 
 import path from "path";
-import { resolveContained } from "@/lib/files/containment";
 
 // The container's name for the workspace root. The agent uses /workspace paths in shell commands, so file
 // tools accept them too.
@@ -31,20 +30,4 @@ export function normalizeDirPath(dirPath: string | undefined): string | null {
     return trimmed === null ? null : trimmed || ".";
   }
   return normalized.startsWith("..") ? null : normalized;
-}
-
-// `workspaceDir` is the host path; `relpath` may use the container's `/workspace` view. Null if it
-// escapes via `..`, an outside absolute path, or a symlink.
-export async function resolveWorkspacePath(workspaceDir: string, relpath: string): Promise<string | null> {
-  const normalized = normalizeRelpath(relpath);
-  if (normalized === null) return null;
-  return resolveContained(workspaceDir, normalized);
-}
-
-// The pre-write check for file_write and file_edit: the normalized relative path, or null if it escapes
-// lexically or via a symlink.
-export async function containWorkspacePath(workspaceDir: string, filePath: string): Promise<string | null> {
-  const relpath = normalizeRelpath(filePath);
-  if (relpath === null) return null;
-  return (await resolveWorkspacePath(workspaceDir, relpath)) === null ? null : relpath;
 }

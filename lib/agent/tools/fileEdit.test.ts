@@ -10,8 +10,7 @@ vi.mock("@/lib/infra/storage/diskSpace", () => ({ requireFreeSpace }));
 
 import { FileEditTool } from "./fileEdit";
 
-// A real, existing directory — FileEditTool also realpath-checks against it (see
-// lib/files/containment.ts via resolveWorkspacePath).
+// Only keys the file lock and the free-space check: the read and write happen in the (mocked) container.
 const WORKSPACE_DIR = os.tmpdir();
 
 function makeRunner(fileContent: string) {

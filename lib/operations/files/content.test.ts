@@ -267,12 +267,26 @@ describe("removeEntry", () => {
     expect(await codeOf(() => removeEntry(WS_DIR, "never-existed.txt"))).toBe("NOT_FOUND");
   });
 
-  // Deleting through a symlink would remove the link's target elsewhere on the host, not the row the
-  // client asked about.
-  it("refuses to delete through a symlink that leaves the tree, and leaves the target alone", async () => {
+  // Deleting a link removes the link, never what it points at, wherever that is.
+  it("removes a symlink that leaves the tree, and leaves the target alone", async () => {
     fs.writeFileSync(path.join(OUTSIDE, "secret.txt"), "TOPSECRET");
     fs.symlinkSync(path.join(OUTSIDE, "secret.txt"), path.join(WS_DIR, "escape"));
-    expect(await codeOf(() => removeEntry(WS_DIR, "escape"))).toBe("INVALID_REQUEST");
+    expect((await removeEntry(WS_DIR, "escape")).removed).toEqual(["escape"]);
+    expect(fs.existsSync(path.join(WS_DIR, "escape"))).toBe(false);
+    expect(fs.readFileSync(path.join(OUTSIDE, "secret.txt"), "utf8")).toBe("TOPSECRET");
+  });
+
+  it("removes a symlink to an outside directory without touching that directory", async () => {
+    fs.writeFileSync(path.join(OUTSIDE, "secret.txt"), "TOPSECRET");
+    fs.symlinkSync(OUTSIDE, path.join(WS_DIR, "escape-dir"));
+    expect((await removeEntry(WS_DIR, "escape-dir")).removedCount).toBe(1);
+    expect(fs.readFileSync(path.join(OUTSIDE, "secret.txt"), "utf8")).toBe("TOPSECRET");
+  });
+
+  it("refuses to delete an entry reached through a symlink", async () => {
+    fs.writeFileSync(path.join(OUTSIDE, "secret.txt"), "TOPSECRET");
+    fs.symlinkSync(OUTSIDE, path.join(WS_DIR, "escape-dir"));
+    expect(await codeOf(() => removeEntry(WS_DIR, "escape-dir/secret.txt"))).toBe("INVALID_REQUEST");
     expect(fs.readFileSync(path.join(OUTSIDE, "secret.txt"), "utf8")).toBe("TOPSECRET");
   });
 });

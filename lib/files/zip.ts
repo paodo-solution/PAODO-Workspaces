@@ -1,44 +1,50 @@
 // Streams selected paths as one ZIP (fast DEFLATE, shared fd budget). Traversal follows the ignore
 // contract, but an explicitly selected path is archived regardless.
 
-import fs from "fs/promises";
 import path from "path";
 import type JSZip from "jszip";
-import { resolveContained } from "./containment";
 import { readTransferEntries } from "./entries";
 import { openFileLimiter, type Semaphore } from "./fdLimit";
-import { NotRegularFileError, readRegularFile } from "./regularFile";
+import { RootedFsError, readFile, statEntry, withDir, type RootedDir } from "./rootedFs";
 import { relativeEntryPath } from "./relpath";
 
-// `skip` gets every entry that is not a directory or a regular file inside `realRoot`: a symlink here
-// was planted by the agent, and following it would archive whatever it points at.
+// `skip` gets every entry that cannot be archived. A symlink is one of them: the agent plants links, and
+// following one would archive whatever it points at.
 async function addDirToZip(
   zip: JSZip,
   sem: Semaphore,
-  realRoot: string,
-  dirPath: string,
+  dir: RootedDir,
   zipPath: string,
   skip: (entryPath: string, err: unknown) => void,
 ) {
-  const entries = await readTransferEntries(dirPath, sem);
+  const entries = await readTransferEntries(dir, sem);
   // JSZip only creates folders that hold files, so add empty directories explicitly.
   if (entries.length === 0) {
     zip.folder(zipPath);
     return;
   }
-  await Promise.all(
-    entries.map(async (entry) => {
-      const fullPath = path.join(dirPath, entry.name);
-      const entryZipPath = path.join(zipPath, entry.name);
-      if (entry.isDirectory()) return addDirToZip(zip, sem, realRoot, fullPath, entryZipPath, skip);
-      try {
-        if (!entry.isFile()) throw new NotRegularFileError(fullPath);
-        zip.file(entryZipPath, await sem.run(() => readRegularFile(realRoot, fullPath)));
-      } catch (err) {
-        skip(path.relative(realRoot, fullPath).split(path.sep).join("/"), err);
+  for (const entry of entries) {
+    const entryZipPath = path.join(zipPath, entry.name);
+    try {
+      if (entry.isDirectory()) {
+        const child = await dir.openDir(entry.name);
+        try {
+          await addDirToZip(zip, sem, child, entryZipPath, skip);
+        } finally {
+          await child.close();
+        }
+        continue;
       }
-    }),
-  );
+      const handle = await dir.openFile(entry.name);
+      try {
+        zip.file(entryZipPath, await handle.readFile());
+      } finally {
+        await handle.close();
+      }
+    } catch (err) {
+      skip(dir.childRel(entry.name), err);
+    }
+  }
 }
 
 // The deepest shared parent as "dir/" ("" if none), compared by segment so `src/app` and
@@ -74,7 +80,6 @@ export async function addSelectedToZip(
 ) {
   const target = rootFolder ? (zip.folder(rootFolder) ?? zip) : zip;
   const sem = openFileLimiter();
-  const realRoot = await fs.realpath(baseDir);
 
   // Validate up front: the shared prefix has to be known before the first entry is named.
   const selected: { relPath: string; entryPath: string }[] = [];
@@ -90,12 +95,14 @@ export async function addSelectedToZip(
   await Promise.all(
     selected.map(async ({ relPath, entryPath }) => {
       try {
-        const resolved = await resolveContained(baseDir, entryPath);
-        if (resolved === null) throw new Error("Path resolves outside the workspace");
         const zipPath = zipEntryName(entryPath, prefix);
-        const stat = await sem.run(() => fs.stat(resolved));
-        if (stat.isDirectory()) await addDirToZip(target, sem, realRoot, resolved, zipPath, onSkip);
-        else target.file(zipPath, await sem.run(() => readRegularFile(realRoot, resolved)));
+        const stat = await statEntry(baseDir, entryPath);
+        if (stat.isSymbolicLink()) throw new RootedFsError("ELOOP", entryPath, `${entryPath} is a symbolic link`);
+        if (stat.isDirectory()) {
+          await withDir(baseDir, entryPath, (dir) => addDirToZip(target, sem, dir, zipPath, onSkip));
+        } else {
+          target.file(zipPath, await sem.run(() => readFile(baseDir, entryPath)));
+        }
       } catch (err) {
         onSkip(relPath, err);
       }
