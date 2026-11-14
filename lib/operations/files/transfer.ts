@@ -2,7 +2,7 @@
 // destination; only regular files and dirs (0755/0644) are accepted.
 
 import fs from "fs/promises";
-import { createReadStream, createWriteStream } from "fs";
+import { constants, createWriteStream } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -18,6 +18,7 @@ import { requireDirPath, requireEntryPath, resolveHostPath } from "./paths";
 
 export const TRANSFER_MEDIA_TYPE = "application/x-tar";
 const PAYLOAD = "payload";
+const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 type TransferFile = {
   type: "file";
@@ -124,14 +125,24 @@ function addHeader(pack: tar.Pack, item: TransferDirectory): Promise<void> {
   });
 }
 
+// Never by path alone: the entry was a regular file when collected, but the agent can swap it for a
+// link before it is streamed.
 async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
-  const target = pack.entry({
-    name: tarName(item.relPath),
-    type: "file",
-    size: item.size,
-    mode: item.executable ? 0o755 : 0o644,
+  const handle = await fileSystemCall(item.relPath, () => fs.open(item.hostPath, READ_FLAGS)).catch((err) => {
+    throw (err as NodeJS.ErrnoException).code === "ELOOP" ? unsupported(item.relPath) : err;
   });
-  await pipeline(createReadStream(item.hostPath), target);
+  try {
+    if (!(await handle.stat()).isFile()) throw unsupported(item.relPath);
+    const target = pack.entry({
+      name: tarName(item.relPath),
+      type: "file",
+      size: item.size,
+      mode: item.executable ? 0o755 : 0o644,
+    });
+    await pipeline(handle.createReadStream({ autoClose: false }), target);
+  } finally {
+    await handle.close();
+  }
 }
 
 // Wrapped in a real Readable: tar-stream's streamx pack lacks readableHighWaterMark, so Readable.toWeb
