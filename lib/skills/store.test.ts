@@ -2,6 +2,7 @@
 // skipped, not throw and break skill discovery for the whole workspace.
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -13,12 +14,19 @@ import { SKILLS_DIR, loadSkills } from "./store";
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "skillstore-test-"));
 const WS_DIR = path.join(ROOT, "ws");
 const SKILLS = path.join(WS_DIR, SKILLS_DIR);
+const NEIGHBOR_SKILLS = path.join(ROOT, "neighbor", SKILLS_DIR);
 
 afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 beforeEach(() => {
   fs.rmSync(WS_DIR, { recursive: true, force: true });
   fs.mkdirSync(SKILLS, { recursive: true });
+  fs.rmSync(path.dirname(NEIGHBOR_SKILLS), { recursive: true, force: true });
+  fs.mkdirSync(NEIGHBOR_SKILLS, { recursive: true });
+  fs.writeFileSync(
+    path.join(NEIGHBOR_SKILLS, "private.json"),
+    JSON.stringify({ ...VALID_SKILL, id: "neighbor-private", description: "canary-skills-4a1c2" }),
+  );
 });
 
 const VALID_SKILL = {
@@ -103,5 +111,53 @@ describe("loadSkills", () => {
     );
     const [skill] = await loadSkills(WS_DIR);
     expect(skill.description).toBe("");
+  });
+
+  describe("a workspace's .skills/ never reads outside itself", () => {
+    async function loadedText() {
+      return JSON.stringify(await loadSkills(WS_DIR));
+    }
+
+    it("skips a skill file linked to a neighbouring workspace's skill, keeping its own", async () => {
+      fs.writeFileSync(path.join(SKILLS, "valid.json"), JSON.stringify(VALID_SKILL));
+      fs.symlinkSync("../../neighbor/.skills/private.json", path.join(SKILLS, "stolen.json"));
+      expect((await loadSkills(WS_DIR)).map((s) => s.id)).toEqual(["check-stock"]);
+      expect(await loadedText()).not.toContain("canary-skills-4a1c2");
+    });
+
+    it("skips a skill file linked by absolute path", async () => {
+      fs.symlinkSync(path.join(NEIGHBOR_SKILLS, "private.json"), path.join(SKILLS, "stolen.json"));
+      expect(await loadSkills(WS_DIR)).toEqual([]);
+    });
+
+    it("declares no skills when .skills itself is a link to a neighbour's directory", async () => {
+      fs.rmSync(SKILLS, { recursive: true });
+      fs.symlinkSync(NEIGHBOR_SKILLS, SKILLS);
+      expect(await loadSkills(WS_DIR)).toEqual([]);
+    });
+
+    it("skips a link even when its target is a skill inside the same .skills/", async () => {
+      fs.writeFileSync(path.join(SKILLS, "real.json"), JSON.stringify(VALID_SKILL));
+      fs.symlinkSync("real.json", path.join(SKILLS, "alias.json"));
+      expect((await loadSkills(WS_DIR)).map((s) => s.id)).toEqual(["check-stock"]);
+    });
+
+    it("skips a directory named like a skill file", async () => {
+      fs.mkdirSync(path.join(SKILLS, "folder.json"));
+      fs.writeFileSync(path.join(SKILLS, "valid.json"), JSON.stringify(VALID_SKILL));
+      expect((await loadSkills(WS_DIR)).map((s) => s.id)).toEqual(["check-stock"]);
+    });
+
+    it("skips a FIFO without blocking", async () => {
+      execFileSync("mkfifo", [path.join(SKILLS, "pipe.json")]);
+      fs.writeFileSync(path.join(SKILLS, "valid.json"), JSON.stringify(VALID_SKILL));
+      expect((await loadSkills(WS_DIR)).map((s) => s.id)).toEqual(["check-stock"]);
+    });
+
+    it("declares no skills when .skills is a regular file", async () => {
+      fs.rmSync(SKILLS, { recursive: true });
+      fs.writeFileSync(SKILLS, "{}");
+      expect(await loadSkills(WS_DIR)).toEqual([]);
+    });
   });
 });
