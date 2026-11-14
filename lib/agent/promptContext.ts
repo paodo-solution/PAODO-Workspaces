@@ -18,16 +18,35 @@ export interface WorkspacePromptInputs {
   backgroundTasksInfo?: string;
 }
 
+// The agent controls this path, so read it only as a regular file: never follow a link, never block on a FIFO.
+const AGENTS_MD_OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;
+
+function refuseAgentsMd(workspaceDir: string): undefined {
+  log.warn(
+    { event: "agents_md_not_regular_file", outcome: "workspace_instructions_omitted", workspaceDir },
+    "AGENTS.md is not a regular file — workspace instructions omitted",
+  );
+  return undefined;
+}
+
 function readAgentsMd(workspaceDir: string): string | undefined {
+  let fd: number | undefined;
   try {
-    return fs.readFileSync(path.join(workspaceDir, "AGENTS.md"), "utf-8").trim();
+    fd = fs.openSync(path.join(workspaceDir, "AGENTS.md"), AGENTS_MD_OPEN_FLAGS);
+    if (!fs.fstatSync(fd).isFile()) return refuseAgentsMd(workspaceDir);
+    return fs.readFileSync(fd, "utf-8").trim();
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
       log.debug({ workspaceDir }, "AGENTS.md not found — skipping");
+    } else if (code === "ELOOP") {
+      return refuseAgentsMd(workspaceDir);
     } else {
       log.warn({ err, workspaceDir }, "failed to read AGENTS.md — workspace instructions omitted");
     }
     return undefined;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
   }
 }
 

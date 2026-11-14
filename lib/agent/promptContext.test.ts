@@ -2,6 +2,7 @@
 // present/absent combination.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -60,6 +61,35 @@ describe("buildWorkspacePromptInputs", () => {
   it("leaves agentsContent undefined when AGENTS.md is missing", () => {
     const { agentsContent } = buildWorkspacePromptInputs("ws1", dir);
     expect(agentsContent).toBeUndefined();
+  });
+
+  it("does not follow an AGENTS.md symlink that leads outside the workspace", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "promptctx-outside-"));
+    try {
+      fs.writeFileSync(path.join(outside, "notes.txt"), "canary-outside-7c1e");
+      fs.symlinkSync(path.join(outside, "notes.txt"), path.join(dir, "AGENTS.md"));
+      const inputs = buildWorkspacePromptInputs("ws1", dir);
+      expect(inputs.agentsContent).toBeUndefined();
+      expect(JSON.stringify(inputs)).not.toContain("canary-outside-7c1e");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("does not follow an AGENTS.md symlink even when its target is inside the workspace", () => {
+    fs.writeFileSync(path.join(dir, "instructions.md"), "# Linked rules");
+    fs.symlinkSync("instructions.md", path.join(dir, "AGENTS.md"));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("leaves agentsContent undefined when AGENTS.md is a directory", () => {
+    fs.mkdirSync(path.join(dir, "AGENTS.md"));
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
+  });
+
+  it("leaves agentsContent undefined, without blocking, when AGENTS.md is a FIFO", () => {
+    execFileSync("mkfifo", [path.join(dir, "AGENTS.md")]);
+    expect(buildWorkspacePromptInputs("ws1", dir).agentsContent).toBeUndefined();
   });
 
   it("leaves drivesInfo undefined when no drives are connected", () => {
