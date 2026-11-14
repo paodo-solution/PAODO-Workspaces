@@ -70,6 +70,20 @@ describe("drive_upload folder", () => {
     expect(fs.readFileSync(path.join(dir, "proj/sub/b.json"), "utf-8")).toBe('{"b":2}');
   });
 
+  it("takes a folder named with a trailing slash, as agents often write it", async () => {
+    const dir = seedDrive("data");
+    const workspaceDir = seedWorkspace();
+    write(workspaceDir, "proj/a.json", '{"a":1}');
+
+    const result = await new mods.DriveUploadTool("ws1", workspaceDir).invoke({
+      source_path: "proj/",
+      drive_name: "data",
+    });
+
+    expect(result).toContain("Uploaded 1 file");
+    expect(fs.readFileSync(path.join(dir, "proj/a.json"), "utf-8")).toBe('{"a":1}');
+  });
+
   it("lands the folder's contents under an explicit dest_path", async () => {
     const dir = seedDrive("data");
     const workspaceDir = seedWorkspace();
@@ -126,6 +140,17 @@ describe("drive_download folder", () => {
     expect(fs.readFileSync(path.join(workspaceDir, "downloads/data/docs/a.json"), "utf-8")).toBe("hello");
     expect(fs.readFileSync(path.join(workspaceDir, "downloads/data/docs/sub/b.bin")).equals(original)).toBe(true);
     expect(result).toContain("Downloaded 2 files to downloads/data/docs");
+  });
+
+  it("takes a folder named with a trailing slash, as agents often write it", async () => {
+    const dir = seedDrive("data");
+    write(dir, "docs/a.json", "hello");
+    const workspaceDir = seedWorkspace();
+
+    const result = await new mods.DriveDownloadTool("ws1", workspaceDir).invoke({ drive_name: "data", path: "docs/" });
+
+    expect(fs.readFileSync(path.join(workspaceDir, "downloads/data/docs/a.json"), "utf-8")).toBe("hello");
+    expect(result).toContain("Downloaded 1 file to downloads/data/docs");
   });
 
   it("skips a file over the ceiling and keeps going, reporting what it skipped", async () => {

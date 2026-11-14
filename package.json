@@ -30,6 +30,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:linux": "bash scripts/test-linux.sh",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test --grep-invert @slow",
     "test:e2e:slow": "playwright test --grep @slow",

@@ -16,6 +16,12 @@ describe("normalizeRelpath — containment guard", () => {
     expect(normalizeRelpath("src/./a/../b.ts")).toBe("src/b.ts");
   });
 
+  it("drops a trailing slash, so a folder named `dir/` is the same path as `dir`", () => {
+    expect(normalizeRelpath("reports/")).toBe("reports");
+    expect(normalizeRelpath("./a/b//")).toBe("a/b");
+    expect(normalizeRelpath("a/../")).toBe(".");
+  });
+
   // --- the cases that matter: escapes MUST be rejected (null) ---
 
   it("rejects parent-directory traversal", () => {

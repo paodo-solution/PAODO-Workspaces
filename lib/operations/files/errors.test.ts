@@ -57,6 +57,18 @@ describe("fileSystemAppError", () => {
     }
   });
 
+  it.skipIf(process.getuid?.() === 0)("maps a permission failure met while reading to FILE_NOT_READABLE", async () => {
+    const target = path.join(WS_DIR, "secret.txt");
+    fs.writeFileSync(target, "x");
+    fs.chmodSync(target, 0o000);
+    try {
+      const failure = await fileSystemCall("secret.txt", () => fsp.readFile(target), "read").catch((err) => err);
+      expect(failure).toMatchObject({ code: "FILE_NOT_READABLE", message: "secret.txt is not readable" });
+    } finally {
+      fs.chmodSync(target, 0o644);
+    }
+  });
+
   it("maps a path that runs through a file to INVALID_REQUEST", async () => {
     fs.writeFileSync(path.join(WS_DIR, "notes.txt"), "x");
     const failure = await failureOf("notes.txt/inner", () => fsp.readFile(path.join(WS_DIR, "notes.txt", "inner")));

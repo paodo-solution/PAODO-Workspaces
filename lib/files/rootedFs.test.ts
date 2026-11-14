@@ -7,11 +7,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+  MAX_DIR_DEPTH,
   adoptFile,
   createDir,
   createPendingFile,
   ensureDir,
   linkEntry,
+  openDir,
   overwriteFile,
   readFile,
   removeEntry,
@@ -74,6 +76,21 @@ describe("ordinary paths", () => {
     expect(fs.readdirSync(ws("src"))).toEqual(["a.txt"]);
   });
 
+  it("removes the temp file when the commit fails, so a later discard has nothing left to clean", async () => {
+    fs.mkdirSync(ws("src/taken/inner"), { recursive: true });
+    const pending = await createPendingFile(WS, "src/taken");
+    await pending.handle.writeFile("x");
+    await expect(pending.commit()).rejects.toMatchObject({ code: expect.stringMatching(/EISDIR|ENOTEMPTY|EEXIST/) });
+    await pending.discard();
+    expect(fs.readdirSync(ws("src")).sort()).toEqual(["a.txt", "taken"]);
+  });
+
+  it("leaves no temp file when writeFile lands on a directory", async () => {
+    fs.mkdirSync(ws("src/taken/inner"), { recursive: true });
+    await expect(writeFile(WS, "src/taken", Buffer.from("x"))).rejects.toBeTruthy();
+    expect(fs.readdirSync(ws("src")).sort()).toEqual(["a.txt", "taken"]);
+  });
+
   it("lists, renames, links and removes", async () => {
     expect(await withDir(WS, "src", async (dir) => (await dir.entries()).map((e) => e.name))).toEqual(["a.txt"]);
     await renameEntry(WS, "src/a.txt", "b.txt");
@@ -97,6 +114,26 @@ describe("ordinary paths", () => {
     for (const bad of ["../outside/secret.txt", "src/../../outside/secret.txt", "/etc/passwd", "src//a.txt", "./src"]) {
       expect(await codeOf(() => readFile(WS, bad))).toBe("EINVAL");
     }
+  });
+
+  it("rejects a bad path instead of throwing, so a caller's .catch() sees it", async () => {
+    for (const run of [() => statEntry(WS, "src//a.txt"), () => openDir(WS, "../outside")]) {
+      let outcome: Promise<unknown> | undefined;
+      expect(() => (outcome = run())).not.toThrow();
+      await expect(outcome).rejects.toMatchObject({ code: "EINVAL" });
+    }
+  });
+
+  it("stops descending at the depth cap, since each level of a walk holds a descriptor", async () => {
+    const atCap = Array(MAX_DIR_DEPTH).fill("d").join("/");
+    fs.mkdirSync(ws(`${atCap}/d`), { recursive: true });
+    fs.writeFileSync(ws(`${atCap}/ok.txt`), "x");
+    fs.writeFileSync(ws(`${atCap}/d/deep.txt`), "x");
+
+    expect((await readFile(WS, `${atCap}/ok.txt`)).toString()).toBe("x");
+    expect(await codeOf(() => readFile(WS, `${atCap}/d/deep.txt`))).toBe("ENAMETOOLONG");
+    expect(await codeOf(() => writeFile(WS, `${atCap}/d/new/f.txt`, Buffer.from("x")))).toBe("ENAMETOOLONG");
+    expect(fs.existsSync(ws(`${atCap}/d/new`))).toBe(false);
   });
 
   it.skipIf(process.platform === "win32")("refuses a FIFO instead of blocking on it", async () => {

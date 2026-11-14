@@ -86,6 +86,19 @@ describe("listEntries", () => {
     await expect(listEntries(WS, "src/nope")).rejects.toBeInstanceOf(AppError);
   });
 
+  // Root reads anything, so the permission bits only bite for an ordinary user.
+  it.skipIf(process.getuid?.() === 0)("fails with FILE_NOT_READABLE for a folder the app cannot read", async () => {
+    fs.chmodSync(abs("src/lib"), 0o000);
+    try {
+      await expect(listEntries(WS, "src/lib")).rejects.toMatchObject({
+        code: "FILE_NOT_READABLE",
+        message: "src/lib is not readable",
+      });
+    } finally {
+      fs.chmodSync(abs("src/lib"), 0o755);
+    }
+  });
+
   it("fails when the path runs through a file", async () => {
     await expect(listEntries(WS, "AGENTS.md/inner")).rejects.toMatchObject({ code: "INVALID_REQUEST" });
   });

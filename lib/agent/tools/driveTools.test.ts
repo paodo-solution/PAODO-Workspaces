@@ -19,7 +19,9 @@ async function freshModules() {
   const { DriveDownloadTool } = await import("./driveDownload");
   const { DriveReadTool } = await import("./driveRead");
   const { DriveUploadTool } = await import("./driveUpload");
-  return { store, DriveDownloadTool, DriveReadTool, DriveUploadTool };
+  const { DriveLsTool } = await import("./driveLs");
+  const { DriveDeleteTool } = await import("./driveDelete");
+  return { store, DriveDownloadTool, DriveReadTool, DriveUploadTool, DriveLsTool, DriveDeleteTool };
 }
 
 // A workspace dir the download tool can write into. It must exist, since the containment check
@@ -110,6 +112,74 @@ describe("drive_download symlink safety", () => {
     expect(fs.readFileSync(victim, "utf8")).toBe("ORIGINAL");
     expect(fs.lstatSync(path.join(workspaceDir, "downloads/data/report.txt")).isSymbolicLink()).toBe(false);
     expect(fs.readFileSync(path.join(workspaceDir, "downloads/data/report.txt"), "utf8")).toBe("from the drive");
+  });
+});
+
+// Nothing in the app creates a link in a drive, but a restored or hand-edited drive could hold one.
+describe("a symlink inside a drive", () => {
+  function seedLinkedDrive() {
+    const drive = seedDrive("data", "real.txt", Buffer.from("real"));
+    const driveDir = mods.store.driveContentDir(drive.id);
+    const outsideDir = path.join(ROOT, "outside");
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, "secret.txt"), "SECRET");
+    fs.symlinkSync(path.join(outsideDir, "secret.txt"), path.join(driveDir, "link.txt"));
+    fs.symlinkSync(outsideDir, path.join(driveDir, "linkdir"));
+    return { driveDir, outsideDir, secret: path.join(outsideDir, "secret.txt") };
+  }
+
+  it("is not read by drive_read, directly or through a linked folder", async () => {
+    seedLinkedDrive();
+    const tool = new mods.DriveReadTool("ws1");
+    expect(await tool.invoke({ drive_name: "data", path: "link.txt" })).toBe(
+      "Error: symbolic link not followed: link.txt",
+    );
+    expect(await tool.invoke({ drive_name: "data", path: "linkdir/secret.txt" })).not.toContain("SECRET");
+  });
+
+  it("is not listed through by drive_ls", async () => {
+    seedLinkedDrive();
+    const result = await new mods.DriveLsTool("ws1").invoke({ drive_name: "data", path: "linkdir" });
+    expect(result).toBe("Error: symbolic link not followed: linkdir");
+  });
+
+  it("is not copied into the workspace by drive_download", async () => {
+    seedLinkedDrive();
+    const workspaceDir = seedWorkspace();
+    const tool = new mods.DriveDownloadTool("ws1", workspaceDir);
+    expect(await tool.invoke({ drive_name: "data", path: "link.txt" })).toBe(
+      "Error: symbolic link not followed: link.txt",
+    );
+    expect(await tool.invoke({ drive_name: "data", path: "linkdir" })).toBe(
+      "Error: symbolic link not followed: linkdir",
+    );
+    expect(fs.existsSync(path.join(workspaceDir, "downloads"))).toBe(false);
+  });
+
+  it("is replaced, not written through, by drive_upload, and a linked folder is refused", async () => {
+    const { driveDir, outsideDir, secret } = seedLinkedDrive();
+    const workspaceDir = seedWorkspace();
+    fs.writeFileSync(path.join(workspaceDir, "new.txt"), "from the workspace");
+    const tool = new mods.DriveUploadTool("ws1", workspaceDir);
+
+    const replaced = await tool.invoke({ source_path: "new.txt", drive_name: "data", dest_path: "link.txt" });
+    expect(replaced).toContain("Uploaded");
+    expect(fs.readFileSync(secret, "utf8")).toBe("SECRET");
+    expect(fs.lstatSync(path.join(driveDir, "link.txt")).isSymbolicLink()).toBe(false);
+
+    const refused = await tool.invoke({ source_path: "new.txt", drive_name: "data", dest_path: "linkdir/new.txt" });
+    expect(refused).toBe("Error: destination runs through a symbolic link: linkdir/new.txt");
+    expect(fs.readdirSync(outsideDir)).toEqual(["secret.txt"]);
+  });
+
+  it("is unlinked by drive_delete, leaving what it points at", async () => {
+    const { driveDir, secret } = seedLinkedDrive();
+    const tool = new mods.DriveDeleteTool("ws1");
+
+    expect(await tool.invoke({ drive_name: "data", path: "linkdir" })).toContain("Deleted");
+    expect(await tool.invoke({ drive_name: "data", path: "link.txt" })).toContain("Deleted");
+    expect(fs.readdirSync(driveDir)).toEqual(["real.txt"]);
+    expect(fs.readFileSync(secret, "utf8")).toBe("SECRET");
   });
 });
 

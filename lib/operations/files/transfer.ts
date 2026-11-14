@@ -2,24 +2,16 @@
 // destination; only regular files and dirs (0755/0644) are accepted.
 
 import fs from "fs/promises";
-import { createWriteStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import tar, { type ExtractEvents } from "tar-stream";
 import { AppError } from "@/lib/errors/appError";
 import { readTransferEntries } from "@/lib/files/entries";
-import { openFileLimiter, type Semaphore } from "@/lib/files/fdLimit";
+import { Fanout, MAX_CONCURRENT_WALKS, openFileLimiter, settleAll, type Semaphore } from "@/lib/files/fdLimit";
 import { ignoreRuleFor } from "@/lib/files/ignore";
-import {
-  RootedFsError,
-  adoptFile,
-  ensureDir,
-  openFile,
-  statEntry,
-  withDir,
-  type RootedDir,
-} from "@/lib/files/rootedFs";
+import { RootedFsError, adoptFile, ensureDir, openDir, statEntry, withDir, type RootedDir } from "@/lib/files/rootedFs";
 import { MAX_TRANSFER_BYTES, MAX_TRANSFER_ENTRIES, MAX_UPLOAD_BYTES } from "@/lib/uploads/limits";
 import { checkFreeSpace, RESERVED_FREE_BYTES } from "@/lib/infra/storage/diskSpace";
 import { fileSystemAppError, fileSystemCall } from "./errors";
@@ -68,45 +60,55 @@ function unsupported(relPath: string): AppError {
   });
 }
 
+// A directory's own files come right after it, so the stream can read them all through one descriptor.
 async function collectDirectory(
   rootDir: string,
   dir: RootedDir,
   relPath: string,
-  sem: Semaphore,
-  items: TransferItem[],
-): Promise<void> {
-  items.push({ type: "directory", relPath });
-  const entries = await fileSystemCall(relPath || "The root", () => readTransferEntries(dir, sem));
-  for (const entry of entries) {
-    const childRel = relPath === "" ? entry.name : path.posix.join(relPath, entry.name);
-    if (entry.isDirectory()) {
-      const child = await fileSystemCall(childRel, () => dir.openDir(entry.name));
+  limits: { sem: Semaphore; fanout: Fanout },
+): Promise<TransferItem[]> {
+  const entries = await fileSystemCall(relPath || "The root", () => readTransferEntries(dir, limits.sem), "read");
+  const childRel = (name: string) => (relPath === "" ? name : path.posix.join(relPath, name));
+  const files = entries.filter((entry) => !entry.isDirectory());
+  for (const entry of files) if (!entry.isFile()) throw unsupported(childRel(entry.name));
+
+  const fileItems = await settleAll(
+    files.map(async (entry): Promise<TransferItem> => {
+      const stat = await fileSystemCall(
+        childRel(entry.name),
+        () => limits.sem.run(() => dir.lstat(entry.name)),
+        "read",
+      );
+      if (!stat.isFile()) throw unsupported(childRel(entry.name));
+      return {
+        type: "file",
+        relPath: childRel(entry.name),
+        rootDir,
+        entryPath: dir.childRel(entry.name),
+        size: stat.size,
+        executable: (stat.mode & 0o111) !== 0,
+      };
+    }),
+  );
+  const subtrees = await limits.fanout.map(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      const child = await fileSystemCall(childRel(entry.name), () => dir.openDir(entry.name), "read");
       try {
-        await collectDirectory(rootDir, child, childRel, sem, items);
+        return await collectDirectory(rootDir, child, childRel(entry.name), limits);
       } finally {
         await child.close();
       }
-      continue;
-    }
-    if (!entry.isFile()) throw unsupported(childRel);
-    const stat = await fileSystemCall(childRel, () => sem.run(() => dir.lstat(entry.name)));
-    if (!stat.isFile()) throw unsupported(childRel);
-    items.push({
-      type: "file",
-      relPath: childRel,
-      rootDir,
-      entryPath: dir.childRel(entry.name),
-      size: stat.size,
-      executable: (stat.mode & 0o111) !== 0,
-    });
-  }
+    },
+  );
+  return [{ type: "directory", relPath }, ...fileItems, ...subtrees.flat()];
 }
 
 /** Validate and collect a complete manifest before response headers are sent. */
 export async function collectTransfer(rootDir: string, sourceValue: unknown): Promise<TransferItem[]> {
   const relPath = requireDirPath(sourceValue, "path");
   // lstat: a transfer must not turn a link into its target's bytes, wherever the link points.
-  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath));
+  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath), "read");
   if (stat.isSymbolicLink()) throw unsupported(relPath);
   if (stat.isFile()) {
     return [
@@ -121,11 +123,12 @@ export async function collectTransfer(rootDir: string, sourceValue: unknown): Pr
     ];
   }
   if (!stat.isDirectory()) throw unsupported(relPath);
-  const items: TransferItem[] = [];
-  await fileSystemCall(relPath || "The root", () =>
-    withDir(rootDir, relPath, (dir) => collectDirectory(rootDir, dir, "", openFileLimiter(), items)),
+  const limits = { sem: openFileLimiter(), fanout: new Fanout(MAX_CONCURRENT_WALKS) };
+  return fileSystemCall(
+    relPath || "The root",
+    () => withDir(rootDir, relPath, (dir) => collectDirectory(rootDir, dir, "", limits)),
+    "read",
   );
-  return items;
 }
 
 function tarName(relPath: string): string {
@@ -140,11 +143,15 @@ function addHeader(pack: tar.Pack, item: TransferDirectory): Promise<void> {
   });
 }
 
+function streamError(err: unknown, relPath: string): unknown {
+  return err instanceof RootedFsError ? unsupported(relPath) : (fileSystemAppError(err, relPath, "read") ?? err);
+}
+
 // Opened only now, without following links: the entry was a regular file when collected, but the agent
-// can swap it, or a directory above it, for a link before it is streamed.
-async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
-  const handle = await openFile(item.rootDir, item.entryPath).catch((err) => {
-    throw err instanceof RootedFsError ? unsupported(item.relPath) : (fileSystemAppError(err, item.relPath) ?? err);
+// can swap it for a link before it is streamed. `parent` is pinned, so a swap above it changes nothing.
+async function addFile(pack: tar.Pack, parent: RootedDir, item: TransferFile): Promise<void> {
+  const handle = await parent.openFile(path.posix.basename(item.entryPath)).catch((err) => {
+    throw streamError(err, item.relPath);
   });
   try {
     const target = pack.entry({
@@ -153,7 +160,8 @@ async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
       size: item.size,
       mode: item.executable ? 0o755 : 0o644,
     });
-    await pipeline(handle.createReadStream({ autoClose: false }), target);
+    // The raw descriptor: a FileHandle stream adds overhead per file, which adds up on large trees.
+    await pipeline(createReadStream("", { fd: handle.fd, autoClose: false }), target);
   } finally {
     await handle.close();
   }
@@ -164,14 +172,31 @@ async function addFile(pack: tar.Pack, item: TransferFile): Promise<void> {
 export function packTransfer(items: TransferItem[]): Readable {
   const pack = tar.pack();
   void (async () => {
+    // Siblings are consecutive, so each directory is walked to once rather than once per file.
+    let parent = null as { relPath: string; dir: RootedDir } | null;
     try {
       for (const item of items) {
-        if (item.type === "directory") await addHeader(pack, item);
-        else await addFile(pack, item);
+        if (item.type === "directory") {
+          await addHeader(pack, item);
+          continue;
+        }
+        const parentRel = path.posix.dirname(item.entryPath);
+        const wanted = parentRel === "." ? "" : parentRel;
+        if (parent?.relPath !== wanted) {
+          await parent?.dir.close();
+          parent = null;
+          const dir: RootedDir = await openDir(item.rootDir, wanted).catch((err: unknown) => {
+            throw streamError(err, item.relPath);
+          });
+          parent = { relPath: wanted, dir };
+        }
+        await addFile(pack, parent.dir, item);
       }
       pack.finalize();
     } catch (err) {
       pack.destroy(err as Error);
+    } finally {
+      await parent?.dir.close();
     }
   })();
   return Readable.from(pack);

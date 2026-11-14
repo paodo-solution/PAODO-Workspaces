@@ -151,13 +151,23 @@ describe("drive read bounding, beyond plain size", () => {
   it("refuses a file whose reported size understates it, rather than reading forever", async () => {
     // A character device stats 0 bytes and never ends; fs.readFile would have eaten the heap. The bound catches
     // it because more arrived than stat promised, as with a file still being written.
+    const { readHandleBounded } = await import("../driveAccess");
+    const handle = await fs.promises.open("/dev/zero", "r");
+    try {
+      const result = await readHandleBounded(handle, "endless", 1024, { missing: "", isDirectory: "", advice: "" });
+      expect(result).toContain("changed while being read");
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it("never opens a device a drive link points at", async () => {
     const dir = seedDrive("notes");
     fs.symlinkSync("/dev/zero", path.join(dir, "endless"));
 
     const result = await new mods.DriveReadTool("ws1").invoke({ drive_name: "notes", path: "endless" });
 
-    expect(result).toMatch(/^Error:/);
-    expect(result).toContain("changed while being read");
+    expect(result).toBe("Error: symbolic link not followed: endless");
   });
 
   it("still reports a missing file as missing", async () => {

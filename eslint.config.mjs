@@ -44,7 +44,11 @@ const eslintConfig = defineConfig([
       "lib/files/zip.ts",
       "lib/files/move.ts",
       "lib/uploads/upload.ts",
+      "lib/uploads/sweeper.ts",
+      "lib/agent/driveAccess.ts",
+      "lib/agent/tools/drive*.ts",
     ],
+    ignores: ["**/*.test.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",

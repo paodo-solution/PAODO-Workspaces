@@ -12,6 +12,8 @@ export const ERROR_CODES = {
   CAPACITY_REACHED: "CAPACITY_REACHED",
   // The filesystem refused the write. Not FORBIDDEN, since 403 already means a CSRF rejection here.
   FILE_NOT_WRITABLE: "FILE_NOT_WRITABLE",
+  /** The filesystem refused a read: the same permission failure as FILE_NOT_WRITABLE, met while reading. */
+  FILE_NOT_READABLE: "FILE_NOT_READABLE",
   /** Over MAX_UPLOAD_BYTES, which is our own policy — hence FILE_, not the 413 status name. */
   FILE_TOO_LARGE: "FILE_TOO_LARGE",
   // The whole transfer exceeded an entry or byte cap. Not FILE_TOO_LARGE: the fix is splitting the

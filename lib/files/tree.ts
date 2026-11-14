@@ -2,7 +2,7 @@
 // cap bounds the panel's response; other callers pass their own `?depth=` (one level, or Infinity).
 import { createLogger } from "@/lib/infra/logger";
 import { readListingEntries, readTransferEntries } from "./entries";
-import { openFileLimiter, type Semaphore } from "./fdLimit";
+import { Fanout, MAX_CONCURRENT_WALKS, openFileLimiter, type Semaphore } from "./fdLimit";
 import { withDir, type RootedDir } from "./rootedFs";
 
 export interface TreeNode {
@@ -59,7 +59,7 @@ export async function buildTree(rootDir: string, options: BuildTreeOptions = {})
       0,
       maxDepth,
       options.maxEntries ?? Infinity,
-      openFileLimiter(),
+      { sem: openFileLimiter(), fanout: new Fanout(MAX_CONCURRENT_WALKS) },
       options.countFiles === true,
     ),
   );
@@ -95,57 +95,66 @@ async function descend<T>(dir: RootedDir, name: string, empty: T, fn: (child: Ro
   }
 }
 
-// Directories are walked one at a time, so the descriptors held never exceed the depth. Counts come
-// back up the recursion, since below `maxDepth` there are no nodes to sum.
+interface WalkLimits {
+  sem: Semaphore;
+  fanout: Fanout;
+}
+
+// Subdirectories are walked through `fanout`, so the descriptors held stay bounded. Counts come back up
+// the recursion, since below `maxDepth` there are no nodes to sum.
 async function walk(
   dir: RootedDir,
   relPath: string,
   depth: number,
   maxDepth: number,
   maxEntries: number,
-  sem: Semaphore,
+  limits: WalkLimits,
   countFiles: boolean,
 ): Promise<WalkResult> {
   // Past the caller's depth, the tree stops but the count must not: this is exactly the directory whose
   // size a caller cannot see, since it is being handed an empty branch.
   if (depth >= maxDepth) {
-    return { ...EMPTY_WALK, files: countFiles ? await countFilesUnder(dir, sem) : 0 };
+    return { ...EMPTY_WALK, files: countFiles ? await countFilesUnder(dir, limits) : 0 };
   }
   let read;
   try {
-    read = await readListingEntries(dir, sem, maxEntries);
+    read = await readListingEntries(dir, limits.sem, maxEntries);
   } catch (err) {
     createLogger("api").warn({ err, relPath: dir.relPath }, "failed to read directory in file tree");
     return EMPTY_WALK;
   }
 
+  const relOf = (name: string) => (relPath === "" ? name : `${relPath}/${name}`);
+  // Nothing below the last level is needed unless counting, so those directories are not even opened.
+  const dirs = depth + 1 >= maxDepth && !countFiles ? [] : read.entries.filter((e) => e.isDirectory());
+  const walked = await limits.fanout.map(dirs, (e) =>
+    descend(dir, e.name, EMPTY_WALK, (child) =>
+      walk(child, relOf(e.name), depth + 1, maxDepth, maxEntries, limits, countFiles),
+    ),
+  );
+  const below = new Map(dirs.map((e, i) => [e.name, walked[i]]));
+
   const entryResults: { node: TreeNode; files: number; truncated: boolean }[] = [];
   for (const e of read.entries) {
-    const entryRelPath = relPath === "" ? e.name : `${relPath}/${e.name}`;
+    const entryRelPath = relOf(e.name);
     if (!e.isDirectory()) {
       entryResults.push({ node: { name: e.name, type: "file", path: entryRelPath }, files: 1, truncated: false });
       continue;
     }
-    // Nothing below the last level is needed unless counting, so that directory is not even opened.
-    const below =
-      depth + 1 >= maxDepth && !countFiles
-        ? EMPTY_WALK
-        : await descend(dir, e.name, EMPTY_WALK, (child) =>
-            walk(child, entryRelPath, depth + 1, maxDepth, maxEntries, sem, countFiles),
-          );
+    const sub = below.get(e.name) ?? EMPTY_WALK;
     entryResults.push({
       node: {
         name: e.name,
         type: "directory",
         path: entryRelPath,
-        children: below.nodes,
-        ...(countFiles ? { files: below.files } : {}),
+        children: sub.nodes,
+        ...(countFiles ? { files: sub.files } : {}),
         // `cut`, not `truncated`: the flag names the directory whose own listing stopped, so a
         // caller can find it. An ancestor that was listed whole is not a short answer.
-        ...(below.cut ? { truncated: true } : {}),
+        ...(sub.cut ? { truncated: true } : {}),
       },
-      files: below.files,
-      truncated: below.truncated,
+      files: sub.files,
+      truncated: sub.truncated,
     });
   }
 
@@ -159,18 +168,18 @@ async function walk(
 
 // Counts files below `maxDepth` without building nodes, through the same ignore rules as the listing.
 // An unreadable directory counts as zero.
-async function countFilesUnder(dir: RootedDir, sem: Semaphore): Promise<number> {
+async function countFilesUnder(dir: RootedDir, limits: WalkLimits): Promise<number> {
   let entries;
   try {
-    entries = await readTransferEntries(dir, sem);
+    entries = await readTransferEntries(dir, limits.sem);
   } catch (err) {
     createLogger("api").warn({ err, relPath: dir.relPath }, "failed to read directory while counting a file tree");
     return 0;
   }
 
-  let count = 0;
-  for (const e of entries) {
-    count += e.isDirectory() ? await descend(dir, e.name, 0, (child) => countFilesUnder(child, sem)) : 1;
-  }
-  return count;
+  const dirs = entries.filter((e) => e.isDirectory());
+  const counts = await limits.fanout.map(dirs, (e) =>
+    descend(dir, e.name, 0, (child) => countFilesUnder(child, limits)),
+  );
+  return entries.length - dirs.length + counts.reduce((sum, count) => sum + count, 0);
 }

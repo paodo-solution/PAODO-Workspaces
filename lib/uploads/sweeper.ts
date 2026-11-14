@@ -1,10 +1,10 @@
 // Reclaims ".part" upload temp files leaked when the process dies mid-upload. Same in-process tick as
 // scheduler.ts.
-import fs from "fs/promises";
-import path from "path";
+import type { Dirent } from "fs";
 import { createLogger } from "../infra/logger";
 import { globalSingleton } from "../infra/globalSingleton";
 import { WORKSPACES_ROOT } from "../infra/paths";
+import { withDir, type RootedDir } from "../files/rootedFs";
 
 const log = createLogger("uploadSweeper");
 
@@ -19,34 +19,49 @@ const PART_FILE = /\.[0-9a-f]{12}\.part$/;
 type SweeperState = { timer: NodeJS.Timeout | null; running: boolean };
 const state = globalSingleton<SweeperState>("uploadSweeperState", () => ({ timer: null, running: false }));
 
-async function removeStaleParts(dir: string, staleBeforeMs: number): Promise<number> {
+// Walks through rootedFs, so a directory swapped for a link mid-sweep is refused rather than swept.
+async function removeStaleParts(dir: RootedDir, staleBeforeMs: number): Promise<number> {
   let removed = 0;
-  let entries: import("fs").Dirent[];
+  let entries: Dirent[];
   try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
+    entries = await dir.entries();
   } catch (err) {
-    log.warn({ err, dir }, "upload sweep could not read directory");
+    log.warn({ err, dir: dir.relPath }, "upload sweep could not read directory");
     return removed;
   }
 
   for (const entry of entries) {
     if (entry.name === ".git") continue; // never touched by uploads; walking it is pure cost
-    const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      removed += await removeStaleParts(full, staleBeforeMs);
+      removed += await sweepChild(dir, entry.name, staleBeforeMs);
       continue;
     }
     if (!entry.isFile() || !PART_FILE.test(entry.name)) continue;
     try {
-      const stat = await fs.stat(full);
-      if (stat.mtimeMs > staleBeforeMs) continue;
-      await fs.rm(full, { force: true });
+      const stat = await dir.lstat(entry.name);
+      if (!stat.isFile() || stat.mtimeMs > staleBeforeMs) continue;
+      await dir.unlink(entry.name);
       removed += 1;
     } catch (err) {
-      log.warn({ err, file: full }, "upload sweep could not remove stale temp file");
+      log.warn({ err, file: dir.childRel(entry.name) }, "upload sweep could not remove stale temp file");
     }
   }
   return removed;
+}
+
+async function sweepChild(dir: RootedDir, name: string, staleBeforeMs: number): Promise<number> {
+  let child: RootedDir;
+  try {
+    child = await dir.openDir(name);
+  } catch (err) {
+    log.warn({ err, dir: dir.childRel(name) }, "upload sweep could not read directory");
+    return 0;
+  }
+  try {
+    return await removeStaleParts(child, staleBeforeMs);
+  } finally {
+    await child.close();
+  }
 }
 
 async function tick(): Promise<void> {
@@ -54,7 +69,8 @@ async function tick(): Promise<void> {
   state.running = true;
   try {
     const staleMs = parseInt(process.env.UPLOAD_SWEEP_STALE_MS ?? String(DEFAULT_STALE_MS), 10) || DEFAULT_STALE_MS;
-    const removed = await removeStaleParts(WORKSPACES_ROOT, Date.now() - staleMs);
+    const staleBefore = Date.now() - staleMs;
+    const removed = await withDir(WORKSPACES_ROOT, "", (root) => removeStaleParts(root, staleBefore));
     if (removed > 0) log.info({ removed }, "upload sweep removed orphaned temp files");
   } catch (err) {
     log.warn({ err }, "upload sweep tick failed");

@@ -4,9 +4,8 @@
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import path from "path";
-import fs from "fs/promises";
 import { normalizeRelpath } from "../pathUtils";
-import { openFile, statEntry } from "@/lib/files/rootedFs";
+import { openFile, statEntry, writeFile } from "@/lib/files/rootedFs";
 import {
   resolveDrivePath,
   readHandleBounded,
@@ -120,21 +119,25 @@ Symbolic links are never followed: a link is skipped and reported, so upload the
       const code = (err as NodeJS.ErrnoException).code;
       if (code === "ELOOP") return { error: notFollowed(srcRel) };
       if (code === "ENOTREG") return { error: `Error: "${srcRel}" is not a regular file` };
-      return { error: boundedReadError(err, labels) };
+      return { error: boundedReadError(err, labels, srcRel) };
     }
     if (typeof content === "string") return { error: content };
 
-    const existed = await fs
-      .access(resolved.absPath)
-      .then(() => true)
-      .catch(() => false);
-
+    // The drive is reached without following a link too; a link at the destination is replaced.
     try {
-      await fs.mkdir(path.dirname(resolved.absPath), { recursive: true });
-      await fs.writeFile(resolved.absPath, content);
+      const existed = await statEntry(resolved.driveDir, resolved.relPath).then(
+        () => true,
+        (err: unknown) => {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw err;
+        },
+      );
+      await writeFile(resolved.driveDir, resolved.relPath, content);
+      return { bytes: content.length, relPath: resolved.relPath, existed };
     } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ELOOP") return { error: `Error: destination runs through a symbolic link: ${resolved.relPath}` };
       return { error: toolError(err) };
     }
-    return { bytes: content.length, relPath: resolved.relPath, existed };
   }
 }

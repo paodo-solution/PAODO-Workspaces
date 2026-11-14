@@ -27,7 +27,7 @@ Use this for a quick look. To get an editable copy in your workspace, use drive_
     if (!resolved.relPath) return "Error: a file path within the drive is required";
 
     // Same ceiling as file_read, but refuses instead of truncating: there's no offset/limit to resume with.
-    const buf = await readFileBounded(resolved.absPath, MAX_FILE_READ_BYTES, {
+    const buf = await readFileBounded(resolved.driveDir, resolved.relPath, MAX_FILE_READ_BYTES, {
       missing: `Error: file not found in drive "${drive_name}"`,
       isDirectory: `Error: "${filePath}" is a directory, not a file`,
       advice: `Use drive_download to copy it into your workspace, then file_read with offset/limit to page through it.`,

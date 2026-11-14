@@ -43,7 +43,7 @@ export async function listEntries(
 ): Promise<Listing> {
   const relPath = requireDirPath(pathValue);
   // lstat: a link is named as one rather than listed as whatever it points at.
-  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath));
+  const stat = await fileSystemCall(relPath || "The root", () => statEntry(rootDir, relPath), "read");
   if (stat.isSymbolicLink()) {
     throw new AppError("INVALID_REQUEST", `${relPath} is a symbolic link; the app does not follow links`, {
       field: "path",
@@ -51,14 +51,17 @@ export async function listEntries(
   }
   // A path naming a file is one entry, so there is nothing a ceiling could cut.
   const { nodes, truncated } = stat.isDirectory()
-    ? await fileSystemCall(relPath || "The root", () =>
-        buildTree(rootDir, {
-          maxDepth: options.maxDepth,
-          maxEntries: options.maxEntries,
-          startPath: relPath,
-          basePath: relPath,
-          countFiles: options.countFiles,
-        }),
+    ? await fileSystemCall(
+        relPath || "The root",
+        () =>
+          buildTree(rootDir, {
+            maxDepth: options.maxDepth,
+            maxEntries: options.maxEntries,
+            startPath: relPath,
+            basePath: relPath,
+            countFiles: options.countFiles,
+          }),
+        "read",
       )
     : { nodes: [{ name: path.posix.basename(relPath), type: "file" as const, path: relPath }], truncated: false };
   // After the cut, so measuring costs a read per entry the caller will actually be shown rather than

@@ -42,7 +42,7 @@ async function classifyBuffer(bytes: Buffer): Promise<ClassifiedFile> {
 // Read one file and classify it as text, image or binary. Always returns the bytes as well, since the
 // file has been read either way and a raw-byte response would otherwise read it twice.
 export async function readFileEntry(rootDir: string, relPath: string): Promise<ClassifiedFile> {
-  const bytes = await fileSystemCall(relPath, () => readFile(rootDir, relPath));
+  const bytes = await fileSystemCall(relPath, () => readFile(rootDir, relPath), "read");
   return classifyBuffer(bytes);
 }
 

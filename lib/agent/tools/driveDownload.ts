@@ -4,9 +4,8 @@
 import { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import path from "path";
-import fs from "fs/promises";
 import { normalizeRelpath } from "../pathUtils";
-import { writeFile } from "@/lib/files/rootedFs";
+import { statEntry, writeFile } from "@/lib/files/rootedFs";
 import {
   resolveDrivePath,
   readFileBounded,
@@ -43,15 +42,17 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
 
     let stat;
     try {
-      stat = await fs.stat(resolved.absPath);
+      stat = await statEntry(resolved.driveDir, resolved.relPath);
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return `Error: path not found in drive "${drive_name}"`;
-      return toolError(err);
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return `Error: path not found in drive "${drive_name}"`;
+      return code === "ELOOP" ? `Error: symbolic link not followed: ${filePath}` : toolError(err);
     }
+    if (stat.isSymbolicLink()) return `Error: symbolic link not followed: ${filePath}`;
 
     if (stat.isDirectory()) return this.downloadFolder(resolved);
 
-    const put = await this.putFile(resolved.absPath, resolved.drive.name, resolved.relPath);
+    const put = await this.putFile(resolved.driveDir, resolved.drive.name, resolved.relPath);
     if ("error" in put) return put.error;
     return `Downloaded ${filePath} from drive "${drive_name}" to ${put.dest} (${put.bytes} bytes)`;
   }
@@ -65,7 +66,7 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
     const skipped: string[] = [];
     for (const rel of files) {
       const driveRel = resolved.relPath ? path.posix.join(resolved.relPath, rel) : rel;
-      const put = await this.putFile(path.join(resolved.absPath, rel), resolved.drive.name, driveRel);
+      const put = await this.putFile(resolved.driveDir, resolved.drive.name, driveRel);
       if ("error" in put) {
         skipped.push(`${rel} (${compactError(put.error)})`);
         continue;
@@ -78,11 +79,11 @@ A folder is downloaded recursively, preserving its structure. Use this when you 
   }
 
   private async putFile(
-    srcAbs: string,
+    driveDir: string,
     driveName: string,
     relPath: string,
   ): Promise<{ bytes: number; dest: string } | { error: string }> {
-    const content = await readFileBounded(srcAbs, MAX_DRIVE_TRANSFER_BYTES, {
+    const content = await readFileBounded(driveDir, relPath, MAX_DRIVE_TRANSFER_BYTES, {
       missing: `Error: file not found in drive "${driveName}"`,
       isDirectory: `Error: "${relPath}" is a directory, not a file`,
       advice: `Split it on the drive first (e.g. split -b 40m), or work with it where it is rather than copying it in.`,

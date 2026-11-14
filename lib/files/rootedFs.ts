@@ -14,10 +14,13 @@ const CREATE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL |
 // the joined path still refuses links at every step, but is not race-free.
 const PINNED = process.platform === "linux";
 
+// A walk holds one descriptor per level it descends, so depth is capped rather than left to the host's limit.
+export const MAX_DIR_DEPTH = 100;
+
 /** Errors carry an errno-style `code` and the caller's relative path, never the host path. */
 export class RootedFsError extends Error {
   constructor(
-    readonly code: "ELOOP" | "EISDIR" | "ENOTREG" | "EINVAL",
+    readonly code: "ELOOP" | "EISDIR" | "ENOTREG" | "EINVAL" | "ENAMETOOLONG",
     readonly relPath: string,
     message: string,
   ) {
@@ -28,6 +31,10 @@ export class RootedFsError extends Error {
 
 function symlinkError(relPath: string): RootedFsError {
   return new RootedFsError("ELOOP", relPath, `${relPath} is a symbolic link; the app does not follow links`);
+}
+
+function tooDeepError(relPath: string): RootedFsError {
+  return new RootedFsError("ENAMETOOLONG", relPath, `${relPath} is nested more than ${MAX_DIR_DEPTH} levels deep`);
 }
 
 function codeOf(err: unknown): string | undefined {
@@ -80,8 +87,13 @@ export class RootedDir {
     return joinRel(this.relPath, name);
   }
 
+  private depth(): number {
+    return this.relPath === "" ? 0 : this.relPath.split("/").length;
+  }
+
   async openDir(name: string): Promise<RootedDir> {
     const target = this.childPath(name);
+    if (this.depth() >= MAX_DIR_DEPTH) throw tooDeepError(this.childRel(name));
     try {
       return new RootedDir(await fs.open(target, DIR_FLAGS), path.join(this.hostPath, name), this.childRel(name));
     } catch (err) {
@@ -101,7 +113,7 @@ export class RootedDir {
   }
 
   /** Never follows: a link reports as a link. */
-  lstat(name: string): Promise<Stats> {
+  async lstat(name: string): Promise<Stats> {
     return fs.lstat(this.childPath(name));
   }
 
@@ -148,7 +160,7 @@ export class RootedDir {
   }
 
   /** Creates the file, failing with EEXIST if the name is taken by anything, a link included. */
-  createFile(name: string, mode = 0o644): Promise<fs.FileHandle> {
+  async createFile(name: string, mode = 0o644): Promise<fs.FileHandle> {
     return fs.open(this.childPath(name), CREATE_FLAGS, mode);
   }
 
@@ -163,6 +175,11 @@ export class RootedDir {
       if (codeOf(err) !== "EEXIST") throw err;
     });
     return this.openDir(name);
+  }
+
+  /** Removes one child that is not a directory. A link is unlinked, not its target. */
+  async unlink(name: string): Promise<void> {
+    await fs.unlink(this.childPath(name));
   }
 
   /** Removes a child of any kind. A link is unlinked, never descended. */
@@ -206,6 +223,11 @@ async function openAt(rootDir: string, segments: string[], create: boolean): Pro
   }
 }
 
+/** Opens the directory at `relPath` ("" for the root) for repeated use. The caller closes it. */
+export async function openDir(rootDir: string, relPath: string): Promise<RootedDir> {
+  return openAt(rootDir, segmentsOf(relPath), false);
+}
+
 /** Runs `fn` on the directory at `relPath` ("" for the root). */
 export async function withDir<T>(rootDir: string, relPath: string, fn: (dir: RootedDir) => Promise<T>): Promise<T> {
   const dir = await openAt(rootDir, segmentsOf(relPath), false);
@@ -236,7 +258,7 @@ export async function withParent<T>(
 }
 
 /** lstat of the entry at `relPath`; the root's own stat for "". */
-export function statEntry(rootDir: string, relPath: string): Promise<Stats> {
+export async function statEntry(rootDir: string, relPath: string): Promise<Stats> {
   if (segmentsOf(relPath).length === 0) return withDir(rootDir, "", (dir) => dir.stat());
   return withParent(rootDir, relPath, (parent, name) => parent.lstat(name));
 }
@@ -302,7 +324,14 @@ export async function createPendingFile(rootDir: string, relPath: string, mode =
   };
   return {
     handle,
-    commit: () => finish(() => fs.rename(parent.childPath(tmp), parent.childPath(name))),
+    // A failed rename settles the file too, so the temp file is removed here rather than by a later discard.
+    commit: () =>
+      finish(() =>
+        fs.rename(parent.childPath(tmp), parent.childPath(name)).catch(async (err) => {
+          await fs.rm(parent.childPath(tmp), { force: true }).catch(() => undefined);
+          throw err;
+        }),
+      ),
     discard: () => finish(() => fs.rm(parent.childPath(tmp), { force: true })),
   };
 }
@@ -346,7 +375,7 @@ export function removeEntry(rootDir: string, relPath: string): Promise<void> {
 }
 
 export function unlinkEntry(rootDir: string, relPath: string): Promise<void> {
-  return withParent(rootDir, relPath, (parent, name) => fs.unlink(parent.childPath(name)));
+  return withParent(rootDir, relPath, (parent, name) => parent.unlink(name));
 }
 
 // Both parents are pinned for the one syscall; neither end follows a final link.

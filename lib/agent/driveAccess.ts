@@ -1,19 +1,18 @@
-// Helpers for drive_* tools: resolves (drive_name, path) to a contained host path, only for drives connected
-// to this workspace. Host-side only.
+// Helpers for drive_* tools: resolves (drive_name, path) to a drive root and a relative path, only for
+// drives connected to this workspace. Host-side only; the disk is reached through lib/files/rootedFs.ts.
 import path from "path";
-import fs from "fs/promises";
+import type { FileHandle } from "fs/promises";
 import { normalizeRelpath } from "./pathUtils";
 import { toolError } from "./toolUtils";
 import { formatOutputBytes } from "@/lib/infra/limits";
 import { resolveDriveDir, type Drive } from "@/lib/drives/store";
+import { openFile } from "@/lib/files/rootedFs";
 import { buildTree, type TreeNode } from "@/lib/files/tree";
 
 export interface ResolvedDrivePath {
   drive: Drive;
   driveDir: string;
-  /** Absolute host path of the target inside the drive (equals driveDir when relPath is empty). */
-  absPath: string;
-  /** The normalized relative path within the drive (may be ""). */
+  /** The normalized relative path within the drive ("" for the drive root). */
   relPath: string;
 }
 
@@ -31,7 +30,6 @@ export function resolveDrivePath(workspaceId: string, driveName: string, relPath
   return {
     drive: resolved.drive,
     driveDir: resolved.dir,
-    absPath: rel ? path.join(resolved.dir, rel) : resolved.dir,
     relPath: rel,
   };
 }
@@ -39,16 +37,17 @@ export function resolveDrivePath(workspaceId: string, driveName: string, relPath
 // Host-side reads skip every container limit, so this bounds them; it refuses rather than truncates,
 // since a half-copied file reports success. The read is capped too, in case the file grows after stat.
 export async function readFileBounded(
-  absPath: string,
+  rootDir: string,
+  relPath: string,
   limit: number,
   labels: BoundedReadLabels,
 ): Promise<Buffer | string> {
   let handle;
   try {
-    handle = await fs.open(absPath, "r");
-    return await readHandleBounded(handle, path.basename(absPath), limit, labels);
+    handle = await openFile(rootDir, relPath);
+    return await readHandleBounded(handle, path.posix.basename(relPath), limit, labels);
   } catch (err: unknown) {
-    return boundedReadError(err, labels);
+    return boundedReadError(err, labels, relPath);
   } finally {
     await handle?.close();
   }
@@ -60,16 +59,18 @@ export interface BoundedReadLabels {
   advice: string;
 }
 
-export function boundedReadError(err: unknown, labels: BoundedReadLabels): string {
+export function boundedReadError(err: unknown, labels: BoundedReadLabels, relPath: string): string {
   const e = err as NodeJS.ErrnoException;
   if (e.code === "ENOENT") return labels.missing;
   if (e.code === "EISDIR") return labels.isDirectory;
+  if (e.code === "ELOOP") return `Error: symbolic link not followed: ${relPath}`;
+  if (e.code === "ENOTREG") return `Error: "${relPath}" is not a regular file`;
   return toolError(e);
 }
 
 /** The bounded read on an already-open file, for a caller that opened it without following links. */
 export async function readHandleBounded(
-  handle: fs.FileHandle,
+  handle: FileHandle,
   name: string,
   limit: number,
   labels: BoundedReadLabels,

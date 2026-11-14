@@ -19,7 +19,8 @@ export function normalizeRelpath(filePath: string): string | null {
   const normalized = path.posix.normalize(filePath);
   // "" means the caller named the workspace root, which is a directory, never a file.
   if (normalized.startsWith("/")) return trimContainerRoot(normalized) || null;
-  return normalized.startsWith("..") ? null : normalized;
+  // A trailing slash is dropped: `dir/` names the same entry as `dir`, and rootedFs refuses an empty segment.
+  return normalized.startsWith("..") ? null : normalized.replace(/\/+$/, "");
 }
 
 export function normalizeDirPath(dirPath: string | undefined): string | null {

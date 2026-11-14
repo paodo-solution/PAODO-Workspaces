@@ -4,7 +4,7 @@
 import path from "path";
 import type JSZip from "jszip";
 import { readTransferEntries } from "./entries";
-import { openFileLimiter, type Semaphore } from "./fdLimit";
+import { Fanout, MAX_CONCURRENT_WALKS, openFileLimiter, type Semaphore } from "./fdLimit";
 import { RootedFsError, readFile, statEntry, withDir, type RootedDir } from "./rootedFs";
 import { relativeEntryPath } from "./relpath";
 
@@ -12,39 +12,61 @@ import { relativeEntryPath } from "./relpath";
 // following one would archive whatever it points at.
 async function addDirToZip(
   zip: JSZip,
-  sem: Semaphore,
+  limits: ZipLimits,
   dir: RootedDir,
   zipPath: string,
   skip: (entryPath: string, err: unknown) => void,
 ) {
-  const entries = await readTransferEntries(dir, sem);
+  const entries = await readTransferEntries(dir, limits.sem);
   // JSZip only creates folders that hold files, so add empty directories explicitly.
   if (entries.length === 0) {
     zip.folder(zipPath);
     return;
   }
-  for (const entry of entries) {
-    const entryZipPath = path.join(zipPath, entry.name);
-    try {
-      if (entry.isDirectory()) {
+  const files = entries.filter((entry) => !entry.isDirectory());
+  // Read concurrently under the descriptor budget, then added in readdir order.
+  const contents = await Promise.all(
+    files.map((entry) =>
+      limits.sem.run(async () => {
+        try {
+          const handle = await dir.openFile(entry.name);
+          try {
+            return await handle.readFile();
+          } finally {
+            await handle.close();
+          }
+        } catch (err) {
+          skip(dir.childRel(entry.name), err);
+          return null;
+        }
+      }),
+    ),
+  );
+  files.forEach((entry, i) => {
+    const bytes = contents[i];
+    if (bytes) zip.file(path.join(zipPath, entry.name), bytes);
+  });
+
+  await limits.fanout.map(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      try {
         const child = await dir.openDir(entry.name);
         try {
-          await addDirToZip(zip, sem, child, entryZipPath, skip);
+          await addDirToZip(zip, limits, child, path.join(zipPath, entry.name), skip);
         } finally {
           await child.close();
         }
-        continue;
+      } catch (err) {
+        skip(dir.childRel(entry.name), err);
       }
-      const handle = await dir.openFile(entry.name);
-      try {
-        zip.file(entryZipPath, await handle.readFile());
-      } finally {
-        await handle.close();
-      }
-    } catch (err) {
-      skip(dir.childRel(entry.name), err);
-    }
-  }
+    },
+  );
+}
+
+interface ZipLimits {
+  sem: Semaphore;
+  fanout: Fanout;
 }
 
 // The deepest shared parent as "dir/" ("" if none), compared by segment so `src/app` and
@@ -79,7 +101,7 @@ export async function addSelectedToZip(
   rootFolder?: string,
 ) {
   const target = rootFolder ? (zip.folder(rootFolder) ?? zip) : zip;
-  const sem = openFileLimiter();
+  const limits: ZipLimits = { sem: openFileLimiter(), fanout: new Fanout(MAX_CONCURRENT_WALKS) };
 
   // Validate up front: the shared prefix has to be known before the first entry is named.
   const selected: { relPath: string; entryPath: string }[] = [];
@@ -99,9 +121,9 @@ export async function addSelectedToZip(
         const stat = await statEntry(baseDir, entryPath);
         if (stat.isSymbolicLink()) throw new RootedFsError("ELOOP", entryPath, `${entryPath} is a symbolic link`);
         if (stat.isDirectory()) {
-          await withDir(baseDir, entryPath, (dir) => addDirToZip(target, sem, dir, zipPath, onSkip));
+          await withDir(baseDir, entryPath, (dir) => addDirToZip(target, limits, dir, zipPath, onSkip));
         } else {
-          target.file(zipPath, await sem.run(() => readFile(baseDir, entryPath)));
+          target.file(zipPath, await limits.sem.run(() => readFile(baseDir, entryPath)));
         }
       } catch (err) {
         onSkip(relPath, err);

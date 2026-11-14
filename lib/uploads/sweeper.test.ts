@@ -59,6 +59,21 @@ describe("upload sweeper", () => {
     expect(fs.existsSync(path.join(ROOT, "ws/notes.md"))).toBe(true);
   });
 
+  it("does not sweep through a symlinked directory, which could point outside the workspaces", async () => {
+    const outside = fs.mkdtempSync(path.join(path.dirname(ROOT), "upload-sweep-outside-"));
+    const part = path.join(outside, "big.bin.a1b2c3d4e5f6.part");
+    fs.writeFileSync(part, "data");
+    const past = new Date(Date.now() - 3 * HOUR);
+    fs.utimesSync(part, past, past);
+    fs.mkdirSync(path.join(ROOT, "ws"), { recursive: true });
+    fs.symlinkSync(outside, path.join(ROOT, "ws/link"));
+
+    await _tick();
+
+    expect(fs.existsSync(part)).toBe(true);
+    fs.rmSync(outside, { recursive: true, force: true });
+  });
+
   it("does not descend into .git even if it holds a stale-looking .part name", async () => {
     write("ws/.git/objects/whatever.a1b2c3d4e5f6.part", 3 * HOUR);
 
