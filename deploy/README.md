@@ -93,9 +93,8 @@ Compose keeps six named volumes deliberately separate:
 - `workspace-secret-key` holds the private key that opens them, mounted only by `credproxy` and `vault-init`.
 
 `proxy-ca` is mounted at `/var/lib/paodo/proxy-ca`, outside `workspaces`: writable in `app`, read-only in
-`credproxy`. The one-shot `vault-init` runs before both: it creates the key pair, migrates the former
-single-key vault (then deletes its `master.key`), and stops the deploy if vault and key don't match.
-Upgrade through this release; the empty `data/.proxy-ca` mount point it leaves can be removed.
+`credproxy`. The one-shot `vault-init` runs before both: it creates the key pair and an empty vault on
+the first `docker compose up`, and stops the deploy if the vault and the key don't match.
 
 Back up each vault separately from its matching key when credentials must survive a restore. Anyone
 who obtains a matching pair can recover that credential class. A credential-free handoff transfers
