@@ -1,5 +1,5 @@
 // Compose and the path modules must agree: an unset override silently resolves under /app. Also pins that
-// credproxy, the one container a sandbox can reach, inherits no .env and cannot see the provider vault.
+// credproxy inherits no .env and cannot see the provider vault, and that the app never holds the secret key.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -68,6 +68,27 @@ describe("deployment env contract", () => {
       expect(block).toMatch(/^ {6}- PAODO_PROXY_CA_ROOT=\/var\/lib\/paodo\/proxy-ca$/m);
       expect(block).toMatch(/^ {6}- proxy-ca:\/var\/lib\/paodo\/proxy-ca(:ro)?$/m);
       expect(block).not.toMatch(/\/var\/lib\/paodo\/data\//);
+    }
+  });
+
+  it("keeps the workspace-secret private key out of the app, in credproxy and vault-init only", () => {
+    const app = serviceBlock("app");
+    expect(declaredEnvNames(app)).not.toContain("PAODO_WORKSPACE_SECRET_KEY_FILE");
+    expect(app).not.toMatch(/workspace-secret-key/);
+    for (const service of ["credproxy", "vault-init"]) {
+      expect(serviceBlock(service)).toMatch(
+        /^ {6}- PAODO_WORKSPACE_SECRET_KEY_FILE=\/var\/lib\/paodo\/workspace-secret-key\//m,
+      );
+    }
+    expect(serviceBlock("credproxy")).toMatch(
+      /^ {6}- workspace-secret-key:\/var\/lib\/paodo\/workspace-secret-key:ro$/m,
+    );
+  });
+
+  it("runs vault-init with no network before both services that use the vault", () => {
+    expect(serviceBlock("vault-init")).toMatch(/^ {4}network_mode: none$/m);
+    for (const service of ["app", "credproxy"]) {
+      expect(serviceBlock(service)).toMatch(/^ {6}vault-init:\n {8}condition: service_completed_successfully$/m);
     }
   });
 

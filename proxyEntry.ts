@@ -8,11 +8,11 @@ import { ensureCA } from "./lib/infra/proxy/proxyCA";
 import { PROXY_CA_ROOT } from "./lib/infra/proxy/proxyCaPaths";
 import {
   assertSecretStoreAvailable,
-  getWorkspaceRules,
   listSecretWorkspaceIds,
   reloadSecretStore,
   SECRET_STORE_FILE,
 } from "./lib/infra/security/workspaceSecretStore";
+import { getWorkspaceRules, loadSecretPrivateKey } from "./lib/infra/proxy/workspaceSecretRules";
 import { reloadInternetAccessPolicy, INTERNET_ACCESS_POLICY_FILE } from "./lib/infra/proxy/internetAccessPolicy";
 
 const log = createLogger("credproxyEntry");
@@ -27,7 +27,7 @@ function fatal(reason: string, err: unknown): never {
 function fatalSecretStore(err: unknown): never {
   log.fatal(
     { event: "startup_secret_vault_unavailable", outcome: "process_exit", err, filePath: SECRET_STORE_FILE },
-    "existing encrypted workspace-secret vault could not be read safely — refusing to start credential proxy",
+    "workspace-secret vault or its private key could not be read safely — refusing to start credential proxy",
   );
   exitAfterLogs(1);
 }
@@ -101,6 +101,7 @@ function applyAllRules(proxy: CredentialProxy, previousIds: Set<string>): Set<st
 async function main(): Promise<void> {
   try {
     assertSecretStoreAvailable();
+    loadSecretPrivateKey();
   } catch (err) {
     fatalSecretStore(err);
   }

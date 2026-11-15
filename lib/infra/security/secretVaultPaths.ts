@@ -1,12 +1,12 @@
-// Provider keys and workspace secrets each get their own vault and master key outside workspace data, so the
-// proxy can never decrypt provider keys.
+// The proxy CA, the provider vault and key, and the workspace-secret vault each sit outside workspace data. The
+// workspace-secret private key is absent here: only credproxy and vault-init hold it.
 import path from "path";
 import { PROXY_CA_ROOT } from "../proxy/proxyCaPaths";
 import { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
-import { WORKSPACE_SECRET_VAULT_KEY_FILE, WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
+import { WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
 
 export { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
-export { WORKSPACE_SECRET_VAULT_KEY_FILE, WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
+export { WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
 
 function contains(parent: string, child: string): boolean {
   const relative = path.relative(path.resolve(parent), path.resolve(child));
@@ -25,7 +25,6 @@ export function assertSecretStorageSeparated(workspacesRoot: string): void {
     { name: "provider vault", root: PROVIDER_VAULT_ROOT },
     { name: "provider key", root: path.dirname(PROVIDER_VAULT_KEY_FILE) },
     { name: "workspace-secret vault", root: WORKSPACE_SECRET_VAULT_ROOT },
-    { name: "workspace-secret key", root: path.dirname(WORKSPACE_SECRET_VAULT_KEY_FILE) },
   ];
 
   for (let i = 0; i < boundaries.length; i++) {

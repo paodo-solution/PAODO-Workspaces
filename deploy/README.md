@@ -89,8 +89,15 @@ Compose keeps six named volumes deliberately separate:
 - `proxy-ca` contains the credential proxy's CA, its HMAC key and the internet-access policy;
 - `provider-vault` contains encrypted LLM provider keys;
 - `provider-key` unlocks only the provider vault;
-- `workspace-secret-vault` contains encrypted third-party secrets intended for proxy injection;
-- `workspace-secret-key` unlocks only the workspace-secret vault.
+- `workspace-secret-vault` contains third-party secrets intended for proxy injection, each sealed to the
+  credential proxy's public key;
+- `workspace-secret-key` holds the matching private key, the only key that opens them.
+
+`app` mounts the workspace-secret vault but never `workspace-secret-key`: it seals new secrets and
+lists their names and hosts, but cannot open one. Only `credproxy` (read-only) and the one-shot
+`vault-init` job mount that key. `vault-init` runs before `app` and `credproxy` on every
+`docker compose up`. It creates the key pair and an empty vault on a first deployment, and it stops
+the deploy if the vault and the key don't match.
 
 `proxy-ca` is mounted at `/var/lib/paodo/proxy-ca`, outside the workspace data root: writable in `app`,
 read-only in `credproxy`, which gets no view of `workspaces` at all. The app refuses to start if it is
@@ -99,6 +106,13 @@ configured inside the data root.
 Upgrading from a release that mounted it at `/var/lib/paodo/data/.proxy-ca`: the volume is the same,
 so nothing moves. `docker compose up -d --build` remounts it, and the empty `.proxy-ca` mount point
 left inside `workspaces` can be removed.
+
+Upgrading from a release where the app held the workspace-secret key: `vault-init` migrates the
+existing vault on the first `docker compose up -d --build`. It seals every secret to the new key, then
+deletes the former `master.key`. Clients re-enter nothing, and no copy of the former vault is kept.
+That migration ships for a limited time, so upgrade through this release rather than skipping it. If
+`vault-init` exits non-zero, `docker compose logs vault-init` says why. If the secrets can't be
+migrated, empty both workspace-secret volumes and re-enter the secrets.
 
 Back up each vault separately from its matching key when credentials must survive a restore. Anyone
 who obtains a matching pair can recover that credential class. A credential-free handoff transfers

@@ -31,6 +31,7 @@ deploy
 .paodo-provider-key
 .paodo-workspace-secret-vault
 .paodo-workspace-secret-key
+.paodo-proxy-ca
 # Never send unused legacy credential artifacts to either Docker build context.
 .paodo-secret-vault
 .paodo-secret-key
