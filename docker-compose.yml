@@ -39,26 +39,27 @@ services:
       - DOCKER_HOST=tcp://socket-proxy:2375
       - WORKSPACES_VOLUME_NAME=paodo_ws_workspaces
       - WORKSPACES_ROOT=/var/lib/paodo/data
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
       - PAODO_PROVIDER_KEY_FILE=/var/lib/paodo/provider-key/master.key
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
-      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/master.key
     # State lives under /var/lib/paodo, never under /app: the dev overlay bind-mounts the working
     # tree at /app, and Docker creates a mount point for every volume — nested here, each one would
     # appear as an empty directory in the maintainer's repository.
     volumes:
       - workspaces:/var/lib/paodo/data
-      # Its own volume, nested inside the workspaces root, so credproxy can mount just this directory
-      # without a subpath into `workspaces` — Docker requires a subpath to pre-exist, which it does
-      # not on a first deployment. The app is the only writer (ensureCA).
-      - proxy-ca:/var/lib/paodo/data/.proxy-ca
+      # Outside the workspaces root, so no bug in serving workspace files can reach the CA or HMAC key.
+      # The app is the only writer (ensureCA); credproxy mounts it read-only.
+      - proxy-ca:/var/lib/paodo/proxy-ca
       - provider-vault:/var/lib/paodo/provider-vault
       - provider-key:/var/lib/paodo/provider-key
+      # Seals new workspace secrets to the proxy's public key; never mounts the private key that opens them.
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
-      - workspace-secret-key:/var/lib/paodo/workspace-secret-key
     depends_on:
       socket-proxy:
         condition: service_started
+      vault-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     # Host-level wall for PAODO's control-plane process. Change these together with the agent and
     # workspace limits to create a repeatable VPS test profile; `docker compose up -d` reapplies it.
@@ -96,22 +97,24 @@ services:
     # workspace secrets live in the encrypted vault below; its key is a file on a different mount.
     # Provider credentials live in two app-only volumes this service cannot access.
     environment:
-      - WORKSPACES_ROOT=/var/lib/paodo/data
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
-      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/master.key
+      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/private.pem
       - CREDENTIAL_PROXY_PORT=9998
       # Pin explicitly: without NODE_ENV the logger treats the sidecar as dev and logs at debug.
       - NODE_ENV=production
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
-      # Only .proxy-ca (CA, HMAC key, internet-access policy) — NOT the whole workspaces volume,
-      # which also holds the conversation database, the registry and every workspace's files. This
-      # is the one container the untrusted sandbox can reach, so it gets the two files it reads.
-      - proxy-ca:/var/lib/paodo/data/.proxy-ca:ro
+      # Never the workspaces volume: this is the one container the untrusted sandbox can reach, so it
+      # gets only proxy-ca (CA, HMAC key, internet-access policy) and the workspace-secret vault.
+      - proxy-ca:/var/lib/paodo/proxy-ca:ro
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault:ro
       - workspace-secret-key:/var/lib/paodo/workspace-secret-key:ro
     depends_on:
-      - app
+      app:
+        condition: service_started
+      vault-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -123,6 +126,30 @@ services:
     pids_limit: 512
     networks:
       - credproxy_net
+    logging: *default-logging
+
+  # One-shot, before app and credproxy on every `up`: creates the workspace-secret key pair and vault, migrates
+  # the former single-key vault, and exits non-zero (stopping the deploy) if the vault and key don't match.
+  vault-init:
+    # The image credproxy builds; never pulled, since it exists only locally once credproxy is built.
+    image: paodo_ws_credproxy
+    pull_policy: never
+    command: ["vaultInitEntry.cjs"]
+    environment:
+      - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
+      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/private.pem
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
+      - workspace-secret-key:/var/lib/paodo/workspace-secret-key
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     logging: *default-logging
 
 volumes:

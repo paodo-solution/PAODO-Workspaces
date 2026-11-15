@@ -2,6 +2,19 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+// Opening a workspace secret needs the private key, which only credproxy and vault-init mount. Keeping these
+// modules out of every app import graph keeps the Next.js bundle unable to open one.
+const SECRET_OPENING_BAN = {
+  group: [
+    "**/secretOpen",
+    "**/workspaceSecretRules",
+    "**/workspaceSecretKeyPaths",
+    "**/legacyVaultV1",
+    "**/workspaceSecretVaultInit",
+  ],
+  message: "Only credproxy and vault-init may open workspace secrets or touch their private key.",
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -35,6 +48,20 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // Listed before the rootedFs block, which restates this ban since a later block replaces the whole rule.
+    files: ["**/*.ts", "**/*.tsx"],
+    ignores: [
+      "**/*.test.ts",
+      "proxyEntry.ts",
+      "vaultInitEntry.ts",
+      "lib/infra/proxy/workspaceSecretRules.ts",
+      "lib/infra/security/workspaceSecretVaultInit.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [SECRET_OPENING_BAN] }],
+    },
+  },
+  {
     // These reach agent-writable trees only through lib/files/rootedFs.ts, which never follows a link.
     files: [
       "lib/operations/files/content.ts",
@@ -58,6 +85,7 @@ const eslintConfig = defineConfig([
             message: "Use lib/files/rootedFs.ts: a path opened by name here can be redirected by a symlink.",
             allowTypeImports: true,
           })),
+          patterns: [SECRET_OPENING_BAN],
         },
       ],
     },

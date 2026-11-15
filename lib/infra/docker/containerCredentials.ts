@@ -8,7 +8,7 @@ import {
   selectGithubTokenSecret,
   RESERVED_SECRET_NAMES,
 } from "../security/workspaceSecretStore";
-import { WORKSPACES_ROOT } from "../paths";
+import { PROXY_CA_ROOT } from "../proxy/proxyCaPaths";
 import { envArgs, type IDockerClient } from "./dockerClient";
 import { RELAY_PROXY_URL } from "./proxyRelay";
 import { createLogger } from "../logger";
@@ -18,9 +18,9 @@ const log = createLogger("container");
 // System roots + proxy CA, built by installProxyCA, for the trust vars that replace the default store.
 const COMBINED_CA_BUNDLE = "/etc/proxy-ca-bundle.crt";
 
-// Recomputed from WORKSPACES_ROOT rather than read off proxyCA's module state, which each Next.js
+// Recomputed from PROXY_CA_ROOT rather than read off proxyCA's module state, which each Next.js
 // bundle instantiates separately — this stays correct in a bundle that never ran ensureCA.
-const CA_CERT_PATH = path.join(WORKSPACES_ROOT, ".proxy-ca", "ca.crt");
+const CA_CERT_PATH = path.join(PROXY_CA_ROOT, "ca.crt");
 
 const LOOPBACK = "localhost,127.0.0.1,0.0.0.0,::1";
 

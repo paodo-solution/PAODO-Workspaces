@@ -2,7 +2,7 @@
 // or restricted to exact hosts. On disk because the sidecar is a separate process: the app writes, the sidecar only reloads.
 import path from "path";
 import { readFileSync } from "fs";
-import { WORKSPACES_ROOT } from "../paths";
+import { PROXY_CA_ROOT } from "./proxyCaPaths";
 import { atomicSaveJson, readJson } from "../jsonPersist";
 import { globalSingleton } from "../globalSingleton";
 import { createLogger } from "../logger";
@@ -10,9 +10,8 @@ import type { DomainAllowlist } from "../../workspace/types";
 import { enforcedDomains, isHostAllowed } from "../../workspace/domain";
 
 const log = createLogger("internetAccessPolicy");
-// Lives inside .proxy-ca/ so the sidecar can mount that one directory rather than the whole
-// workspaces volume, which also holds the conversation database and every workspace's files.
-const FILE = path.join(WORKSPACES_ROOT, ".proxy-ca", "internet-access.json");
+// Beside the CA so the sidecar mounts that one small directory, never the workspaces volume.
+const FILE = path.join(PROXY_CA_ROOT, "internet-access.json");
 export const INTERNET_ACCESS_POLICY_FILE = FILE;
 
 // wsId -> false (internet off) or the hosts it may reach (restricted). Sparse: an absent key means open,

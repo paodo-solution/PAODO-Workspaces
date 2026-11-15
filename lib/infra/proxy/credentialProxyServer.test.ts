@@ -12,13 +12,13 @@ import { tmpdir } from "os";
 import path from "path";
 import forge from "node-forge";
 
-// credentialProxy.ts persists the internet-access policy under WORKSPACES_ROOT, so redirect it to a temp dir
-// before the imports run (as credentialStore.test.ts does).
+// credentialProxy.ts persists the internet-access policy under PAODO_PROXY_CA_ROOT, so redirect it to a temp
+// dir before the imports run (as credentialStore.test.ts does).
 vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
   const path = require("path");
-  process.env.WORKSPACES_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "credproxy-server-test-"));
+  process.env.PAODO_PROXY_CA_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "credproxy-server-test-"));
 });
 
 import { CredentialProxy } from "./credentialProxy";

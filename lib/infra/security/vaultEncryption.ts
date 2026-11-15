@@ -53,9 +53,11 @@ export function getVaultKey(keyFile: string, cacheSlot: string, logContext: stri
   return key;
 }
 
-export function encryptWithKey(plaintext: string, key: Buffer): EncEnvelope {
+// `aad` is authenticated but not encrypted: decryption fails unless the caller presents the same bytes.
+export function encryptWithKey(plaintext: string, key: Buffer, aad?: Buffer): EncEnvelope {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
+  if (aad) cipher.setAAD(aad);
   const data = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   return {
     v: 1,
@@ -66,8 +68,9 @@ export function encryptWithKey(plaintext: string, key: Buffer): EncEnvelope {
   };
 }
 
-export function decryptWithKey(envelope: EncEnvelope, key: Buffer): string {
+export function decryptWithKey(envelope: EncEnvelope, key: Buffer, aad?: Buffer): string {
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
+  if (aad) decipher.setAAD(aad);
   decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(envelope.data, "base64")), decipher.final()]).toString("utf8");
 }

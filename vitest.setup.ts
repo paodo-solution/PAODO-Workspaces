@@ -13,4 +13,5 @@ process.env.WORKSPACES_VOLUME_NAME = "paodo_ws_workspaces";
 process.env.PAODO_PROVIDER_VAULT_ROOT = path.join(root, "provider-vault");
 process.env.PAODO_PROVIDER_KEY_FILE = path.join(root, "provider-key", "master.key");
 process.env.PAODO_WORKSPACE_SECRET_VAULT_ROOT = path.join(root, "workspace-secret-vault");
-process.env.PAODO_WORKSPACE_SECRET_KEY_FILE = path.join(root, "workspace-secret-key", "master.key");
+process.env.PAODO_WORKSPACE_SECRET_KEY_FILE = path.join(root, "workspace-secret-key", "private.pem");
+process.env.PAODO_PROXY_CA_ROOT = path.join(root, "proxy-ca");

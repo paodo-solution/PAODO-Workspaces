@@ -36,11 +36,10 @@ RUN apt-get update && \
 # and compose drops every capability, leaving root no CAP_DAC_OVERRIDE to bypass it.
 RUN mkdir -p \
       /var/lib/paodo/data \
-      /var/lib/paodo/data/.proxy-ca \
+      /var/lib/paodo/proxy-ca \
       /var/lib/paodo/provider-vault \
       /var/lib/paodo/provider-key \
-      /var/lib/paodo/workspace-secret-vault \
-      /var/lib/paodo/workspace-secret-key && \
+      /var/lib/paodo/workspace-secret-vault && \
     chown -R node:node /app /var/lib/paodo
 CMD ["npx", "tsx", "server.ts"]
 

@@ -9,7 +9,7 @@ const { ROOT } = vi.hoisted(() => {
   const fs = require("fs");
   const path = require("path");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "internet-access-reconcile-test-"));
-  process.env.WORKSPACES_ROOT = root;
+  process.env.PAODO_PROXY_CA_ROOT = root;
   return { ROOT: root };
 });
 
@@ -26,7 +26,7 @@ afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 const onDisk = () => JSON.parse(fs.readFileSync(INTERNET_ACCESS_POLICY_FILE, "utf-8"));
 
 describe("reconcileInternetAccessPolicy", () => {
-  it("rebuilds a mirror that was lost with the .proxy-ca volume", () => {
+  it("rebuilds a mirror that was lost with the proxy-ca volume", () => {
     fs.rmSync(INTERNET_ACCESS_POLICY_FILE, { force: true });
     reconcileInternetAccessPolicy([
       { id: "ws-off", internetAccess: false },

@@ -13,13 +13,13 @@ Provider keys live in their own encrypted vault, readable only by the app proces
 **Storage** (`lib/infra/security/providerKeyVault.ts`)
 
 - One file, `vault.json` under `PAODO_PROVIDER_VAULT_ROOT`, holding a single AES-256-GCM envelope over `{ version: 1, providerKeys: { <provider>: { value, createdAt } } }`.
-- A 32-byte master key at `PAODO_PROVIDER_KEY_FILE`, generated on first use with mode `0600`. It shares envelope code with the workspace-secret vault (`vaultEncryption.ts`) but never its key or cache slot.
+- A 32-byte master key at `PAODO_PROVIDER_KEY_FILE`, generated on first use with mode `0600`. It shares envelope code (`vaultEncryption.ts`) with the workspace-secret vault, which seals each value to the credential proxy's key instead.
 - Writes persist first, atomically, then update the in-memory copy, so a failed write cannot leave a key that exists only in memory.
 
 **Isolation**
 
 - `provider-vault` and `provider-key` are separate Docker volumes mounted only in the app container. The credential proxy image is built without this code and mounts neither.
-- At startup, `assertSecretStorageSeparated` refuses any layout where workspace data, either vault or either master key share a directory tree.
+- At startup, `assertSecretStorageSeparated` refuses any layout where workspace data, the proxy CA, either vault or the provider key share a directory tree.
 - The backup set never includes vaults or keys.
 
 **Access** (`lib/infra/security/providerKeyStore.ts` is the only module holding values)

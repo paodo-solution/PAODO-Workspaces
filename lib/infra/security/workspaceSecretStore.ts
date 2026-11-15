@@ -1,13 +1,15 @@
-// Per-workspace secret vault (its own key, separate from provider keys). The API returns metadata only; the
-// container gets opaque proxy tokens, swapped for real values on outbound HTTPS.
+// Per-workspace secret vault. Values are sealed to the proxy's key, so this side stores and lists them but
+// never reads one back; the container gets opaque proxy tokens, swapped for real values on outbound HTTPS.
 import { createHash } from "crypto";
 import { normalizeDomain } from "../../workspace/domain";
 import { createAuditLogger } from "../logger";
+import { seal } from "./secretSeal";
 import {
   WORKSPACE_SECRET_VAULT_FILE,
   assertWorkspaceSecretVaultAvailable,
   commitWorkspaceSecrets,
   reloadWorkspaceSecretVault,
+  workspaceSecretRecipient,
   workspaceSecretRecords,
   type VaultWorkspaceSecretEntry,
   type VaultWorkspaceSecrets,
@@ -88,7 +90,8 @@ export function setSecret(wsId: string, name: string, value: string, domains: st
   const next = structuredClone(store);
   if (!next[wsId]) next[wsId] = {};
   const sanitized = sanitizeDomains(domains);
-  next[wsId][name] = { value, createdAt: new Date().toISOString(), domains: sanitized } satisfies SecretEntry;
+  const sealed = seal(value, workspaceSecretRecipient(), { wsId, name, domains: sanitized });
+  next[wsId][name] = { createdAt: new Date().toISOString(), domains: sanitized, sealed } satisfies SecretEntry;
   save(next, { operation: "set_secret", wsId, name });
   audit.info({ wsId, name, event: "workspace_secret_set" }, "secret set");
 }
@@ -120,25 +123,6 @@ export function selectGithubTokenSecret(metas: { name: string; domains: string[]
     candidates.find((n) => /(^|_)(GITHUB|GH)(_|$)/.test(n)) ??
     candidates[0]
   );
-}
-
-// Returns the proxy rules for a workspace, grouped by domain. Secrets without a domain are
-// omitted — the proxy has no way to deliver them, so they must never widen what gets MITM'd.
-export function getWorkspaceRules(wsId: string): DomainRule[] {
-  const ws = store[wsId] ?? {};
-  const byDomain = new Map<string, Map<string, string>>();
-  for (const [name, entry] of Object.entries(ws)) {
-    for (const domain of entry.domains) {
-      if (!domain) continue;
-      let tokenMap = byDomain.get(domain);
-      if (!tokenMap) {
-        tokenMap = new Map();
-        byDomain.set(domain, tokenMap);
-      }
-      tokenMap.set(proxyToken(wsId, name), entry.value);
-    }
-  }
-  return [...byDomain].map(([domain, tokenMap]) => ({ domain, tokenMap }));
 }
 
 export function deleteAllForWorkspace(wsId: string): void {

@@ -21,9 +21,9 @@ import next from "next";
 import { WebSocketServer } from "ws";
 import { getStore, getContainers, getVersioning } from "./lib/infra/services";
 import { ensureCA } from "./lib/infra/proxy/proxyCA";
+import { PROXY_CA_ROOT } from "./lib/infra/proxy/proxyCaPaths";
 import { reconcileInternetAccessPolicy } from "./lib/infra/proxy/internetAccessPolicy";
 import { WORKSPACES_ROOT, workspaceRegistryFile } from "./lib/infra/paths";
-import { getSecretsEncKey } from "./lib/infra/security/secretsEncryption";
 import { getProviderVaultKey } from "./lib/infra/security/providerKeyEncryption";
 import { assertProviderVaultAvailable, PROVIDER_VAULT_FILE } from "./lib/infra/security/providerKeyVault";
 import {
@@ -33,7 +33,6 @@ import {
 import {
   PROVIDER_VAULT_KEY_FILE,
   PROVIDER_VAULT_ROOT,
-  WORKSPACE_SECRET_VAULT_KEY_FILE,
   WORKSPACE_SECRET_VAULT_ROOT,
   assertSecretStorageSeparated,
 } from "./lib/infra/security/secretVaultPaths";
@@ -244,16 +243,23 @@ try {
   exitAfterLogs(1);
 }
 
-// Both secret boundaries are provisioned before the proxy CA, which is the sidecar's startup
-// barrier. The provider vault and key are app-only and never mounted into that sidecar.
+// The app seals workspace secrets but must never hold the key that opens them (only credproxy does).
+if (process.env.PAODO_WORKSPACE_SECRET_KEY_FILE) {
+  log.fatal(
+    { event: "startup_workspace_secret_key_exposed", outcome: "process_exit" },
+    "PAODO_WORKSPACE_SECRET_KEY_FILE is set for the app — only credproxy and vault-init may hold that key",
+  );
+  exitAfterLogs(1);
+}
+
+// Provisioned before the proxy CA, which is the sidecar's startup barrier. The provider vault and key are
+// app-only and never mounted into that sidecar.
 try {
   assertSecretStorageSeparated(WORKSPACES_ROOT);
   assertDataRootAvailable(PROVIDER_VAULT_ROOT);
   assertDataRootAvailable(path.dirname(PROVIDER_VAULT_KEY_FILE));
   assertDataRootAvailable(WORKSPACE_SECRET_VAULT_ROOT);
-  assertDataRootAvailable(path.dirname(WORKSPACE_SECRET_VAULT_KEY_FILE));
   getProviderVaultKey();
-  getSecretsEncKey();
 } catch (err) {
   log.fatal(
     {
@@ -263,7 +269,6 @@ try {
       providerVaultRoot: PROVIDER_VAULT_ROOT,
       providerKeyFile: PROVIDER_VAULT_KEY_FILE,
       workspaceSecretVaultRoot: WORKSPACE_SECRET_VAULT_ROOT,
-      workspaceSecretKeyFile: WORKSPACE_SECRET_VAULT_KEY_FILE,
     },
     "provider or workspace-secret vault storage is unavailable — refusing to start",
   );
@@ -310,7 +315,7 @@ try {
       err,
       filePath: WORKSPACE_SECRET_VAULT_FILE,
     },
-    "existing encrypted workspace-secret vault could not be read safely — refusing to start",
+    "workspace-secret vault is missing or unreadable (the vault-init job creates it) — refusing to start",
   );
   exitAfterLogs(1);
 }
@@ -375,8 +380,8 @@ assertGitAvailable()
     // The app owns CA generation (writable data mount); the credproxy sidecar only loads it.
     try {
       // Strict: silently replacing partial or unreadable material would invalidate the CA baked into
-      // every workspace container. Remedy: `rm -rf data/.proxy-ca` plus recreating workspaces.
-      ensureCA(WORKSPACES_ROOT, { strictExisting: true });
+      // every workspace container. Remedy: empty the proxy-ca volume plus recreating workspaces.
+      ensureCA(PROXY_CA_ROOT, { strictExisting: true });
     } catch (err) {
       log.fatal(
         { event: "startup_proxy_key_material_invalid", outcome: "process_exit", err },
