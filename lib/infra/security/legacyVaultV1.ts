@@ -1,5 +1,5 @@
-// TODO(remove after 2027-05-31): reads the former single-key vault so vault-init can migrate it. Only
-// vault-init may import this (ESLint); deployments must upgrade through the release that ships it.
+// Reads the former single-key vault so vault-init can migrate it; only vault-init may import this (ESLint).
+// TODO: remove once the deployments we know of have run vault-init.
 import { readFileSync } from "fs";
 import path from "path";
 import { decryptWithKey, isEncEnvelope } from "./vaultEncryption";
