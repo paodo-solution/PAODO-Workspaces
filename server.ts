@@ -3,7 +3,6 @@
 
 import "dotenv/config";
 import { createServer } from "http";
-import path from "path";
 import { createAuditLogger, createLogger, exitAfterLogs } from "./lib/infra/logger";
 
 const log = createLogger("server");
@@ -24,14 +23,12 @@ import { ensureCA } from "./lib/infra/proxy/proxyCA";
 import { PROXY_CA_ROOT } from "./lib/infra/proxy/proxyCaPaths";
 import { reconcileInternetAccessPolicy } from "./lib/infra/proxy/internetAccessPolicy";
 import { WORKSPACES_ROOT, workspaceRegistryFile } from "./lib/infra/paths";
-import { getProviderVaultKey } from "./lib/infra/security/providerKeyEncryption";
 import { assertProviderVaultAvailable, PROVIDER_VAULT_FILE } from "./lib/infra/security/providerKeyVault";
 import {
   assertWorkspaceSecretVaultAvailable,
   WORKSPACE_SECRET_VAULT_FILE,
 } from "./lib/infra/security/workspaceSecretVault";
 import {
-  PROVIDER_VAULT_KEY_FILE,
   PROVIDER_VAULT_ROOT,
   WORKSPACE_SECRET_VAULT_ROOT,
   assertSecretStorageSeparated,
@@ -257,9 +254,7 @@ if (process.env.PAODO_WORKSPACE_SECRET_KEY_FILE) {
 try {
   assertSecretStorageSeparated(WORKSPACES_ROOT);
   assertDataRootAvailable(PROVIDER_VAULT_ROOT);
-  assertDataRootAvailable(path.dirname(PROVIDER_VAULT_KEY_FILE));
   assertDataRootAvailable(WORKSPACE_SECRET_VAULT_ROOT);
-  getProviderVaultKey();
 } catch (err) {
   log.fatal(
     {
@@ -267,7 +262,6 @@ try {
       outcome: "process_exit",
       err,
       providerVaultRoot: PROVIDER_VAULT_ROOT,
-      providerKeyFile: PROVIDER_VAULT_KEY_FILE,
       workspaceSecretVaultRoot: WORKSPACE_SECRET_VAULT_ROOT,
     },
     "provider or workspace-secret vault storage is unavailable — refusing to start",
@@ -301,7 +295,7 @@ try {
       err,
       filePath: PROVIDER_VAULT_FILE,
     },
-    "existing encrypted provider vault could not be read safely — refusing to start",
+    "provider vault is missing or unreadable (the vault-init job creates it) — refusing to start",
   );
   exitAfterLogs(1);
 }

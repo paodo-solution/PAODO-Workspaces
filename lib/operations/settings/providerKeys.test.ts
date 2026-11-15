@@ -3,7 +3,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { listProviderKeys, providerHasKey, removeProviderKey, storeProviderKey } from "./providerKeys";
 import { SUPPORTED_PROVIDERS, providerAvailabilityEnv } from "@/lib/agent/buildModel";
-import { getProviderKey, _resetProviderKeysForTest } from "@/lib/infra/security/providerKeyStore";
+import { _resetProviderKeysForTest } from "@/lib/infra/security/providerKeyStore";
+import { loadProviderPrivateKey, providerApiKey, rebuildProviderKeyRing } from "@/lib/infra/llmProxy/providerKeyRing";
+
+// What llm-proxy would spend: the app itself can no longer read a stored key back.
+function getProviderKey(provider: string): string | undefined {
+  loadProviderPrivateKey();
+  rebuildProviderKeyRing();
+  return providerApiKey(provider);
+}
 
 const offerOnly = (...providers: string[]) => {
   for (const p of SUPPORTED_PROVIDERS)

@@ -1,9 +1,6 @@
-// Shared AES-256-GCM envelope mechanics. Storage-specific wrappers choose the key file and cache
-// slot so provider credentials and workspace-injected secrets can never accidentally share a key.
-import fs from "fs";
+// Shared AES-256-GCM envelope mechanics, behind sealed values and the former single-key vaults that
+// vault-init migrates.
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { createLogger } from "../logger";
-import { createKeyFile } from "./keyFile";
 
 export interface EncEnvelope {
   v: 1;
@@ -23,34 +20,6 @@ export function isEncEnvelope(value: unknown): value is EncEnvelope {
     typeof envelope.tag === "string" &&
     typeof envelope.data === "string"
   );
-}
-
-const g = global as typeof global & { _vaultEncryptionKeys?: Record<string, Buffer> };
-
-export function getVaultKey(keyFile: string, cacheSlot: string, logContext: string): Buffer {
-  // Tests deliberately clear the global to model a fresh process. Recreate it here rather than
-  // only at module evaluation; hot reload can produce the same sequence in development.
-  const keyCache = (g._vaultEncryptionKeys ??= {});
-  const cached = keyCache[cacheSlot];
-  if (cached) return cached;
-
-  const log = createLogger(logContext);
-  let key: Buffer;
-  try {
-    key = fs.readFileSync(keyFile);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      log.error(
-        { event: "vault_encryption_key_read_failed", outcome: "encryption_operation_failed", err, keyFile },
-        "failed to read vault encryption key",
-      );
-      throw err;
-    }
-    key = createKeyFile(keyFile);
-  }
-  if (key.length !== 32) throw new Error("vault encryption key is corrupt (expected 32 bytes)");
-  keyCache[cacheSlot] = key;
-  return key;
 }
 
 // `aad` is authenticated but not encrypted: decryption fails unless the caller presents the same bytes.

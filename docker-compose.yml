@@ -41,8 +41,8 @@ services:
       - WORKSPACES_ROOT=/var/lib/paodo/data
       - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
-      - PAODO_PROVIDER_KEY_FILE=/var/lib/paodo/provider-key/master.key
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
+      - PAODO_LLM_PROXY_URL=http://llm-proxy:9997
     # State lives under /var/lib/paodo, never under /app: the dev overlay bind-mounts the working
     # tree at /app, and Docker creates a mount point for every volume — nested here, each one would
     # appear as an empty directory in the maintainer's repository.
@@ -51,8 +51,8 @@ services:
       # Outside the workspaces root, so no bug in serving workspace files can reach the CA or HMAC key.
       # The app is the only writer (ensureCA); credproxy mounts it read-only.
       - proxy-ca:/var/lib/paodo/proxy-ca
+      # Seals new provider keys to llm-proxy's public key; never mounts the private key that opens them.
       - provider-vault:/var/lib/paodo/provider-vault
-      - provider-key:/var/lib/paodo/provider-key
       # Seals new workspace secrets to the proxy's public key; never mounts the private key that opens them.
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
     depends_on:
@@ -60,6 +60,9 @@ services:
         condition: service_started
       vault-init:
         condition: service_completed_successfully
+      # Model calls go through llm-proxy; starting after it keeps the first runs from failing on a deploy.
+      llm-proxy:
+        condition: service_started
     restart: unless-stopped
     # Host-level wall for PAODO's control-plane process. Change these together with the agent and
     # workspace limits to create a repeatable VPS test profile; `docker compose up -d` reapplies it.
@@ -77,13 +80,14 @@ services:
     networks:
       - socket_proxy_net
       - app_net
+      - llm_net
     logging: *default-logging
 
   # Credential-proxy sidecar. Runs ONLY the proxy (proxyEntry.ts) so the app never has to join a
   # per-workspace network — the app attaches THIS container to each wsnet at runtime, exposing only
   # port 9998 to the sandbox and never the control plane (app:3000 / /ws). It reads the CA,
   # workspace-secret vault and key from separate read-only mounts and shares no IPC with the app.
-  # Provider credentials use app-only volumes that are not mounted here.
+  # Provider keys live in llm-proxy's volumes, which are not mounted here.
   # It is deliberately NOT on app_net/socket_proxy_net, so it has no route to the app;
   # `credproxy_net` provides upstream egress. 9998 is never published to the host.
   credproxy:
@@ -95,7 +99,7 @@ services:
     # No env_file: .env here. Inheriting the app's .env would put the admin PASSWORD/USERNAME into
     # the one container the untrusted sandbox can reach, for no functional reason. Recoverable
     # workspace secrets live in the encrypted vault below; its key is a file on a different mount.
-    # Provider credentials live in two app-only volumes this service cannot access.
+    # Provider keys live in llm-proxy's volumes, which this service cannot access.
     environment:
       - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
@@ -128,8 +132,44 @@ services:
       - credproxy_net
     logging: *default-logging
 
-  # One-shot, before app and credproxy on every `up`: creates the workspace-secret key pair and vault, migrates
-  # the former single-key vault, and exits non-zero (stopping the deploy) if the vault and key don't match.
+  # The only container that can open provider keys. The app sends model calls here with a placeholder key and
+  # this adds the real one, for a fixed list of provider hosts. Reachable from the app alone, over llm_net.
+  llm-proxy:
+    # The image credproxy builds; never pulled, since it exists only locally once credproxy is built.
+    image: paodo_ws_credproxy
+    pull_policy: never
+    command: ["llmProxyEntry.cjs"]
+    # No env_file: .env here, for the same reason as credproxy.
+    environment:
+      - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
+      - PAODO_PROVIDER_PRIVATE_KEY_FILE=/var/lib/paodo/provider-key/private.pem
+      - LLM_PROXY_PORT=9997
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      # Never the workspaces volume: no bug in serving workspace files can reach this container's keys.
+      - provider-vault:/var/lib/paodo/provider-vault:ro
+      - provider-key:/var/lib/paodo/provider-key:ro
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev,mode=1777
+    mem_limit: 256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    networks:
+      - llm_net
+      - llm_egress_net
+    logging: *default-logging
+
+  # One-shot, before app and both proxies on every `up`: creates each vault's key pair and vault, migrates
+  # former vaults, and exits non-zero (stopping the deploy) if a vault and its key don't match.
   vault-init:
     # The image credproxy builds; never pulled, since it exists only locally once credproxy is built.
     image: paodo_ws_credproxy
@@ -138,11 +178,15 @@ services:
     environment:
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
       - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/private.pem
+      - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
+      - PAODO_PROVIDER_PRIVATE_KEY_FILE=/var/lib/paodo/provider-key/private.pem
       - NODE_ENV=production
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
       - workspace-secret-key:/var/lib/paodo/workspace-secret-key
+      - provider-vault:/var/lib/paodo/provider-vault
+      - provider-key:/var/lib/paodo/provider-key
     restart: "no"
     network_mode: none
     read_only: true
@@ -165,3 +209,8 @@ networks:
     internal: true
   app_net: {}
   credproxy_net: {}
+  # app ↔ llm-proxy only, with no route out. llm-proxy's egress is its own network, never credproxy_net:
+  # sharing it would let a workspace, through credproxy, reach llm-proxy by name.
+  llm_net:
+    internal: true
+  llm_egress_net: {}

@@ -3,6 +3,7 @@
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
+import { vi } from "vitest";
 
 const root = mkdtempSync(path.join(tmpdir(), "paodo-test-"));
 
@@ -11,7 +12,16 @@ process.env.WORKSPACES_ROOT = root;
 // Nothing here reaches Docker: the name is only ever formatted into --mount arguments and asserted.
 process.env.WORKSPACES_VOLUME_NAME = "paodo_ws_workspaces";
 process.env.PAODO_PROVIDER_VAULT_ROOT = path.join(root, "provider-vault");
-process.env.PAODO_PROVIDER_KEY_FILE = path.join(root, "provider-key", "master.key");
+process.env.PAODO_PROVIDER_PRIVATE_KEY_FILE = path.join(root, "provider-key", "private.pem");
 process.env.PAODO_WORKSPACE_SECRET_VAULT_ROOT = path.join(root, "workspace-secret-vault");
 process.env.PAODO_WORKSPACE_SECRET_KEY_FILE = path.join(root, "workspace-secret-key", "private.pem");
 process.env.PAODO_PROXY_CA_ROOT = path.join(root, "proxy-ca");
+
+// Compose runs vault-init before the app, so every test file starts with a provider vault as deployed. Imported
+// only now that the paths are set, then dropped so a file that sets its own paths gets fresh modules.
+const { initProviderKeyVault } = await import("./lib/infra/security/providerKeyVaultInit");
+initProviderKeyVault({
+  vaultFile: path.join(root, "provider-vault", "vault.json"),
+  privateKeyFile: path.join(root, "provider-key", "private.pem"),
+});
+vi.resetModules();

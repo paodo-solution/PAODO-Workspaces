@@ -9,7 +9,6 @@ const { BASE } = vi.hoisted(() => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "secret-boundaries-test-"));
   process.env.PAODO_PROXY_CA_ROOT = path.join(base, "proxy-ca");
   process.env.PAODO_PROVIDER_VAULT_ROOT = path.join(base, "provider-vault");
-  process.env.PAODO_PROVIDER_KEY_FILE = path.join(base, "provider-key", "master.key");
   process.env.PAODO_WORKSPACE_SECRET_VAULT_ROOT = path.join(base, "workspace-secret-vault");
   process.env.PAODO_WORKSPACE_SECRET_KEY_FILE = path.join(base, "workspace-secret-key", "master.key");
   return { BASE: base };
