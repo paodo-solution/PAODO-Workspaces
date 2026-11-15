@@ -131,10 +131,9 @@ services:
   # One-shot, before app and credproxy on every `up`: creates the workspace-secret key pair and vault, migrates
   # the former single-key vault, and exits non-zero (stopping the deploy) if the vault and key don't match.
   vault-init:
-    build:
-      context: .
-      dockerfile: Dockerfile.credproxy
+    # The image credproxy builds; never pulled, since it exists only locally once credproxy is built.
     image: paodo_ws_credproxy
+    pull_policy: never
     command: ["vaultInitEntry.cjs"]
     environment:
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault

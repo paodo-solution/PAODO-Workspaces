@@ -22,6 +22,7 @@ A transparent credential proxy swaps opaque tokens for real values on outbound H
 
 - Agents use credentials they never possess: a leaked echo exposes only the token, each secret reaches only its exact host, and neither a vault snapshot without its key nor a workspace backup reveals a credential.
 - A bug that lets the app read arbitrary files cannot expose workspace secrets: the app holds no key that opens them. A sealed value moved to another workspace, name or domain no longer opens.
+- This does not hold against code execution in the app: its Docker access (containers, exec) can reach the sidecar or mount the key volume. The app can also replace a secret with a value of its choosing; secrets are protected from being read, not from being overwritten.
 - The CA, HMAC and private keys are sensitive host assets. The sidecar can open workspace secrets by design, never provider keys. Changing a secret's domains means re-entering its value.
 - One shared process sits on every container's egress, with header and body size bounds against memory exhaustion; the SSRF guard is load-bearing platform-wide, so changes to it are security-critical.
 - Scope: token-based APIs only. Signed requests (AWS S3/SigV4, HMAC signing, SCRAM) fail rather than leak, logged as `credential_rejected_by_upstream`.

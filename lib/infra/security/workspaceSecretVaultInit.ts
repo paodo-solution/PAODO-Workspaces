@@ -66,7 +66,9 @@ export function initWorkspaceSecretVault({ vaultFile, privateKeyFile }: VaultIni
   } else {
     const vault = parseWorkspaceSecretVault(parsed);
     if (!existsSync(privateKeyFile)) {
-      throw new Error("workspace-secret private key is missing — its secrets cannot be opened; re-enter them");
+      throw new Error(
+        "workspace-secret private key is missing, so the vault cannot be opened: delete vault.json, run vault-init again, then re-enter the secrets",
+      );
     }
     if (recipientOf(readFileSync(privateKeyFile, "utf8")) !== vault.recipient) {
       throw new Error("workspace-secret private key does not match the vault's recipient");

@@ -22,20 +22,25 @@ interface WorkspaceSecretVaultState {
   loadError: unknown;
 }
 
-// A missing vault is an error too: vault-init always creates one before the app or the proxy starts.
+// Any failure leaves the store unavailable, so the startup assert refuses to start. A missing vault is not
+// logged here: it is the normal state of a process with no vault, and the assert names the cause.
 function load(): WorkspaceSecretVaultState {
   try {
     const data = readWorkspaceSecretVault();
     return { recipient: data.recipient, workspaceSecrets: data.workspaceSecrets, loadError: null };
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      const missing = new Error("workspace-secret vault is missing — the vault-init job creates it");
+      return { recipient: null, workspaceSecrets: {}, loadError: missing };
+    }
     log.error(
       {
         event: "workspace_secret_vault_load_failed",
-        outcome: "empty_vault_used",
+        outcome: "vault_unavailable",
         err,
         filePath: WORKSPACE_SECRET_VAULT_FILE,
       },
-      "failed to load workspace-secret vault — starting empty",
+      "failed to load workspace-secret vault — no secret can be stored or injected",
     );
     return { recipient: null, workspaceSecrets: {}, loadError: err };
   }
