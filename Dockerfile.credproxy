@@ -1,13 +1,13 @@
-# Build the credential proxy and the one-shot vault-init job into bundled entry points from their own tiny
-# dependency manifest; no stage installs Next.js, provider SDKs, Docker tooling, routes or provider-vault code.
+# Build credproxy, llm-proxy and the one-shot vault-init job into bundled entry points from their own tiny
+# dependency manifest; no stage installs Next.js, provider SDKs, Docker tooling or routes.
 FROM node:24-trixie-slim AS builder
 WORKDIR /src
 RUN npm install -g npm@11.20.0
 COPY credproxy/package*.json ./
 RUN npm ci
-COPY proxyEntry.ts vaultInitEntry.ts ./
+COPY proxyEntry.ts llmProxyEntry.ts vaultInitEntry.ts ./
 COPY lib/ ./lib/
-RUN npx --no-install esbuild proxyEntry.ts vaultInitEntry.ts \
+RUN npx --no-install esbuild proxyEntry.ts llmProxyEntry.ts vaultInitEntry.ts \
     --bundle \
     --platform=node \
     --target=node24 \
@@ -17,7 +17,7 @@ RUN npx --no-install esbuild proxyEntry.ts vaultInitEntry.ts \
     --outdir=/dist \
     --out-extension:.js=.cjs
 # Mount points owned by 1000, so a fresh volume that vault-init mounts first is seeded writable for it.
-RUN mkdir -p /seed/workspace-secret-vault /seed/workspace-secret-key
+RUN mkdir -p /seed/workspace-secret-vault /seed/workspace-secret-key /seed/provider-vault /seed/provider-key
 
 # Install only production modules in a disposable stage. The final image has no package manager.
 FROM node:24-trixie-slim AS runtime-deps
@@ -26,16 +26,16 @@ RUN npm install -g npm@11.20.0
 COPY credproxy/package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
-# Shell-less runtime: Node, two bundled entry points, and the two explicit external packages. All mutable
+# Shell-less runtime: Node, three bundled entry points, and the two explicit external packages. All mutable
 # state arrives through Compose's mounts (read-only for the proxy); only /tmp is a small tmpfs.
 FROM gcr.io/distroless/nodejs24-debian13:nonroot AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=runtime-deps --chown=1000:1000 /runtime/node_modules ./node_modules
-COPY --from=builder --chown=1000:1000 /dist/proxyEntry.cjs /dist/vaultInitEntry.cjs ./
+COPY --from=builder --chown=1000:1000 /dist/proxyEntry.cjs /dist/llmProxyEntry.cjs /dist/vaultInitEntry.cjs ./
 COPY --from=builder --chown=1000:1000 /seed/ /var/lib/paodo/
 # The app image's `node` account is UID/GID 1000 too, so files shared with the app keep tight permissions.
 # vault-init writes the private key as mode 0600 under this identity.
 USER 1000:1000
-EXPOSE 9998
+EXPOSE 9998 9997
 CMD ["proxyEntry.cjs"]

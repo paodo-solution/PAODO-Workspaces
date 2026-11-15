@@ -46,7 +46,7 @@ export interface LLMProviderConfig {
   reasoningEffort: ReasoningEffort;
   /** The selected provider's model id — always set (workspace selection, else DEFAULT_LLM). */
   model: string;
-  /** The selected provider's API key, read from the env var its registry entry declares. */
+  /** A placeholder llm-proxy replaces with the real key; undefined when no key is stored for the provider. */
   apiKey: string | undefined;
   /** Anthropic-only: opt into the 1h prompt-cache beta. Inert for providers without prompt caching. */
   anthropicCacheTtl1h: boolean;

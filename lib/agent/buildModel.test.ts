@@ -1,6 +1,6 @@
 // The Anthropic thinking API split by model generation: current models 400 on the legacy budget shape
 // and need adaptive thinking + effort; Haiku 4.5 alone still takes the budget and rejects effort.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { ChatOpenAI } from "@langchain/openai";
 import {
   anthropicThinkingConfig,
@@ -168,16 +168,15 @@ describe("buildChatModel", () => {
     expect(m.streaming).toBe(true);
   });
 
-  // These share OpenAI's client class, so a dropped `configuration` silently sends this vendor's key
-  // to api.openai.com. Asserted on `clientConfig` because the `client` itself is built lazily.
+  // Every client calls llm-proxy, on its own provider's route: a wrong route spends another vendor's key, and
+  // a dropped override would bypass the proxy. The vendor hosts themselves are pinned in llm-proxy's tests.
   it.each([
-    ["deepseek", "deepseek-v4-pro", "https://api.deepseek.com/v1"],
-    ["moonshot", "kimi-k3", "https://api.moonshot.ai/v1"],
-    ["mistral", "mistral-large-4", "https://api.mistral.ai/v1"],
-    // Doubly load-bearing for Scaleway: the endpoint is the entire EU-sovereignty claim, so a
-    // dropped override would send an EU customer's traffic to a US host while still looking correct.
-    ["scaleway", "qwen3.6-35b-a3b", "https://api.scaleway.ai/v1"],
-  ])("points %s at its own endpoint, never another vendor's", (provider, model, baseURL) => {
+    ["openai", "gpt-6-astra", "http://llm-proxy:9997/openai/v1"],
+    ["deepseek", "deepseek-v4-pro", "http://llm-proxy:9997/deepseek/v1"],
+    ["moonshot", "kimi-k3", "http://llm-proxy:9997/moonshot/v1"],
+    ["mistral", "mistral-large-4", "http://llm-proxy:9997/mistral/v1"],
+    ["scaleway", "qwen3.6-35b-a3b", "http://llm-proxy:9997/scaleway/v1"],
+  ])("points %s at its own llm-proxy route", (provider, model, baseURL) => {
     const m = buildChatModel(config({ provider, model, apiKey: `key-${provider}` })) as unknown as {
       clientConfig: { baseURL?: string; apiKey?: string };
     };
@@ -185,13 +184,20 @@ describe("buildChatModel", () => {
     expect(m.clientConfig.apiKey).toBe(`key-${provider}`);
   });
 
-  // OpenAI itself is the one provider that must NOT carry an override: it talks to the SDK default.
-  // Pinned separately because the assertion is the absence of a value, which no table row expresses.
-  it("leaves openai on the SDK's default endpoint", () => {
-    const m = buildChatModel(config({ provider: "openai" })) as unknown as {
+  it("points anthropic at its own llm-proxy route", () => {
+    const m = buildChatModel(config({ provider: "anthropic", model: "claude-opus-5-5" })) as unknown as {
+      apiUrl?: string;
+    };
+    expect(m.apiUrl).toBe("http://llm-proxy:9997/anthropic");
+  });
+
+  it("follows PAODO_LLM_PROXY_URL, without a doubled slash", () => {
+    vi.stubEnv("PAODO_LLM_PROXY_URL", "http://127.0.0.1:9997/");
+    const m = buildChatModel(config({ provider: "mistral", model: "mistral-large-4" })) as unknown as {
       clientConfig: { baseURL?: string };
     };
-    expect(m.clientConfig.baseURL).toBeUndefined();
+    expect(m.clientConfig.baseURL).toBe("http://127.0.0.1:9997/mistral/v1");
+    vi.unstubAllEnvs();
   });
 
   // GPT-5.6 and GPT-6 take "max"; a summary is asked for at every level that reasons.

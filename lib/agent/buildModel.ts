@@ -1,10 +1,11 @@
 // The provider registry: what each provider accepts, which .env var offers it, and how to build its
-// client. Server-only; vendor objects never leave here, and keys come from providerKeyStore, not .env.
+// client. Server-only; vendor objects never leave here. Every client calls llm-proxy, which adds the key.
 
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createDeepSeekChatModel, deepseekReasoningConfig } from "./deepseekProtocol";
 import type { LLMProviderConfig } from "./interfaces";
+import { llmProxyBaseUrl } from "./llmProxyRoute";
 import { createModelGateway, type ModelCallObserver, type ModelGateway } from "./modelGateway";
 import { createMistralChatModel, mistralRequestConfig } from "./mistralProtocol";
 import { providerPacer } from "./rateLimit/providerPacer";
@@ -105,6 +106,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         // invoke() streams too: the SDK refuses a non-streaming request with a cap this high, and
         // compaction is the one caller that would otherwise send one.
         streaming: true,
+        anthropicApiUrl: llmProxyBaseUrl("anthropic"),
         ...NO_SDK_RETRY,
         ...anthropicThinkingConfig(config.model, config.reasoningEffort),
         clientOptions: {
@@ -130,7 +132,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         ...NO_SDK_RETRY,
         useResponsesApi: true,
         reasoning: effort === "none" ? { effort } : { effort, summary: "auto" },
-        configuration: { fetch: pacedFetch("openai", config.model) },
+        configuration: { baseURL: llmProxyBaseUrl("openai", "/v1"), fetch: pacedFetch("openai", config.model) },
       });
     },
   },
@@ -142,7 +144,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         model: config.model,
         ...NO_SDK_RETRY,
         configuration: {
-          baseURL: "https://api.deepseek.com/v1",
+          baseURL: llmProxyBaseUrl("deepseek", "/v1"),
           apiKey: config.apiKey,
           fetch: pacedFetch("deepseek", config.model),
         },
@@ -157,7 +159,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         model: config.model,
         ...NO_SDK_RETRY,
         configuration: {
-          baseURL: "https://api.moonshot.ai/v1",
+          baseURL: llmProxyBaseUrl("moonshot", "/v1"),
           apiKey: config.apiKey,
           fetch: pacedFetch("moonshot", config.model),
         },
@@ -175,7 +177,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         model: config.model,
         ...NO_SDK_RETRY,
         configuration: {
-          baseURL: "https://api.mistral.ai/v1",
+          baseURL: llmProxyBaseUrl("mistral", "/v1"),
           apiKey: config.apiKey,
           fetch: pacedFetch("mistral", config.model),
         },
@@ -192,7 +194,7 @@ const PROVIDERS: Record<string, ProviderDescriptor> = {
         model: config.model,
         ...NO_SDK_RETRY,
         configuration: {
-          baseURL: "https://api.scaleway.ai/v1",
+          baseURL: llmProxyBaseUrl("scaleway", "/v1"),
           apiKey: config.apiKey,
           fetch: pacedFetch("scaleway", config.model),
         },

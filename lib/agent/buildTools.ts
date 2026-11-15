@@ -3,7 +3,8 @@
 
 import { buildModel, defaultModelSelection } from "./buildModel";
 import type { ModelCallObserver } from "./modelGateway";
-import { getProviderKey } from "../infra/security/providerKeyStore";
+import { hasProviderKey } from "../infra/security/providerKeyStore";
+import { LLM_PROXY_PLACEHOLDER_KEY } from "./llmProxyRoute";
 import { applyCompaction, type CompactLevel } from "./compact";
 import { classifyToolStatus } from "./toolUtils";
 import type { PostDispatchFn } from "./interfaces";
@@ -74,9 +75,9 @@ export function loadAgentConfig(workspaceId?: string): AgentConfig {
     provider,
     reasoningEffort,
     model,
-    // Entered in the app, not .env. Undefined when unset for this provider; runAgent's preflight
-    // catches that and names the provider, rather than letting the SDK throw about a missing key.
-    apiKey: getProviderKey(provider),
+    // A placeholder: llm-proxy adds the real key. Undefined when none is stored, so runAgent's preflight
+    // names the provider rather than letting the call fail at the proxy.
+    apiKey: hasProviderKey(provider) ? LLM_PROXY_PLACEHOLDER_KEY : undefined,
     internetAccess: ws ? (ws.internetAccess ?? true) : false,
     anthropicCacheTtl1h: process.env.ANTHROPIC_CACHE_TTL_1H === "true",
     // 5 minutes, not 1: a quiet command is usually slow (npm install, a test suite that prints at the

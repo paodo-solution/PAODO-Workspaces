@@ -1,6 +1,7 @@
 // loadAgentConfig resolves the workspace's stored selection, falls back to the first AVAILABLE
-// provider when it has none, and takes the selected provider's key from the encrypted key store.
+// provider when it has none, and sends llm-proxy's placeholder only when that provider has a stored key.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { LLM_PROXY_PLACEHOLDER_KEY } from "./llmProxyRoute";
 import { loadAgentConfig } from "./buildTools";
 import { buildModel, SUPPORTED_PROVIDERS, providerAvailabilityEnv } from "./buildModel";
 import { setProviderKey, _resetProviderKeysForTest } from "../infra/security/providerKeyStore";
@@ -103,9 +104,9 @@ describe("loadAgentConfig", () => {
     expect(c.reasoningEffort).toBe("high");
   });
 
-  // The key must follow the selected provider. Sending one vendor's credential to another vendor's
-  // endpoint leaks it to that third party: a disclosure bug wearing a 401's clothes.
-  it("resolves the API key of the selected provider, not of some other one", () => {
+  // The app never holds a real key: llm-proxy picks it by the provider's route. What must follow the selected
+  // provider is whether a key exists, or a run would pass the preflight and fail at the proxy.
+  it("sends the placeholder only for a selected provider that has a key", () => {
     setProviderKey("anthropic", "sk-ant-test");
     setProviderKey("deepseek", "sk-ds-test");
     seedWorkspace({
@@ -119,13 +120,12 @@ describe("loadAgentConfig", () => {
       llmModel: "claude-haiku-4-5",
       reasoningEffort: "high",
     });
-    expect(loadAgentConfig("ws-key").apiKey).toBe("sk-ant-test");
-    // No workspace -> the fallback provider, whose own key follows. anthropic leads the registry.
-    expect(loadAgentConfig().apiKey).toBe("sk-ant-test");
-    // ...and deepseek's key once deepseek is offered. The fallback follows AVAILABILITY, not keys:
-    // switching anthropic off alone would land on openai, unkeyed, and stop at the preflight.
+    expect(loadAgentConfig("ws-key").apiKey).toBe(LLM_PROXY_PLACEHOLDER_KEY);
+    // The fallback follows AVAILABILITY, not keys: openai is unkeyed and stops at the preflight.
+    offerOnly("openai");
+    expect(loadAgentConfig().apiKey).toBeUndefined();
     offerOnly("deepseek");
-    expect(loadAgentConfig().apiKey).toBe("sk-ds-test");
+    expect(loadAgentConfig().apiKey).toBe(LLM_PROXY_PLACEHOLDER_KEY);
   });
 
   // The state every deployment is in before anyone opens the settings modal. undefined is the signal

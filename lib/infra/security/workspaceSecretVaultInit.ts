@@ -17,7 +17,7 @@ export interface VaultInitPaths {
   privateKeyFile: string;
 }
 
-function readJsonOrNull(file: string): unknown {
+export function readJsonOrNull(file: string): unknown {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
   } catch (err) {
@@ -33,7 +33,7 @@ function writePrivateKey(file: string, pem: string): void {
 }
 
 // Generates a key only when no current-format vault depends on an existing one.
-function recipientFor(privateKeyFile: string): string {
+export function recipientFor(privateKeyFile: string): string {
   if (!existsSync(privateKeyFile)) {
     const pair = generateRecipientKeyPair();
     writePrivateKey(privateKeyFile, pair.privateKeyPem);

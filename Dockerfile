@@ -38,7 +38,6 @@ RUN mkdir -p \
       /var/lib/paodo/data \
       /var/lib/paodo/proxy-ca \
       /var/lib/paodo/provider-vault \
-      /var/lib/paodo/provider-key \
       /var/lib/paodo/workspace-secret-vault && \
     chown -R node:node /app /var/lib/paodo
 CMD ["npx", "tsx", "server.ts"]

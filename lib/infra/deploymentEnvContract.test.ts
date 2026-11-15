@@ -1,5 +1,5 @@
-// Compose and the path modules must agree: an unset override silently resolves under /app. Also pins that
-// credproxy inherits no .env and cannot see the provider vault, and that the app never holds the secret key.
+// Compose and the path modules must agree: an unset override silently resolves under /app. Also pins that the
+// proxies inherit no .env, and that the app never holds a private key: those stay in credproxy and llm-proxy.
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -59,7 +59,37 @@ describe("deployment env contract", () => {
       ]),
     );
     expect(declared).not.toContain("PAODO_PROVIDER_VAULT_ROOT");
-    expect(declared).not.toContain("PAODO_PROVIDER_KEY_FILE");
+    expect(declared).not.toContain("PAODO_PROVIDER_PRIVATE_KEY_FILE");
+    expect(serviceBlock("credproxy")).not.toMatch(/provider-(vault|key)|llm_/);
+  });
+
+  it("keeps the provider private key out of the app, in llm-proxy and vault-init only", () => {
+    const app = serviceBlock("app");
+    expect(declaredEnvNames(app)).not.toContain("PAODO_PROVIDER_PRIVATE_KEY_FILE");
+    expect(declaredEnvNames(app)).not.toContain("PAODO_PROVIDER_KEY_FILE");
+    expect(app).not.toMatch(/provider-key/);
+    for (const service of ["llm-proxy", "vault-init"]) {
+      expect(serviceBlock(service)).toMatch(
+        /^ {6}- PAODO_PROVIDER_PRIVATE_KEY_FILE=\/var\/lib\/paodo\/provider-key\//m,
+      );
+    }
+  });
+
+  it("gives llm-proxy its vault and key read-only, and nothing an agent can write to", () => {
+    const llm = serviceBlock("llm-proxy");
+    expect(llm).toMatch(/^ {6}- provider-vault:\/var\/lib\/paodo\/provider-vault:ro$/m);
+    expect(llm).toMatch(/^ {6}- provider-key:\/var\/lib\/paodo\/provider-key:ro$/m);
+    expect(llm).not.toMatch(/workspaces:|proxy-ca|workspace-secret|socket/);
+    expect(llm).not.toMatch(/^ {4}env_file:/m);
+    expect(llm).toMatch(/^ {4}read_only: true$/m);
+  });
+
+  it("lets only the app reach llm-proxy, over a network with no route out", () => {
+    expect(serviceBlock("llm-proxy")).toMatch(/^ {4}networks:\n {6}- llm_net\n {6}- llm_egress_net\n/m);
+    expect(serviceBlock("app")).toMatch(/^ {6}- llm_net$/m);
+    expect(serviceBlock("app")).toMatch(/^ {6}- PAODO_LLM_PROXY_URL=http:\/\/llm-proxy:9997$/m);
+    const networks = /^networks:\n([\s\S]*)$/m.exec(fs.readFileSync(COMPOSE_FILE, "utf-8"))?.[1] ?? "";
+    expect(networks).toMatch(/^ {2}llm_net:\n {4}internal: true$/m);
   });
 
   it("mounts the proxy CA outside the workspaces root in every service", () => {
@@ -87,13 +117,14 @@ describe("deployment env contract", () => {
 
   it("runs vault-init with no network before both services that use the vault", () => {
     expect(serviceBlock("vault-init")).toMatch(/^ {4}network_mode: none$/m);
-    for (const service of ["app", "credproxy"]) {
+    for (const service of ["app", "credproxy", "llm-proxy"]) {
       expect(serviceBlock(service)).toMatch(/^ {6}vault-init:\n {8}condition: service_completed_successfully$/m);
     }
   });
 
   it("never lets credproxy inherit the admin credentials in .env", () => {
     expect(serviceBlock("credproxy")).not.toMatch(/^ {4}env_file:/m);
+    expect(serviceBlock("llm-proxy")).not.toMatch(/^ {4}env_file:/m);
     expect(serviceBlock("app")).toMatch(/^ {4}env_file:/m);
   });
 });

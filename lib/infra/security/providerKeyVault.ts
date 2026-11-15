@@ -1,82 +1,44 @@
-// App-only encrypted vault for deployment-wide provider API keys. The credential proxy image does
-// not contain this module and mounts neither this file nor its independent master key.
-import { readFileSync } from "fs";
-import path from "path";
-import { atomicSaveJson } from "../jsonPersist";
+// Live store for provider API keys. Keys are sealed to llm-proxy's public key, so the app reads and writes
+// this vault without any key and never sees a value back; vault-init creates it and migrates the former format.
 import { createLogger } from "../logger";
-import { decryptProviderEnvelope, encryptProviderEnvelope, isEncEnvelope } from "./providerKeyEncryption";
-import { PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
+import {
+  PROVIDER_VAULT_FILE,
+  readProviderVault,
+  saveProviderVault,
+  type VaultProviderKeys,
+} from "./providerKeyVaultFormat";
+
+export { PROVIDER_VAULT_FILE, type VaultProviderKeyEntry, type VaultProviderKeys } from "./providerKeyVaultFormat";
 
 const log = createLogger("providerKeyVault");
 
-export const PROVIDER_VAULT_FILE = path.join(PROVIDER_VAULT_ROOT, "vault.json");
-
-export interface VaultProviderKeyEntry {
-  value: string;
-  createdAt: string;
-}
-
-export type VaultProviderKeys = Record<string, VaultProviderKeyEntry>;
-
-interface ProviderVaultData {
-  version: 1;
-  providerKeys: VaultProviderKeys;
-}
-
 interface ProviderVaultState {
-  data: ProviderVaultData;
-  initialLoadError: unknown;
+  recipient: string | null;
+  providerKeys: VaultProviderKeys;
+  loadError: unknown;
 }
 
-function emptyVault(): ProviderVaultData {
-  return { version: 1, providerKeys: {} };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function assertVaultData(value: unknown): asserts value is ProviderVaultData {
-  if (!isRecord(value) || value.version !== 1 || !isRecord(value.providerKeys)) {
-    throw new Error("provider vault has an unsupported schema");
-  }
-  for (const [provider, raw] of Object.entries(value.providerKeys)) {
-    if (
-      !isRecord(raw) ||
-      typeof raw.value !== "string" ||
-      typeof raw.createdAt !== "string" ||
-      !Number.isFinite(Date.parse(raw.createdAt))
-    ) {
-      throw new Error(`provider key record ${provider} is malformed`);
-    }
-  }
-}
-
-function readVaultFile(): ProviderVaultData {
-  const parsed: unknown = JSON.parse(readFileSync(PROVIDER_VAULT_FILE, "utf8"));
-  if (!isEncEnvelope(parsed)) throw new Error("provider vault is not an encrypted envelope");
-  const decrypted: unknown = JSON.parse(decryptProviderEnvelope(parsed));
-  assertVaultData(decrypted);
-  return decrypted;
-}
-
-function loadInitialState(): ProviderVaultState {
+// Any failure leaves the store unavailable, so the startup assert refuses to start. A missing vault is not
+// logged here: it is the normal state of a process with no vault, and the assert names the cause.
+function load(): ProviderVaultState {
   try {
-    return { data: readVaultFile(), initialLoadError: null };
+    const data = readProviderVault();
+    return { recipient: data.recipient, providerKeys: data.providerKeys, loadError: null };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { data: emptyVault(), initialLoadError: null };
+      const missing = new Error("provider vault is missing — the vault-init job creates it");
+      return { recipient: null, providerKeys: {}, loadError: missing };
     }
     log.error(
-      { event: "provider_vault_load_failed", outcome: "empty_vault_used", err, filePath: PROVIDER_VAULT_FILE },
-      "failed to load encrypted provider vault — starting empty",
+      { event: "provider_vault_load_failed", outcome: "vault_unavailable", err, filePath: PROVIDER_VAULT_FILE },
+      "failed to load provider vault — no provider key can be stored or used",
     );
-    return { data: emptyVault(), initialLoadError: err };
+    return { recipient: null, providerKeys: {}, loadError: err };
   }
 }
 
 const g = global as typeof global & { _providerKeyVaultState?: ProviderVaultState };
-g._providerKeyVaultState ??= loadInitialState();
+g._providerKeyVaultState ??= load();
 const state = g._providerKeyVaultState;
 
 function replaceRecord(target: VaultProviderKeys, next: VaultProviderKeys): void {
@@ -85,18 +47,23 @@ function replaceRecord(target: VaultProviderKeys, next: VaultProviderKeys): void
 }
 
 export function assertProviderVaultAvailable(): void {
-  if (state.initialLoadError) throw state.initialLoadError;
+  if (state.loadError) throw state.loadError;
 }
 
 export function providerKeyRecords(): VaultProviderKeys {
-  return state.data.providerKeys;
+  return state.providerKeys;
+}
+
+/** The key new values are sealed to. Throws while the vault is unavailable, so nothing is sealed to nothing. */
+export function providerKeyRecipient(): string {
+  if (!state.recipient) throw new Error("provider vault is unavailable — new provider keys cannot be stored");
+  return state.recipient;
 }
 
 /** Persist first, then publish the new state so a failed write cannot create an in-memory-only key. */
 export function commitProviderKeys(next: VaultProviderKeys, context: Record<string, unknown>): void {
-  const data: ProviderVaultData = { version: 1, providerKeys: next };
   try {
-    atomicSaveJson(PROVIDER_VAULT_FILE, encryptProviderEnvelope(JSON.stringify(data)));
+    saveProviderVault({ version: 2, recipient: providerKeyRecipient(), providerKeys: next });
   } catch (err) {
     log.error(
       {
@@ -106,9 +73,17 @@ export function commitProviderKeys(next: VaultProviderKeys, context: Record<stri
         filePath: PROVIDER_VAULT_FILE,
         ...context,
       },
-      "failed to save encrypted provider vault",
+      "failed to save provider vault",
     );
     throw err;
   }
-  replaceRecord(state.data.providerKeys, next);
+  replaceRecord(state.providerKeys, next);
+}
+
+/** llm-proxy-only reload. Missing or unreadable storage clears every key (fail closed). */
+export function reloadProviderVault(): void {
+  const next = load();
+  state.recipient = next.recipient;
+  state.loadError = next.loadError;
+  replaceRecord(state.providerKeys, next.providerKeys);
 }

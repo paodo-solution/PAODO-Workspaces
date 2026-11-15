@@ -2,8 +2,8 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-// Opening a workspace secret needs the private key, which only credproxy and vault-init mount. Keeping these
-// modules out of every app import graph keeps the Next.js bundle unable to open one.
+// Opening a workspace secret or provider key needs a private key, which only credproxy, llm-proxy and vault-init
+// mount. Keeping these modules out of every app import graph keeps the Next.js bundle unable to open one.
 const SECRET_OPENING_BAN = {
   group: [
     "**/secretOpen",
@@ -11,8 +11,11 @@ const SECRET_OPENING_BAN = {
     "**/workspaceSecretKeyPaths",
     "**/legacyVaultV1",
     "**/workspaceSecretVaultInit",
+    "**/providerKeyRing",
+    "**/providerKeyPrivateKeyPaths",
+    "**/providerKeyVaultInit",
   ],
-  message: "Only credproxy and vault-init may open workspace secrets or touch their private key.",
+  message: "Only credproxy, llm-proxy and vault-init may open secrets or provider keys, or touch their private keys.",
 };
 
 const eslintConfig = defineConfig([
@@ -53,9 +56,12 @@ const eslintConfig = defineConfig([
     ignores: [
       "**/*.test.ts",
       "proxyEntry.ts",
+      "llmProxyEntry.ts",
       "vaultInitEntry.ts",
       "lib/infra/proxy/workspaceSecretRules.ts",
+      "lib/infra/llmProxy/providerKeyRing.ts",
       "lib/infra/security/workspaceSecretVaultInit.ts",
+      "lib/infra/security/providerKeyVaultInit.ts",
     ],
     rules: {
       "@typescript-eslint/no-restricted-imports": ["error", { patterns: [SECRET_OPENING_BAN] }],

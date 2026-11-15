@@ -1,24 +1,9 @@
-// The AES-GCM envelope behind the provider vault, the former workspace-secret vault and sealed secrets. Pins
-// round-tripping, tamper detection, authenticated data, and key provisioning.
-import { describe, it, expect, vi, afterAll } from "vitest";
+// The AES-GCM envelope behind sealed values and the former single-key vaults. Pins round-tripping, tamper
+// detection and authenticated data.
+import { describe, it, expect } from "vitest";
 import { randomBytes } from "crypto";
-import fs from "fs";
-
-const { ROOT, KEY_FILE } = vi.hoisted(() => {
-  const os = require("os");
-  const fs = require("fs");
-  const path = require("path");
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vault-enc-test-"));
-  const keyFile = path.join(root, "provider-key", "master.key");
-  process.env.PAODO_PROVIDER_KEY_FILE = keyFile;
-  delete (global as Record<string, unknown>)._vaultEncryptionKeys;
-  return { ROOT: root, KEY_FILE: keyFile };
-});
 
 import { decryptWithKey, encryptWithKey, isEncEnvelope } from "./vaultEncryption";
-import { getProviderVaultKey } from "./providerKeyEncryption";
-
-afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 const key = randomBytes(32);
 const flip = (b64: string): string => {
@@ -61,27 +46,5 @@ describe("isEncEnvelope", () => {
     expect(isEncEnvelope([])).toBe(false);
     expect(isEncEnvelope({ v: 2, alg: "aes-256-gcm", iv: "a", tag: "b", data: "c" })).toBe(false);
     expect(isEncEnvelope({ v: 1, alg: "aes-256-cbc", iv: "a", tag: "b", data: "c" })).toBe(false);
-  });
-});
-
-describe("key provisioning", () => {
-  it("creates a 32-byte key file with mode 0600 and returns it stably", () => {
-    const k = getProviderVaultKey();
-    expect(k.length).toBe(32);
-    expect(getProviderVaultKey()).toBe(k);
-    expect(fs.statSync(KEY_FILE).mode & 0o777).toBe(0o600);
-  });
-
-  it("does not replace an existing key after a non-ENOENT read failure", () => {
-    getProviderVaultKey();
-    const original = fs.readFileSync(KEY_FILE);
-    delete (global as Record<string, unknown>)._vaultEncryptionKeys;
-    const read = vi.spyOn(fs, "readFileSync").mockImplementationOnce(() => {
-      throw Object.assign(new Error("simulated storage failure"), { code: "EIO" });
-    });
-
-    expect(() => getProviderVaultKey()).toThrow("simulated storage failure");
-    read.mockRestore();
-    expect(fs.readFileSync(KEY_FILE).equals(original)).toBe(true);
   });
 });

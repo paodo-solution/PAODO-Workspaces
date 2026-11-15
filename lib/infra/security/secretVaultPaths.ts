@@ -1,11 +1,11 @@
-// The proxy CA, the provider vault and key, and the workspace-secret vault each sit outside workspace data. The
-// workspace-secret private key is absent here: only credproxy and vault-init hold it.
+// The proxy CA, the provider vault and the workspace-secret vault each sit outside workspace data. The private
+// keys are absent here: only credproxy, llm-proxy and vault-init hold them.
 import path from "path";
 import { PROXY_CA_ROOT } from "../proxy/proxyCaPaths";
-import { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
+import { PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
 import { WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
 
-export { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
+export { PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
 export { WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
 
 function contains(parent: string, child: string): boolean {
@@ -23,7 +23,6 @@ export function assertSecretStorageSeparated(workspacesRoot: string): void {
     { name: "workspace data", root: workspacesRoot },
     { name: "proxy CA", root: PROXY_CA_ROOT },
     { name: "provider vault", root: PROVIDER_VAULT_ROOT },
-    { name: "provider key", root: path.dirname(PROVIDER_VAULT_KEY_FILE) },
     { name: "workspace-secret vault", root: WORKSPACE_SECRET_VAULT_ROOT },
   ];
 

@@ -87,14 +87,36 @@ Compose keeps six named volumes deliberately separate:
 
 - `workspaces` contains workspace data;
 - `proxy-ca` contains the credential proxy's CA, its HMAC key and the internet-access policy;
-- `provider-vault` contains encrypted LLM provider keys;
-- `provider-key` unlocks only the provider vault;
+- `provider-vault` contains LLM provider keys, each sealed to `llm-proxy`'s public key;
+- `provider-key` holds the private key that opens them, mounted only by `llm-proxy` and `vault-init`;
 - `workspace-secret-vault` contains third-party secrets, each sealed to the credential proxy's public key;
 - `workspace-secret-key` holds the private key that opens them, mounted only by `credproxy` and `vault-init`.
 
 `proxy-ca` is mounted at `/var/lib/paodo/proxy-ca`, outside `workspaces`: writable in `app`, read-only in
-`credproxy`. The one-shot `vault-init` runs before both: it creates the key pair and an empty vault on
-the first `docker compose up`, and stops the deploy if the vault and the key don't match.
+`credproxy`. The one-shot `vault-init` runs before `app`, `credproxy` and `llm-proxy`: for each vault it
+creates the key pair and an empty vault on the first `docker compose up`, and stops the deploy if a vault
+and its key don't match.
+
+The app never holds a provider key. It sends model calls to `llm-proxy` over `llm_net`, an internal network
+only those two share, and `llm-proxy` adds the key for a fixed list of provider hosts.
+
+**Upgrading from the app-only provider vault.** The first `docker compose up --build -d` after this change
+migrates the existing keys: `vault-init` re-seals them and logs `provider vault migrated`. It keeps the
+former `master.key` and a `vault.v1.json` copy in `provider-key`, which the app no longer mounts. To roll
+back, restore the copy while this version is still checked out (only its `vault-init` mounts both volumes),
+then check out the previous version and redeploy. Keys changed since the upgrade are lost:
+
+```bash
+docker compose run --rm --no-deps vault-init \
+  -e 'require("fs").copyFileSync("/var/lib/paodo/provider-key/vault.v1.json","/var/lib/paodo/provider-vault/vault.json")'
+```
+
+Once the new version has run without issues, delete both rollback files:
+
+```bash
+docker compose run --rm --no-deps vault-init -e \
+  'for (const f of ["master.key","vault.v1.json"]) require("fs").rmSync("/var/lib/paodo/provider-key/"+f,{force:true})'
+```
 
 Back up each vault separately from its matching key when credentials must survive a restore. Anyone
 who obtains a matching pair can recover that credential class. A credential-free handoff transfers
