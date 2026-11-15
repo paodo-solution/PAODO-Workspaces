@@ -1,6 +1,7 @@
 // Provider keys and workspace secrets each get their own vault and master key outside workspace data, so the
 // proxy can never decrypt provider keys.
 import path from "path";
+import { PROXY_CA_ROOT } from "../proxy/proxyCaPaths";
 import { PROVIDER_VAULT_KEY_FILE, PROVIDER_VAULT_ROOT } from "./providerKeyPaths";
 import { WORKSPACE_SECRET_VAULT_KEY_FILE, WORKSPACE_SECRET_VAULT_ROOT } from "./workspaceSecretPaths";
 
@@ -20,6 +21,7 @@ function overlaps(a: string, b: string): boolean {
 export function assertSecretStorageSeparated(workspacesRoot: string): void {
   const boundaries = [
     { name: "workspace data", root: workspacesRoot },
+    { name: "proxy CA", root: PROXY_CA_ROOT },
     { name: "provider vault", root: PROVIDER_VAULT_ROOT },
     { name: "provider key", root: path.dirname(PROVIDER_VAULT_KEY_FILE) },
     { name: "workspace-secret vault", root: WORKSPACE_SECRET_VAULT_ROOT },

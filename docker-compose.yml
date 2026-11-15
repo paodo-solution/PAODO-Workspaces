@@ -39,6 +39,7 @@ services:
       - DOCKER_HOST=tcp://socket-proxy:2375
       - WORKSPACES_VOLUME_NAME=paodo_ws_workspaces
       - WORKSPACES_ROOT=/var/lib/paodo/data
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
       - PAODO_PROVIDER_KEY_FILE=/var/lib/paodo/provider-key/master.key
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
@@ -48,10 +49,9 @@ services:
     # appear as an empty directory in the maintainer's repository.
     volumes:
       - workspaces:/var/lib/paodo/data
-      # Its own volume, nested inside the workspaces root, so credproxy can mount just this directory
-      # without a subpath into `workspaces` — Docker requires a subpath to pre-exist, which it does
-      # not on a first deployment. The app is the only writer (ensureCA).
-      - proxy-ca:/var/lib/paodo/data/.proxy-ca
+      # Outside the workspaces root, so no bug in serving workspace files can reach the CA or HMAC key.
+      # The app is the only writer (ensureCA); credproxy mounts it read-only.
+      - proxy-ca:/var/lib/paodo/proxy-ca
       - provider-vault:/var/lib/paodo/provider-vault
       - provider-key:/var/lib/paodo/provider-key
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
@@ -96,7 +96,7 @@ services:
     # workspace secrets live in the encrypted vault below; its key is a file on a different mount.
     # Provider credentials live in two app-only volumes this service cannot access.
     environment:
-      - WORKSPACES_ROOT=/var/lib/paodo/data
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
       - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
       - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/master.key
       - CREDENTIAL_PROXY_PORT=9998
@@ -104,10 +104,9 @@ services:
       - NODE_ENV=production
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
-      # Only .proxy-ca (CA, HMAC key, internet-access policy) — NOT the whole workspaces volume,
-      # which also holds the conversation database, the registry and every workspace's files. This
-      # is the one container the untrusted sandbox can reach, so it gets the two files it reads.
-      - proxy-ca:/var/lib/paodo/data/.proxy-ca:ro
+      # Never the workspaces volume: this is the one container the untrusted sandbox can reach, so it
+      # gets only proxy-ca (CA, HMAC key, internet-access policy) and the workspace-secret vault.
+      - proxy-ca:/var/lib/paodo/proxy-ca:ro
       - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault:ro
       - workspace-secret-key:/var/lib/paodo/workspace-secret-key:ro
     depends_on:

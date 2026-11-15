@@ -5,7 +5,7 @@ import * as path from "path";
 import { createLogger, exitAfterLogs } from "./lib/infra/logger";
 import { CredentialProxy } from "./lib/infra/proxy/credentialProxy";
 import { ensureCA } from "./lib/infra/proxy/proxyCA";
-import { WORKSPACES_ROOT } from "./lib/infra/paths";
+import { PROXY_CA_ROOT } from "./lib/infra/proxy/proxyCaPaths";
 import {
   assertSecretStoreAvailable,
   getWorkspaceRules,
@@ -56,7 +56,7 @@ const CA_WAIT_INTERVAL_MS = 2000;
 const CA_WAIT_WARN_AFTER_MS = 30_000;
 // domain.key is the last file ensureCA writes, so its presence implies the whole CA set exists —
 // use it as the barrier so we never fall into ensureCA's generate branch on the read-only mount.
-const CA_SENTINEL = path.join(WORKSPACES_ROOT, ".proxy-ca", "domain.key");
+const CA_SENTINEL = path.join(PROXY_CA_ROOT, "domain.key");
 // The policy is rewritten from the registry on every app boot. Starting between the CA write and
 // that one would serve "everyone enabled" until the next poll — the fail-open case it exists to stop.
 const STARTUP_FILES = [CA_SENTINEL, INTERNET_ACCESS_POLICY_FILE];
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
   await waitForAppStartupFiles();
   try {
     // files exist → load branch only (no writes to the RO mount)
-    ensureCA(WORKSPACES_ROOT, { strictExisting: true });
+    ensureCA(PROXY_CA_ROOT, { strictExisting: true });
   } catch (err) {
     fatalProxyKeyMaterial(err);
   }

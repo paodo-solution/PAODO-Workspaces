@@ -1,11 +1,11 @@
-// The MITM proxy's CA (node-forge): generated once into data/.proxy-ca/, per-domain certs signed and cached in
+// The MITM proxy's CA (node-forge): generated once into PROXY_CA_ROOT, per-domain certs signed and cached in
 // memory. Containers trust it via NODE_EXTRA_CA_CERTS / CURL_CA_BUNDLE / REQUESTS_CA_BUNDLE.
 import forge from "node-forge";
 import { createHmac, timingSafeEqual } from "crypto";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, chmodSync } from "fs";
 import path from "path";
 import { createLogger } from "../logger";
-import { WORKSPACES_ROOT } from "../paths";
+import { PROXY_CA_ROOT } from "./proxyCaPaths";
 import { createKeyFile } from "../security/keyFile";
 
 const log = createLogger("proxyCA");
@@ -16,7 +16,7 @@ let caCert: forge.pki.Certificate | null = null;
 // Host-only HMAC key deriving each workspace's proxy secret; never given to a container. On `global` so the
 // server and Next bundles share it.
 const gKey = global as typeof global & { _proxyHmacKey?: Buffer };
-const PROXY_HMAC_FILE = path.join(WORKSPACES_ROOT, ".proxy-ca", "proxy-hmac.key");
+const PROXY_HMAC_FILE = path.join(PROXY_CA_ROOT, "proxy-hmac.key");
 
 // Return the HMAC key, lazily reading it from disk for module instances (e.g. an API-route bundle)
 // that never ran ensureCA. Null only if the key file does not yet exist.
@@ -51,8 +51,7 @@ export interface EnsureCAOptions {
   strictExisting?: boolean;
 }
 
-export function ensureCA(dataDir: string, options: EnsureCAOptions = {}): void {
-  const caDir = path.join(dataDir, ".proxy-ca");
+export function ensureCA(caDir: string, options: EnsureCAOptions = {}): void {
   const keyFile = path.join(caDir, "ca.key");
   const certFile = path.join(caDir, "ca.crt");
   const domainKeyFile = path.join(caDir, "domain.key");

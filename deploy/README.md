@@ -92,10 +92,13 @@ Compose keeps six named volumes deliberately separate:
 - `workspace-secret-vault` contains encrypted third-party secrets intended for proxy injection;
 - `workspace-secret-key` unlocks only the workspace-secret vault.
 
-`proxy-ca` is mounted at `/var/lib/paodo/data/.proxy-ca` — writable in `app`, read-only in `credproxy`, which
-gets no other view of `workspaces`. Keeping it a volume of its own is what lets `credproxy` start on
-a first deployment: a subpath mount requires the path to already exist in the volume, and on a fresh
-install nothing has created it yet.
+`proxy-ca` is mounted at `/var/lib/paodo/proxy-ca`, outside the workspace data root: writable in `app`,
+read-only in `credproxy`, which gets no view of `workspaces` at all. The app refuses to start if it is
+configured inside the data root.
+
+Upgrading from a release that mounted it at `/var/lib/paodo/data/.proxy-ca`: the volume is the same,
+so nothing moves. `docker compose up -d --build` remounts it, and the empty `.proxy-ca` mount point
+left inside `workspaces` can be removed.
 
 Back up each vault separately from its matching key when credentials must survive a restore. Anyone
 who obtains a matching pair can recover that credential class. A credential-free handoff transfers

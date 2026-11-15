@@ -4,14 +4,14 @@
 import { describe, it, expect, vi, afterAll, afterEach } from "vitest";
 import fs from "fs";
 
-// Redirect the on-disk store to a throwaway temp dir BEFORE the module (via paths.ts) reads
-// WORKSPACES_ROOT at import time — mirrors credentialStore.test.ts.
+// Redirect the on-disk store to a throwaway temp dir BEFORE the module (via proxyCaPaths.ts) reads
+// PAODO_PROXY_CA_ROOT at import time — mirrors credentialStore.test.ts.
 const { ROOT } = vi.hoisted(() => {
   const os = require("os");
   const fs = require("fs");
   const path = require("path");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "internet-access-policy-test-"));
-  process.env.WORKSPACES_ROOT = root;
+  process.env.PAODO_PROXY_CA_ROOT = root;
   return { ROOT: root };
 });
 

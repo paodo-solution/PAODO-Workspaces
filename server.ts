@@ -21,6 +21,7 @@ import next from "next";
 import { WebSocketServer } from "ws";
 import { getStore, getContainers, getVersioning } from "./lib/infra/services";
 import { ensureCA } from "./lib/infra/proxy/proxyCA";
+import { PROXY_CA_ROOT } from "./lib/infra/proxy/proxyCaPaths";
 import { reconcileInternetAccessPolicy } from "./lib/infra/proxy/internetAccessPolicy";
 import { WORKSPACES_ROOT, workspaceRegistryFile } from "./lib/infra/paths";
 import { getSecretsEncKey } from "./lib/infra/security/secretsEncryption";
@@ -375,8 +376,8 @@ assertGitAvailable()
     // The app owns CA generation (writable data mount); the credproxy sidecar only loads it.
     try {
       // Strict: silently replacing partial or unreadable material would invalidate the CA baked into
-      // every workspace container. Remedy: `rm -rf data/.proxy-ca` plus recreating workspaces.
-      ensureCA(WORKSPACES_ROOT, { strictExisting: true });
+      // every workspace container. Remedy: empty the proxy-ca volume plus recreating workspaces.
+      ensureCA(PROXY_CA_ROOT, { strictExisting: true });
     } catch (err) {
       log.fatal(
         { event: "startup_proxy_key_material_invalid", outcome: "process_exit", err },

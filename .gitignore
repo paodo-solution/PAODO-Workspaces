@@ -59,6 +59,7 @@ next-env.d.ts
 /.paodo-provider-key/
 /.paodo-workspace-secret-vault/
 /.paodo-workspace-secret-key/
+/.paodo-proxy-ca/
 # Legacy greenfield artifacts are not read or migrated, but may still contain credentials locally.
 /.paodo-secret-vault/
 /.paodo-secret-key/

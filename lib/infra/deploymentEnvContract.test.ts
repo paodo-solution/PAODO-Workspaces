@@ -9,6 +9,7 @@ const COMPOSE_FILE = path.join(REPO_ROOT, "docker-compose.yml");
 
 const PATH_MODULES = [
   "lib/infra/paths.ts",
+  "lib/infra/proxy/proxyCaPaths.ts",
   "lib/infra/security/providerKeyPaths.ts",
   "lib/infra/security/workspaceSecretPaths.ts",
 ];
@@ -52,13 +53,22 @@ describe("deployment env contract", () => {
     const declared = declaredEnvNames(serviceBlock("credproxy"));
     expect(declared).toEqual(
       expect.arrayContaining([
-        "WORKSPACES_ROOT",
+        "PAODO_PROXY_CA_ROOT",
         "PAODO_WORKSPACE_SECRET_VAULT_ROOT",
         "PAODO_WORKSPACE_SECRET_KEY_FILE",
       ]),
     );
     expect(declared).not.toContain("PAODO_PROVIDER_VAULT_ROOT");
     expect(declared).not.toContain("PAODO_PROVIDER_KEY_FILE");
+  });
+
+  it("mounts the proxy CA outside the workspaces root in every service", () => {
+    for (const service of ["app", "credproxy"]) {
+      const block = serviceBlock(service);
+      expect(block).toMatch(/^ {6}- PAODO_PROXY_CA_ROOT=\/var\/lib\/paodo\/proxy-ca$/m);
+      expect(block).toMatch(/^ {6}- proxy-ca:\/var\/lib\/paodo\/proxy-ca(:ro)?$/m);
+      expect(block).not.toMatch(/\/var\/lib\/paodo\/data\//);
+    }
   });
 
   it("never lets credproxy inherit the admin credentials in .env", () => {

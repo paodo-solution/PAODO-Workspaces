@@ -8,8 +8,8 @@ import { tmpdir } from "os";
 import path from "path";
 import { ensureCA, deriveProxySecret, verifyProxySecret, signDomainCert } from "./proxyCA";
 
-// ensureCA generates the host-only HMAC key into <dataDir>/.proxy-ca. Point it at a throwaway dir so
-// the test never touches the real data/ tree.
+// ensureCA generates the host-only HMAC key into the CA dir it is given. Point it at a throwaway dir so
+// the test never touches real key material.
 beforeAll(() => {
   ensureCA(mkdtempSync(path.join(tmpdir(), "proxy-ca-test-")));
 });
@@ -50,25 +50,25 @@ describe("verifyProxySecret", () => {
 });
 
 describe("strict existing proxy material", () => {
-  it("still provisions a completely fresh data root", () => {
+  it("still provisions a completely fresh CA dir", () => {
     const root = mkdtempSync(path.join(tmpdir(), "proxy-ca-fresh-test-"));
     expect(() => ensureCA(root, { strictExisting: true })).not.toThrow();
   });
 
   it("rejects partial existing CA material instead of silently rotating it", () => {
     const root = mkdtempSync(path.join(tmpdir(), "proxy-ca-partial-test-"));
-    const dir = path.join(root, ".proxy-ca");
+    const dir = path.join(root, "proxy-ca");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "ca.key"), "partial");
-    expect(() => ensureCA(root, { strictExisting: true })).toThrow(/incomplete/);
+    expect(() => ensureCA(dir, { strictExisting: true })).toThrow(/incomplete/);
   });
 
   it("rejects a corrupt existing HMAC key", () => {
     const root = mkdtempSync(path.join(tmpdir(), "proxy-hmac-corrupt-test-"));
-    const dir = path.join(root, ".proxy-ca");
+    const dir = path.join(root, "proxy-ca");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "proxy-hmac.key"), "short");
-    expect(() => ensureCA(root, { strictExisting: true })).toThrow(/HMAC key is corrupt/);
+    expect(() => ensureCA(dir, { strictExisting: true })).toThrow(/HMAC key is corrupt/);
   });
 });
 
