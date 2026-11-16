@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import CredentialConfirm, { type CredentialAction } from "@/components/shared/CredentialConfirm";
 import CredentialReveal from "@/components/shared/CredentialReveal";
+import { Switch } from "@/components/shared/Switch";
 import { useConfirm } from "@/lib/client/hooks/useConfirm";
 import { useCredential } from "@/lib/client/hooks/useCredential";
 import { useReadyOnce } from "@/lib/client/hooks/useReadyOnce";
@@ -40,10 +41,15 @@ export default function CliAccessSection({ open, onReady }: { open: boolean; onR
 
   return (
     <section>
-      <label className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold">
-        <input type="checkbox" checked={credential.enabled} onChange={credential.toggle} disabled={credential.busy} />
-        CLI access
-      </label>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm font-semibold">CLI access</span>
+        <Switch
+          checked={credential.enabled}
+          onChange={() => credential.toggle()}
+          disabled={credential.busy}
+          ariaLabel={credential.enabled ? "Disable CLI access" : "Enable CLI access"}
+        />
+      </div>
 
       {credential.error && (
         <p role="alert" className="mb-0 mt-3 text-xs text-danger">
