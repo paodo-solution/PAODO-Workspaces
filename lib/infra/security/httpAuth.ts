@@ -1,6 +1,7 @@
 // Auth and CSRF logic for the server gates (lib/infra/server/), kept apart so it is unit-testable.
 // How a browser proves identity is uiAuth.ts's job; this only consumes a UiAuthenticator.
 import type { IncomingMessage } from "http";
+import { isDeviceRouteAllowed } from "./deviceAccessPolicy";
 import { isPlatformRouteAllowed } from "./platformAccessPolicy";
 import { isLoopbackAddress } from "./rateLimit";
 import { runtimeMode } from "../runtimeMode";
@@ -42,14 +43,19 @@ const PUBLIC_API_RE = /^\/api\/workspaces\/[^/]+\/agent(?:\/stop)?$/;
 // Workspace MCP authenticates with its own Bearer key, so it is exempt from Basic Auth. GET/DELETE carry no
 // secret and get 405 before touching state.
 const PUBLIC_MCP_RE = /^\/api\/workspaces\/[^/]+\/mcp$/;
+// The VS Code token exchange: the one-time code or refresh token in its body is the credential.
+const CONNECT_TOKEN_RE = /^\/api\/connect\/token$/;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// "ok": UI credential verified (the only result that may mint a session cookie); "platform": instance token
-// verified for this method/path; "forbidden": verified, route not shared; "exempt": route checks its own.
-export type AuthResult = "ok" | "platform" | "exempt" | "challenge" | "unauthorized" | "forbidden" | "blocked";
+// "ok": UI credential verified (the only result that may mint a session cookie); "platform"/"device": that
+// token verified for this method/path; "forbidden": verified, route not shared; "exempt": route checks its own.
+export type AuthResult =
+  "ok" | "platform" | "device" | "exempt" | "challenge" | "unauthorized" | "forbidden" | "blocked";
 // Takes only the secret: the platform credential is instance-wide, and the route allowlist decides
 // what it may reach.
 export type PlatformTokenValidator = (plain: string) => boolean;
+/** A VS Code device access token (`dat_`); deviceAccessPolicy.ts decides what it may reach. */
+export type DeviceTokenValidator = (plain: string) => boolean;
 
 type RequestHostHeaders = {
   host?: string | string[];
@@ -251,6 +257,7 @@ export function checkAuth(
   tracker: AuthFailureTracker,
   validatePlatformToken: PlatformTokenValidator = () => false,
   apiHost: string | null = null,
+  validateDeviceToken: DeviceTokenValidator = () => false,
 ): AuthResult {
   if (tracker.isBlocked(ip)) return "blocked";
 
@@ -258,10 +265,20 @@ export function checkAuth(
   if (req.method === "POST" && PUBLIC_API_RE.test(req.pathname)) return "exempt";
   // The Workspace MCP endpoint authenticates via its own Bearer secret — exempt all methods.
   if (PUBLIC_MCP_RE.test(req.pathname)) return "exempt";
+  if (req.method === "POST" && CONNECT_TOKEN_RE.test(req.pathname)) return "exempt";
 
   const auth = req.authorization;
   if (auth.startsWith("Bearer ")) {
     const token = auth.slice(7);
+
+    // A device token never falls through to the platform check: each kind has its own route list. A refused
+    // one is a lost sign-in, not a guess (256 random bits), so it never feeds the lockout the UI login shares.
+    if (token.startsWith("dat_")) {
+      if (!validateDeviceToken(token)) return "unauthorized";
+      if (!isDeviceRouteAllowed(req.method, req.pathname)) return "forbidden";
+      tracker.clear(ip);
+      return "device";
+    }
 
     // Authentication first, and it is the only thing that feeds the brute-force tracker: a bad secret
     // is a credential guess.

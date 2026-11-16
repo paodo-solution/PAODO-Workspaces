@@ -400,6 +400,90 @@ describe("checkAuth", () => {
   });
 });
 
+describe("checkAuth with a VS Code device token", () => {
+  const API = "api.example.com";
+  const DEVICE = "dat_0123456789abcdef_" + "a".repeat(64);
+  const validDevice = (plain: string) => plain === DEVICE;
+  let tracker: AuthFailureTracker;
+  beforeEach(() => {
+    tracker = new AuthFailureTracker();
+  });
+
+  const call = (pathname: string, authorization: string, method = "GET") =>
+    checkAuth(
+      "ip",
+      req({ method, pathname, hostname: API, authorization }),
+      UI,
+      tracker,
+      () => false,
+      API,
+      validDevice,
+    );
+
+  it("accepts a valid device token on its own routes, on the API host", () => {
+    expect(call("/api/connect/session", `Bearer ${DEVICE}`)).toBe("device");
+    expect(call("/api/connect/session", `Bearer ${DEVICE}`, "DELETE")).toBe("device");
+  });
+
+  it("forbids a valid device token on any other route, without counting a failure", () => {
+    const spy = vi.spyOn(tracker, "recordFailure");
+    expect(call("/api/workspaces", `Bearer ${DEVICE}`)).toBe("forbidden");
+    expect(call("/api/settings/vscode-access", `Bearer ${DEVICE}`)).toBe("forbidden");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wrong device token without counting it, never falling through to the platform check", () => {
+    const platform = vi.fn(() => true);
+    const spy = vi.spyOn(tracker, "recordFailure");
+    const result = checkAuth(
+      "ip",
+      req({ pathname: "/api/workspaces", authorization: "Bearer dat_0123456789abcdef_" + "b".repeat(64) }),
+      UI,
+      tracker,
+      platform,
+      null,
+      validDevice,
+    );
+    expect(result).toBe("unauthorized");
+    expect(platform).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("never accepts a refresh token as a bearer", () => {
+    expect(call("/api/connect/session", "Bearer drt_0123456789abcdef_" + "a".repeat(64))).toBe("unauthorized");
+  });
+
+  it("exempts only POST on the token endpoint, which checks its own body", () => {
+    expect(call("/api/connect/token", "", "POST")).toBe("exempt");
+    expect(call("/api/connect/token", "", "GET")).toBe("unauthorized");
+    expect(call("/api/connect/tokens", "", "POST")).toBe("unauthorized");
+  });
+
+  it("keeps the connect page behind the UI login, out of the device token's reach", () => {
+    expect(call("/connect/vscode", `Bearer ${DEVICE}`)).toBe("forbidden");
+    expect(checkAuth("ip", req({ pathname: "/connect/vscode" }), UI, tracker)).toBe("challenge");
+  });
+});
+
+// Bug repro: a token VS Code was issued, then lost (expired, revoked, access switched off), is not a
+// guessed password, yet it feeds the per-IP lockout that the UI login shares.
+describe("checkAuth with an expired or revoked VS Code device token", () => {
+  const DEAD = "Bearer dat_0123456789abcdef_" + "a".repeat(64);
+  const deviceRejected = () => false;
+
+  it("does not lock the UI login out after a few VS Code windows hit a dead token", () => {
+    const tracker = new AuthFailureTracker();
+    // Five VS Code windows behind one office IP, each told 401 once after access was switched off.
+    for (let i = 0; i < 5; i++) {
+      const r = req({ pathname: "/api/connect/session", authorization: DEAD });
+      expect(checkAuth("office-ip", r, UI, tracker, () => false, null, deviceRejected)).toBe("unauthorized");
+    }
+    // Someone at that office now logs into the web app with the right password.
+    const login = req({ authorization: basic("admin", "hunter2") });
+    expect(checkAuth("office-ip", login, UI, tracker)).toBe("ok");
+  });
+});
+
 describe("checkAuth host-scoping (public API gateway)", () => {
   const API = "api.example.com";
   let tracker: AuthFailureTracker;

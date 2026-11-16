@@ -59,6 +59,7 @@ beforeAll(async () => {
       apiHost: null,
       authFailures: tracker,
       validatePlatformToken: () => false,
+      validateDeviceToken: () => false,
       checkRateLimit: () => ({ ok: true, retryAfter: 0, limit: 100, remaining: 99, policy: "global" }),
       hardenedBrowser: false,
       handle: (_req, res) => res.end("reached the app"),
