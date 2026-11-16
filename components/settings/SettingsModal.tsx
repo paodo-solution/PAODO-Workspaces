@@ -6,8 +6,9 @@ import { LoadingState } from "@/components/shared/LoadingState";
 import CliAccessSection from "./CliAccessSection";
 import DiskUsageSection from "./DiskUsageSection";
 import ProviderKeysSection from "./ProviderKeysSection";
+import VscodeAccessSection from "./VscodeAccessSection";
 
-const SECTION_COUNT = 3;
+const SECTION_COUNT = 4;
 
 interface SettingsModalProps {
   open: boolean;
@@ -73,6 +74,8 @@ function SettingsBody() {
         <ProviderKeysSection open onReady={markReady} />
         <div className="border-t border-border" />
         <CliAccessSection open onReady={markReady} />
+        <div className="border-t border-border" />
+        <VscodeAccessSection open onReady={markReady} />
         <div className="border-t border-border" />
         <DiskUsageSection open onReady={markReady} />
       </div>
