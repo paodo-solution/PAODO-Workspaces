@@ -36,7 +36,8 @@ type FieldsOf<Names extends readonly string[]> = Record<Names[number], ContractF
 const MODEL_CATALOG = "from the model catalog (GET /api/models)";
 
 /** Workspace and drive names share one policy (lib/workspace/name.ts, lib/drives/name.ts). */
-const NAME_RULE = (max: number) => `1-${max} characters, no path separators and no leading dot`;
+const NAME_RULE = (max: number) =>
+  `1-${max} characters, no path separators, none of < > : " | ? *, no leading or trailing dot, not a Windows device name (CON, NUL, COM1…)`;
 
 /** Uniqueness as normalizeForUniqueness enforces it: trimmed, NFC and case-folded, accents kept. */
 const uniqueName = (noun: string) =>

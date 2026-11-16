@@ -18,6 +18,10 @@ describe("drive name policy", () => {
     expect(validateDriveName("shared_assets-v2.1")).toBe("shared_assets-v2.1");
   });
 
+  it("refuses what cannot be a folder on every system, since downloads/<drive-name>/ is one", () => {
+    for (const name of ["a:b", "why?", "a*", "a|b", '"x"', "<x>", "trailing.", "CON", "lpt1.log"]) expectRejected(name);
+  });
+
   it("refuses an empty or whitespace-only name", () => {
     expectRejected("");
     expectRejected("   ");
