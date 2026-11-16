@@ -121,6 +121,29 @@
 			path_regexp workspaceMcp ^/api/workspaces/[^/]+/mcp$
 		}
 
+		# VS Code sign-in. The token endpoint takes a one-time code or a refresh
+		# token in its body; the session route takes a device access token, which
+		# the app limits to its own route list. The connect page and its Allow
+		# endpoint stay on the UI host, behind its login, and are not forwarded.
+		#
+		#   POST   /api/connect/token
+		#   GET    /api/connect/session
+		#   DELETE /api/connect/session
+		@connectToken {
+			method POST
+			path_regexp connectToken ^/api/connect/token$
+		}
+
+		@connectSessionRead {
+			method GET
+			path_regexp connectSessionRead ^/api/connect/session$
+		}
+
+		@connectSessionRemove {
+			method DELETE
+			path_regexp connectSessionRemove ^/api/connect/session$
+		}
+
 		# One matcher per method, because Caddy ANDs method and path within a matcher
 		# and a directive takes only one matcher. Read each against the policy list.
 		#
@@ -246,6 +269,18 @@
 
 		handle @workspaceMcp {
 			import mcpUpstream
+		}
+
+		handle @connectToken {
+			import cliUpstream
+		}
+
+		handle @connectSessionRead {
+			import cliUpstream
+		}
+
+		handle @connectSessionRemove {
+			import cliUpstream
 		}
 
 		handle @cliRead {

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
+import { isDeviceRouteAllowed } from "./security/deviceAccessPolicy";
 import { isPlatformRouteAllowed } from "./security/platformAccessPolicy";
 
 const CADDYFILE = path.resolve(__dirname, "../../deploy/caddy/Caddyfile");
@@ -23,9 +24,14 @@ function gatewayMatchers(): Array<{ name: string; method: string; pattern: RegEx
   return matchers;
 }
 
-// Forwarded routes the platform policy omits: they authenticate per workspace in the handler, not against
-// the CLI key, so they are excluded from the comparison.
-const ROUTE_AUTHENTICATED = new Set(["workspaceAgent", "workspaceMcp"]);
+// Forwarded routes no token policy lists: they authenticate in the handler (a workspace key, or the code or
+// refresh token in VS Code's token request), so they are excluded from the comparison.
+const ROUTE_AUTHENTICATED = new Set(["workspaceAgent", "workspaceMcp", "connectToken"]);
+
+/** What the app lets some token reach: the CLI key's routes plus the VS Code device's. */
+function policyAllows(method: string, pathname: string): boolean {
+  return isPlatformRouteAllowed(method, pathname) || isDeviceRouteAllowed(method, pathname);
+}
 
 function gatewayAllows(matchers: ReturnType<typeof gatewayMatchers>, method: string, pathname: string): boolean {
   return matchers.some((m) => !ROUTE_AUTHENTICATED.has(m.name) && m.method === method && m.pattern.test(pathname));
@@ -66,6 +72,11 @@ const PATHS = [
   "/api/workspace-graph/edges",
   "/api/workspace-graph/edges/x",
   "/api/settings/cli-access",
+  "/api/settings/vscode-access",
+  "/api/connect/token",
+  "/api/connect/session",
+  "/api/connect/session/x",
+  "/connect/vscode",
   "/api/workspaces",
   "/api/workspaces/",
   `/api/workspaces/${ID}`,
@@ -106,14 +117,14 @@ const PATHS = [
 ];
 
 describe("public gateway allowlist", () => {
-  it("forwards exactly the method/path pairs the platform policy authorizes", () => {
+  it("forwards exactly the method/path pairs the token policies authorize", () => {
     const matchers = gatewayMatchers();
     const disagreements: string[] = [];
 
     for (const method of METHODS) {
       for (const pathname of PATHS) {
         const edge = gatewayAllows(matchers, method, pathname);
-        const app = isPlatformRouteAllowed(method, pathname);
+        const app = policyAllows(method, pathname);
         if (edge !== app) {
           disagreements.push(
             `${method} ${pathname}: gateway ${edge ? "forwards" : "refuses"}, policy ${app ? "allows" : "denies"}`,
@@ -131,6 +142,7 @@ describe("public gateway allowlist", () => {
       PATHS.filter((pathname) => gatewayAllows(matchers, method, pathname)).map((pathname) => `${method} ${pathname}`),
     );
     expect(forwarded.sort()).toEqual([
+      "DELETE /api/connect/session",
       "DELETE /api/connections/link_1",
       "DELETE /api/drive-connections",
       `DELETE /api/drives/${ID}`,
@@ -140,6 +152,7 @@ describe("public gateway allowlist", () => {
       `DELETE /api/workspaces/${ID}/api-key`,
       `DELETE /api/workspaces/${ID}/files/content`,
       `DELETE /api/workspaces/${ID}/mcp-config`,
+      "GET /api/connect/session",
       "GET /api/connections",
       "GET /api/contract",
       "GET /api/drive-connections",
@@ -176,6 +189,14 @@ describe("public gateway allowlist", () => {
       `PUT /api/workspaces/${ID}/files/transfer`,
       `PUT /api/workspaces/${ID}/schedule`,
     ]);
+  });
+
+  it("forwards VS Code's token endpoint, and only as a POST", () => {
+    const token = gatewayMatchers().find((m) => m.name === "connectToken")!;
+    const admits = METHODS.flatMap((method) =>
+      PATHS.filter((pathname) => token.method === method && token.pattern.test(pathname)).map((p) => `${method} ${p}`),
+    );
+    expect(admits).toEqual(["POST /api/connect/token"]);
   });
 
   it("strips and re-sets the forwarding headers on every proxied route", () => {
