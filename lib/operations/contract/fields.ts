@@ -71,7 +71,8 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   },
   internetAccess: {
     type: "boolean",
-    effect: "While false, the container reaches no host. While true, it reaches every host unless domainRestriction is true.",
+    effect:
+      "While false, the container reaches no host. While true, it reaches every host unless domainRestriction is true.",
   },
   domainRestriction: {
     type: "boolean",
@@ -114,7 +115,8 @@ const drive: FieldsOf<typeof DRIVE_UPDATABLE_FIELDS> = {
   name: { type: "string", rule: NAME_RULE(MAX_DRIVE_NAME_LENGTH), effect: uniqueName("drive") },
   description: {
     type: "string",
-    effect: "Shown beside the drive's name to every agent connected to it, so say what belongs in it; empty means none.",
+    effect:
+      "Shown beside the drive's name to every agent connected to it, so say what belongs in it; empty means none.",
   },
 };
 

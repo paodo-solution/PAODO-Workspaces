@@ -32,7 +32,11 @@ interface PendingConfirm {
 }
 
 const CONFIRM_COPY: Record<KeyAction, { verb: string; busy: string; outcome: string }> = {
-  replace: { verb: "Replace", busy: "Replacing…", outcome: "will be overwritten by the new one and can't be restored." },
+  replace: {
+    verb: "Replace",
+    busy: "Replacing…",
+    outcome: "will be overwritten by the new one and can't be restored.",
+  },
   revoke: { verb: "Revoke", busy: "Revoking…", outcome: "will be deleted and can't be restored." },
 };
 
@@ -118,11 +122,7 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
               disabled={working}
             />
             {/* h-[30px] matches this box (16px line + 12px padding + 2px border); btn-sm suits the taller .input. */}
-            <button
-              className="btn btn-sm h-[30px]"
-              onClick={() => submit(entry)}
-              disabled={working || !draft.trim()}
-            >
+            <button className="btn btn-sm h-[30px]" onClick={() => submit(entry)} disabled={working || !draft.trim()}>
               {working ? "Saving…" : "Save"}
             </button>
           </div>
@@ -150,11 +150,7 @@ export default function ProviderKeysSection({ open, onReady }: { open: boolean; 
                 Replace key
               </button>
             )}
-            <button
-              className="linkbtn text-danger"
-              onClick={() => askConfirm(entry, "revoke")}
-              disabled={working}
-            >
+            <button className="linkbtn text-danger" onClick={() => askConfirm(entry, "revoke")} disabled={working}>
               {working && !editing ? "Working…" : "Revoke"}
             </button>
           </div>

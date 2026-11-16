@@ -1,7 +1,13 @@
 // Opens a sealed value. Needs a private key, which only credproxy, llm-proxy and vault-init mount; the
 // ESLint config bans importing this module from anywhere else.
 import { createPublicKey, diffieHellman, type KeyObject } from "crypto";
-import { sealingKey, workspaceSecretContext, type SealContext, type SealedValue, type SecretBinding } from "./secretSeal";
+import {
+  sealingKey,
+  workspaceSecretContext,
+  type SealContext,
+  type SealedValue,
+  type SecretBinding,
+} from "./secretSeal";
 import { decryptWithKey } from "./vaultEncryption";
 
 /** Throws on a wrong key, a tampered value, or a context that differs from the one it was sealed with. */

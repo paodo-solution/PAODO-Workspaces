@@ -36,7 +36,10 @@ function opened(): Record<string, string> {
   const vault = readProviderVault(paths.vaultFile);
   const key = createPrivateKey(fs.readFileSync(paths.privateKeyFile, "utf8"));
   return Object.fromEntries(
-    Object.entries(vault.providerKeys).map(([provider, e]) => [provider, openWith(e.sealed, key, providerKeyContext(provider))]),
+    Object.entries(vault.providerKeys).map(([provider, e]) => [
+      provider,
+      openWith(e.sealed, key, providerKeyContext(provider)),
+    ]),
   );
 }
 
