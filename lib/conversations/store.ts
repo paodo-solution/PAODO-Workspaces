@@ -6,6 +6,7 @@ import { createLogger } from "../infra/logger";
 import { serializeMessages, deserializeMessages } from "../agent/messageSerialization";
 import { appDataDb as db, invalidateAppDataDb } from "../data/database";
 import { broadcastToWorkspace } from "../infra/realtime/wsHub";
+import { publish } from "../infra/realtime/eventHub";
 
 const log = createLogger("conversations");
 
@@ -118,6 +119,7 @@ function ensureLoaded(workspaceId: string): WorkspaceConversations {
 }
 
 function notifyConversationsChanged(workspaceId: string): void {
+  publish({ type: "conversations_changed", workspaceId });
   try {
     broadcastToWorkspace(workspaceId, JSON.stringify({ type: "conversations_changed" }));
   } catch (err) {

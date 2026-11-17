@@ -129,8 +129,10 @@
 		#   POST   /api/connect/token
 		#   GET    /api/connect/session
 		#   DELETE /api/connect/session
+		#   GET    /api/connect/events (a long-lived SSE stream, so agentUpstream)
 		#   GET    /api/workspaces (the picker; forwarded by @cliRead below)
 		#   GET    /api/workspaces/{id}/conversations (the session picker; same)
+		#   POST   /api/workspaces/{id}/conversations (New Chat; device tokens only)
 		@connectToken {
 			method POST
 			path_regexp connectToken ^/api/connect/token$
@@ -144,6 +146,16 @@
 		@connectSessionRemove {
 			method DELETE
 			path_regexp connectSessionRemove ^/api/connect/session$
+		}
+
+		@connectEvents {
+			method GET
+			path_regexp connectEvents ^/api/connect/events$
+		}
+
+		@deviceConversationCreate {
+			method POST
+			path_regexp deviceConversationCreate ^/api/workspaces/[^/]+/conversations$
 		}
 
 		# One matcher per method, because Caddy ANDs method and path within a matcher
@@ -282,6 +294,14 @@
 		}
 
 		handle @connectSessionRemove {
+			import cliUpstream
+		}
+
+		handle @connectEvents {
+			import agentUpstream
+		}
+
+		handle @deviceConversationCreate {
 			import cliUpstream
 		}
 

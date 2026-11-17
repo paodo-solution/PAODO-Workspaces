@@ -5,10 +5,13 @@ const RULES: ReadonlyArray<{ method: string; pathname: RegExp }> = [
   // Who this token belongs to, and signing out (the device revokes itself).
   { method: "GET", pathname: /^\/api\/connect\/session$/ },
   { method: "DELETE", pathname: /^\/api\/connect\/session$/ },
+  // The live stream of change signals (ids only) that keeps the pickers and running LEDs current.
+  { method: "GET", pathname: /^\/api\/connect\/events$/ },
   // The workspace picker: the list only, no create and no member routes yet.
   { method: "GET", pathname: /^\/api\/workspaces$/ },
-  // The session picker: a workspace's conversation list, never a transcript, and no create.
+  // The session picker: a workspace's conversation list (never a transcript), and New Chat.
   { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/conversations$/ },
+  { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/conversations$/ },
 ];
 
 /** Every rule as `METHOD pattern`, for the test that pins this surface. */

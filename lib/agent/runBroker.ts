@@ -1,6 +1,7 @@
 // Runs outlive HTTP requests: one detached run per (workspace, conversation), its events buffered and fanned
 // out, so a late subscriber replays then follows live. Only stop() ends a run; history is saved at run end.
 import type { BaseMessage } from "@langchain/core/messages";
+import { publish as publishAppEvent } from "../infra/realtime/eventHub";
 import { runAgent, type AgentEvent } from "./runner";
 import type { RunAgentOptions } from "./runner";
 import { noteRunError } from "./messageSerialization";
@@ -150,6 +151,7 @@ export function startRun(params: StartRunParams): {
   }
   const capacityAtStart = capacity.snapshot();
   sessions.set(k, session);
+  publishAppEvent({ type: "run_started", workspaceId: params.workspaceId, conversationId: params.conversationId });
   const startedAt = Date.now();
   log.info(
     {
@@ -323,6 +325,7 @@ export function startRun(params: StartRunParams): {
           "persist on run end failed",
         );
       }
+      publishAppEvent({ type: "run_ended", workspaceId: params.workspaceId, conversationId: params.conversationId });
       finishUsageSession(sessionId, terminalStatus);
       log.info(
         {
@@ -425,6 +428,7 @@ export function startExternalRun(
   const capacityAtStart = capacity.snapshot();
 
   sessions.set(k, session);
+  publishAppEvent({ type: "run_started", workspaceId, conversationId });
   const startedAt = Date.now();
   let terminalStatus: AgentRunStatus = "success";
   log.info(
@@ -457,6 +461,7 @@ export function startExternalRun(
     finish: (status) => {
       if (session.status === "done") return;
       session.status = "done";
+      publishAppEvent({ type: "run_ended", workspaceId, conversationId });
       executionSlot.release();
       getContainers().noteRunEnd(workspaceId);
       const capacityAtEnd = capacity.snapshot();
@@ -529,6 +534,13 @@ export function runningConversationIds(workspaceId: string): string[] {
     if (session.workspaceId === workspaceId && session.status === "running") ids.push(session.conversationId);
   }
   return ids;
+}
+
+/** Every running conversation across workspaces, for a client that just connected to the change events. */
+export function runningConversations(): Array<{ workspaceId: string; conversationId: string }> {
+  return [...sessions.values()]
+    .filter((s) => s.status === "running")
+    .map(({ workspaceId, conversationId }) => ({ workspaceId, conversationId }));
 }
 
 /** Explicit stop: aborts the run, which the runner observes and exits cleanly (history stays valid). */

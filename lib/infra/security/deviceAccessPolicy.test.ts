@@ -7,8 +7,10 @@ it("pins the device routes", () => {
     [
       "GET ^\\/api\\/connect\\/session$",
       "DELETE ^\\/api\\/connect\\/session$",
+      "GET ^\\/api\\/connect\\/events$",
       "GET ^\\/api\\/workspaces$",
       "GET ^\\/api\\/workspaces\\/[^/]+\\/conversations$",
+      "POST ^\\/api\\/workspaces\\/[^/]+\\/conversations$",
     ]
   `);
 });
@@ -20,7 +22,8 @@ it("refuses admin, settings and token-minting routes", () => {
   expect(isDeviceRouteAllowed("POST", "/api/workspaces")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/workspaces/x")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/connect/session/x")).toBe(false);
-  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/conversations")).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/connect/events")).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/conversations/initial")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/conversations/c1/sessions")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/conversations/initial")).toBe(false);
 });
@@ -36,8 +39,10 @@ it("allows each route exactly, and refuses every near-miss of it", () => {
   const allowed = [
     ["GET", "/api/connect/session"],
     ["DELETE", "/api/connect/session"],
+    ["GET", "/api/connect/events"],
     ["GET", "/api/workspaces"],
     ["GET", "/api/workspaces/w1/conversations"],
+    ["POST", "/api/workspaces/w1/conversations"],
   ] as const;
   const methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "get"];
   const nearPaths = (path: string) => [

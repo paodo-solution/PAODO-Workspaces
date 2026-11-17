@@ -4,6 +4,7 @@ import { messagesToTranscript } from "./messageSerialization";
 import type { AgentEvent, RunAgentOptions } from "./runner";
 import * as broker from "./runBroker";
 import { ExecutionCapacity, ExecutionCapacityReachedError } from "./executionCapacity";
+import { subscribe as onAppEvent, type AppEvent } from "../infra/realtime/eventHub";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -185,6 +186,34 @@ describe("runBroker", () => {
     await tick();
   });
 
+  it("publishes run_started and run_ended, and lists the run across workspaces while it runs", async () => {
+    const gate = deferred();
+    const run = async function* () {
+      await gate.promise;
+      yield { type: "done" } as AgentEvent;
+    } as unknown as typeof import("./runner").runAgent;
+    const p = params(run);
+    const events: AppEvent[] = [];
+    const off = onAppEvent((e) => events.push(e));
+
+    broker.startRun(p);
+    expect(broker.runningConversations()).toContainEqual({
+      workspaceId: p.workspaceId,
+      conversationId: p.conversationId,
+    });
+    gate.resolve();
+    await tick();
+    await tick();
+    off();
+
+    const ids = { workspaceId: p.workspaceId, conversationId: p.conversationId };
+    expect(events.filter((e) => e.type.startsWith("run_"))).toEqual([
+      { type: "run_started", ...ids },
+      { type: "run_ended", ...ids },
+    ]);
+    expect(broker.runningConversations()).not.toContainEqual(ids);
+  });
+
   describe("startExternalRun", () => {
     it("buffers + fans out producer-published events, and marks the conversation running", () => {
       const ext = broker.startExternalRun("ws-ext", "conv-ext", "hello");
@@ -207,6 +236,20 @@ describe("runBroker", () => {
       ext!.publish({ type: "done" });
       ext!.finish();
       expect(broker.isRunning("ws-ext", "conv-ext")).toBe(false);
+    });
+
+    it("publishes run_started on start and run_ended once, however often finish() is called", () => {
+      const events: AppEvent[] = [];
+      const off = onAppEvent((e) => events.push(e));
+      const ext = broker.startExternalRun("ws-ext-ev", "conv-ext-ev", "x");
+      ext!.finish();
+      ext!.finish();
+      off();
+      const ids = { workspaceId: "ws-ext-ev", conversationId: "conv-ext-ev" };
+      expect(events).toEqual([
+        { type: "run_started", ...ids },
+        { type: "run_ended", ...ids },
+      ]);
     });
 
     it("rejects a second external run for a conversation already running", () => {
