@@ -22,6 +22,7 @@ API / MCP client ──► Caddy (API host, route allowlist) ──► app:PORT 
 2. **Rate limit.** `/api/*` requests are limited per client IP, read from `CF-Connecting-IP`.
 3. **Credential** (`checkAuth` in `lib/infra/security/httpAuth.ts`):
    - Agent run/stop `POST` and workspace MCP are `exempt`. Each route checks its own per-workspace Bearer key.
+   - The VS Code token exchange (`POST /api/connect/token`, its body is the credential) and probe (`GET /api/connect/vscode`, answers only `paodo: true`) are `exempt` too.
    - Any other `Bearer` token is checked as the instance platform token. A deny-by-default route policy (`platformAccessPolicy.ts`) then decides what it may call, and an unmapped route gets `403`.
    - Anything else must present the UI credential. The UI credential is always refused on the API host.
 4. **CSRF.** A mutating `/api/*` request whose `Sec-Fetch-Site` is anything other than `same-origin` or `none` gets `403`.
