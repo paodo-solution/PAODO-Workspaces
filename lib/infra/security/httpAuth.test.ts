@@ -423,11 +423,12 @@ describe("checkAuth with a VS Code device token", () => {
   it("accepts a valid device token on its own routes, on the API host", () => {
     expect(call("/api/connect/session", `Bearer ${DEVICE}`)).toBe("device");
     expect(call("/api/connect/session", `Bearer ${DEVICE}`, "DELETE")).toBe("device");
+    expect(call("/api/workspaces", `Bearer ${DEVICE}`)).toBe("device");
   });
 
   it("forbids a valid device token on any other route, without counting a failure", () => {
     const spy = vi.spyOn(tracker, "recordFailure");
-    expect(call("/api/workspaces", `Bearer ${DEVICE}`)).toBe("forbidden");
+    expect(call("/api/workspaces", `Bearer ${DEVICE}`, "POST")).toBe("forbidden");
     expect(call("/api/settings/vscode-access", `Bearer ${DEVICE}`)).toBe("forbidden");
     expect(spy).not.toHaveBeenCalled();
   });

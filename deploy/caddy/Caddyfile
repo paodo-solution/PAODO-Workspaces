@@ -129,6 +129,7 @@
 		#   POST   /api/connect/token
 		#   GET    /api/connect/session
 		#   DELETE /api/connect/session
+		#   GET    /api/workspaces (the picker; forwarded by @cliRead below)
 		@connectToken {
 			method POST
 			path_regexp connectToken ^/api/connect/token$

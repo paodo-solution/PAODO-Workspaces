@@ -5,6 +5,8 @@ const RULES: ReadonlyArray<{ method: string; pathname: RegExp }> = [
   // Who this token belongs to, and signing out (the device revokes itself).
   { method: "GET", pathname: /^\/api\/connect\/session$/ },
   { method: "DELETE", pathname: /^\/api\/connect\/session$/ },
+  // The workspace picker: the list only, no create and no member routes yet.
+  { method: "GET", pathname: /^\/api\/workspaces$/ },
 ];
 
 /** Every rule as `METHOD pattern`, for the test that pins this surface. */
