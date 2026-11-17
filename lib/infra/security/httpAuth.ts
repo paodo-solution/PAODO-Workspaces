@@ -45,6 +45,8 @@ const PUBLIC_API_RE = /^\/api\/workspaces\/[^/]+\/agent(?:\/stop)?$/;
 const PUBLIC_MCP_RE = /^\/api\/workspaces\/[^/]+\/mcp$/;
 // The VS Code token exchange: the one-time code or refresh token in its body is the credential.
 const CONNECT_TOKEN_RE = /^\/api\/connect\/token$/;
+// What VS Code asks before opening the sign-in page: "is this a PAODO instance?". Answers only `paodo: true`.
+const CONNECT_PROBE_RE = /^\/api\/connect\/vscode$/;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // "ok": UI credential verified (the only result that may mint a session cookie); "platform"/"device": that
@@ -266,6 +268,7 @@ export function checkAuth(
   // The Workspace MCP endpoint authenticates via its own Bearer secret — exempt all methods.
   if (PUBLIC_MCP_RE.test(req.pathname)) return "exempt";
   if (req.method === "POST" && CONNECT_TOKEN_RE.test(req.pathname)) return "exempt";
+  if (req.method === "GET" && CONNECT_PROBE_RE.test(req.pathname)) return "exempt";
 
   const auth = req.authorization;
   if (auth.startsWith("Bearer ")) {

@@ -459,6 +459,12 @@ describe("checkAuth with a VS Code device token", () => {
     expect(call("/api/connect/tokens", "", "POST")).toBe("unauthorized");
   });
 
+  it("exempts only GET on the probe VS Code calls before opening the sign-in page", () => {
+    expect(call("/api/connect/vscode", "")).toBe("exempt");
+    expect(call("/api/connect/vscode", "", "POST")).toBe("unauthorized");
+    expect(call("/api/connect/vscodex", "")).toBe("unauthorized");
+  });
+
   it("keeps the connect page behind the UI login, out of the device token's reach", () => {
     expect(call("/connect/vscode", `Bearer ${DEVICE}`)).toBe("forbidden");
     expect(checkAuth("ip", req({ pathname: "/connect/vscode" }), UI, tracker)).toBe("challenge");
