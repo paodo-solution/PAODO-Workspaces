@@ -7,6 +7,8 @@ const RULES: ReadonlyArray<{ method: string; pathname: RegExp }> = [
   { method: "DELETE", pathname: /^\/api\/connect\/session$/ },
   // The workspace picker: the list only, no create and no member routes yet.
   { method: "GET", pathname: /^\/api\/workspaces$/ },
+  // The session picker: a workspace's conversation list, never a transcript, and no create.
+  { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/conversations$/ },
 ];
 
 /** Every rule as `METHOD pattern`, for the test that pins this surface. */
