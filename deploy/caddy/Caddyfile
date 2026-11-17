@@ -133,6 +133,10 @@
 		#   GET    /api/workspaces (the picker; forwarded by @cliRead below)
 		#   GET    /api/workspaces/{id}/conversations (the session picker; same)
 		#   POST   /api/workspaces/{id}/conversations (New Chat; device tokens only)
+		#   GET    /api/workspaces/{id}/conversations/{convId} (a transcript; same)
+		#   POST   /api/workspaces/{id}/chat (send or re-attach: an SSE stream for the
+		#          whole run, so agentUpstream; same)
+		#   POST   /api/workspaces/{id}/conversations/{convId}/stop (same)
 		@connectToken {
 			method POST
 			path_regexp connectToken ^/api/connect/token$
@@ -156,6 +160,21 @@
 		@deviceConversationCreate {
 			method POST
 			path_regexp deviceConversationCreate ^/api/workspaces/[^/]+/conversations$
+		}
+
+		@deviceConversationRead {
+			method GET
+			path_regexp deviceConversationRead ^/api/workspaces/[^/]+/conversations/[0-9a-f-]+$
+		}
+
+		@deviceChat {
+			method POST
+			path_regexp deviceChat ^/api/workspaces/[^/]+/chat$
+		}
+
+		@deviceConversationStop {
+			method POST
+			path_regexp deviceConversationStop ^/api/workspaces/[^/]+/conversations/[0-9a-f-]+/stop$
 		}
 
 		# One matcher per method, because Caddy ANDs method and path within a matcher
@@ -302,6 +321,18 @@
 		}
 
 		handle @deviceConversationCreate {
+			import cliUpstream
+		}
+
+		handle @deviceConversationRead {
+			import cliUpstream
+		}
+
+		handle @deviceChat {
+			import agentUpstream
+		}
+
+		handle @deviceConversationStop {
 			import cliUpstream
 		}
 

@@ -2,6 +2,8 @@
 import { expect, it } from "vitest";
 import { deviceRouteRules, isDeviceRouteAllowed } from "./deviceAccessPolicy";
 
+const CONV = "b6b8b4f1-0000-4000-8000-000000000000";
+
 it("pins the device routes", () => {
   expect(deviceRouteRules()).toMatchInlineSnapshot(`
     [
@@ -11,6 +13,9 @@ it("pins the device routes", () => {
       "GET ^\\/api\\/workspaces$",
       "GET ^\\/api\\/workspaces\\/[^/]+\\/conversations$",
       "POST ^\\/api\\/workspaces\\/[^/]+\\/conversations$",
+      "GET ^\\/api\\/workspaces\\/[^/]+\\/conversations\\/[0-9a-f-]+$",
+      "POST ^\\/api\\/workspaces\\/[^/]+\\/chat$",
+      "POST ^\\/api\\/workspaces\\/[^/]+\\/conversations\\/[0-9a-f-]+\\/stop$",
     ]
   `);
 });
@@ -26,6 +31,16 @@ it("refuses admin, settings and token-minting routes", () => {
   expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/conversations/initial")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/conversations/c1/sessions")).toBe(false);
   expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/conversations/initial")).toBe(false);
+  expect(isDeviceRouteAllowed("GET", `/api/workspaces/x/conversations/${CONV}/sessions`)).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/agent")).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/agent/stop")).toBe(false);
+});
+
+it("takes only a lowercase hex id as the conversation id", () => {
+  expect(isDeviceRouteAllowed("GET", `/api/workspaces/x/conversations/${CONV}`)).toBe(true);
+  expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/conversations/x1")).toBe(false);
+  expect(isDeviceRouteAllowed("GET", `/api/workspaces/x/conversations/${CONV.toUpperCase()}`)).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/conversations/initial/stop")).toBe(false);
 });
 
 it("matches exactly one segment for the workspace id", () => {
@@ -43,6 +58,9 @@ it("allows each route exactly, and refuses every near-miss of it", () => {
     ["GET", "/api/workspaces"],
     ["GET", "/api/workspaces/w1/conversations"],
     ["POST", "/api/workspaces/w1/conversations"],
+    ["GET", `/api/workspaces/w1/conversations/${CONV}`],
+    ["POST", "/api/workspaces/w1/chat"],
+    ["POST", `/api/workspaces/w1/conversations/${CONV}/stop`],
   ] as const;
   const methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "get"];
   const nearPaths = (path: string) => [

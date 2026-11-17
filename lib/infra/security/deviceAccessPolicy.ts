@@ -9,9 +9,14 @@ const RULES: ReadonlyArray<{ method: string; pathname: RegExp }> = [
   { method: "GET", pathname: /^\/api\/connect\/events$/ },
   // The workspace picker: the list only, no create and no member routes yet.
   { method: "GET", pathname: /^\/api\/workspaces$/ },
-  // The session picker: a workspace's conversation list (never a transcript), and New Chat.
+  // The session picker: a workspace's conversation list, and New Chat.
   { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/conversations$/ },
   { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/conversations$/ },
+  // One conversation: its transcript, chatting in it (send, or re-attach to a live run) and stopping it.
+  // Conversation ids are UUIDs, so lowercase hex and dashes: that keeps `conversations/initial` out.
+  { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/conversations\/[0-9a-f-]+$/ },
+  { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/chat$/ },
+  { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/conversations\/[0-9a-f-]+\/stop$/ },
 ];
 
 /** Every rule as `METHOD pattern`, for the test that pins this surface. */
