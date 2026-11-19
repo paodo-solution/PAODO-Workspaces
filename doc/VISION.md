@@ -30,10 +30,6 @@ Benefit : full observability of what your service is doing, directly in the brow
 
 Benefit : Agent has every tool required to manipulate data inside it's isolated workspace
 
-- **File locks** — mark any file or folder read-only to protect it from agent edits; useful for credentials, config, or outputs only the service itself should write
-
-Benefit : protect critical data and configuration from accidental changes so you can let the agent work autonomously with confidence
-
 - **Agent network** — connect workspaces in a directed graph so agents can delegate tasks to each other. Calls are contract-first: each workspace publishes **skills** — typed actions with enforced input and output schemas — so an orchestrator agent can route work to specialist agents below it and rely on what comes back.
 
 Benefit : build complex workflows by wiring together workspaces, each with a single responsibility, while staying in control of which agent can talk to which — and trusting the result because the contract is enforced, not assumed
@@ -51,7 +47,7 @@ The metaphor is an organization, not a program:
 - A **workspace** is an employee — it has its own desk (files), its own tools (terminal), its own expertise (data + `AGENTS.md`), and it does one job well.
 - **Skills** are its job description — typed contracts that say exactly what it can be asked for and what it returns, so colleagues can rely on it without reading its mind.
 - The **agent network** is the org chart — who may ask whom, with an orchestrator routing work to the specialists below it.
-- **Shared drives** (on the roadmap) are the shared workspace — the SharePoint where agents drop artifacts for each other to pick up, so collaboration outlives any single request.
+- **Shared drives** are the shared workspace — the SharePoint where agents drop artifacts for each other to pick up, so collaboration outlives any single request.
 
 The citizen developer's job shifts from _doing the work_ to _designing the organization_: defining intents, contracts, and who-talks-to-whom — then letting a fleet of grounded agents run it. You handle the intent and the structure. The agents handle the terminal, the data, and the handoffs.
 

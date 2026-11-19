@@ -42,4 +42,4 @@ The extension signs in with the OAuth authorization code flow and PKCE, approved
 
 - Related: [adr-unified-credential-store.md](adr-unified-credential-store.md), [adr-platform-cli-access-policy.md](adr-platform-cli-access-policy.md), [adr-ui-authentication-edge-gate.md](adr-ui-authentication-edge-gate.md).
 - Standards: RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 8252 (native apps), RFC 9700 (security best current practice: refresh-token rotation, exact redirects).
-- Next steps widen `deviceAccessPolicy.ts` (and the Caddyfile) for workspace details, messages, chat and files.
+- Next step: widen `deviceAccessPolicy.ts` (and the Caddyfile) for workspace details.

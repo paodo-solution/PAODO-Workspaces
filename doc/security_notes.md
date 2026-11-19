@@ -124,7 +124,7 @@ Neither miss was visible from any one file.
 
 **Auth**
 
-- The configured UI authenticator (Basic or IAP) covers browser UI routes and WebSocket upgrades after any outer ingress policy
+- The configured UI authenticator (Basic, IAP, or local) covers browser UI routes and WebSocket upgrades after any outer ingress policy
 - Timing-safe comparison (`crypto.timingSafeEqual`) for username and password
 - Brute-force lockout: 5 failures / 60 s → 429 + `Retry-After`; counter resets on success
 - Per-workspace Bearer tokens protect Agent API and MCP routes
@@ -144,4 +144,4 @@ Neither miss was visible from any one file.
 **Operational**
 
 - Explicit audit events (auth failures, rate-limit trips, and credential lifecycle changes) are logged with an `audit: true` tag, alongside operational logs on container stdout. Docker's `json-file` driver stores, bounds, and rotates them in managed files on the host; they do not survive container replacement.
-- Server refuses to start without a valid `PAODO_AUTH_MODE` and that mode's credentials — `USERNAME`/`PASSWORD` for `basic`, the `PAODO_IAP_*` settings for `iap` — so there is no unauthenticated mode and no opt-out. Previously gated on `NODE_ENV`, which meant flipping a container to debug logging served every route unauthenticated.
+- Server refuses to start without a valid `PAODO_AUTH_MODE` and that mode's credentials — `USERNAME`/`PASSWORD` for `basic`, the `PAODO_IAP_*` settings for `iap`. The one mode without a credential, `local` (quick start), admits only loopback and the Docker gateway, and refuses to start when a public hostname is configured. Previously gated on `NODE_ENV`, which meant flipping a container to debug logging served every route unauthenticated.

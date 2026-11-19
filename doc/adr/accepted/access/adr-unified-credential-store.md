@@ -18,7 +18,7 @@ All three need the same lifecycle (generate, rotate, revoke, enable/disable, val
 
 One module, `lib/infra/security/credentialStore.ts`, owns every PAODO-issued key.
 
-- **One record per `(kind, subject)`**: `kind` is `workspace-api`, `workspace-mcp` or `platform`; `subject` is a workspace id, or none for the instance-wide platform key. Each channel has exactly one key.
+- **One record per `(kind, subject)`**: `kind` is `workspace-api`, `workspace-mcp` or `platform` (VS Code `device` tokens share the file with their own lifecycle, see [adr-vscode-device-sign-in.md](adr-vscode-device-sign-in.md)); `subject` is a workspace id, or none for the instance-wide platform key. Each channel has exactly one key.
 - **One lifecycle for all three**: `mint` (generate or rotate; the plaintext is returned once), `revoke`, `setEnabled`, `state`, `validate`, `remove`, and `removeWorkspace` for workspace deletion.
 - **Hashes never leave the module.** Keys are stored only as SHA-256 hashes, and `state` returns public fields only, so no route can expose one.
 - **The key and the channel's on/off flag are independent.** A key works only while the channel is enabled; minting never enables a channel, and revoking never disables one.
