@@ -8,6 +8,11 @@ export function deviceIdFromRequest(request: Request): string | null {
   return plain ? validateDeviceAccess(plain) : null;
 }
 
+/** A request made with a VS Code device token that no longer validates (revoked, expired, access off). */
+export function deviceSignInLost(request: Request): boolean {
+  return (request.headers.get("authorization") ?? "").startsWith("Bearer dat_") && !deviceIdFromRequest(request);
+}
+
 // Where VS Code sends every call: the API host, which no SSO sits in front of. Without one (local dev,
 // basic mode) it is the origin the browser used, whose Host the gate has already checked.
 export function deviceApiUrl(headers: { get(name: string): string | null }): string {
