@@ -450,6 +450,15 @@ describe("checkAuth with a VS Code device token", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it("never clears the UI login's lockout, so a stolen token cannot reset password guessing", () => {
+    const guess = () =>
+      checkAuth("ip", req({ hostname: "ui.example.com", authorization: basic("admin", "wrong") }), UI, tracker);
+    for (let i = 0; i < 4; i++) expect(guess()).toBe("unauthorized");
+    expect(call("/api/workspaces", `Bearer ${DEVICE}`)).toBe("device");
+    expect(guess()).toBe("unauthorized");
+    expect(call("/api/workspaces", `Bearer ${DEVICE}`)).toBe("blocked");
+  });
+
   it("never accepts a refresh token as a bearer", () => {
     expect(call("/api/connect/session", "Bearer drt_0123456789abcdef_" + "a".repeat(64))).toBe("unauthorized");
   });

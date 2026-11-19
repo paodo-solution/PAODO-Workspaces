@@ -274,12 +274,11 @@ export function checkAuth(
   if (auth.startsWith("Bearer ")) {
     const token = auth.slice(7);
 
-    // A device token never falls through to the platform check: each kind has its own route list. A refused
-    // one is a lost sign-in, not a guess (256 random bits), so it never feeds the lockout the UI login shares.
+    // A device token never touches the UI login's lockout: a refused one is a lost sign-in, not a guess, and
+    // an accepted one must not clear it, or a stolen token would reset password guessing from its IP.
     if (token.startsWith("dat_")) {
       if (!validateDeviceToken(token)) return "unauthorized";
       if (!isDeviceRouteAllowed(req.method, req.pathname)) return "forbidden";
-      tracker.clear(ip);
       return "device";
     }
 
