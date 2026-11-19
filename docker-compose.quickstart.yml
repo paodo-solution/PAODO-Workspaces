@@ -1,0 +1,186 @@
+# Try PAODO locally with prebuilt images and no password on http://localhost:7373 (README, "Quick start").
+# Same topology as docker-compose.yml, kept in step by quickstartCompose.test.ts; to expose PAODO, use that file.
+name: paodo_ws
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      BUILD: 1
+      INFO: 1
+      EXEC: 1
+      POST: 1
+    networks:
+      - socket_proxy_net
+    logging: *default-logging
+
+  app:
+    image: ghcr.io/paodo-solution/paodo-workspaces:${PAODO_VERSION:-latest}
+    ports:
+      - "127.0.0.1:${PORT:-7373}:${PORT:-7373}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PORT=${PORT:-7373}
+      # Fixed, not interpolated: a .env (even a copied .env.example) must never switch this file to a password.
+      - PAODO_AUTH_MODE=local
+      - PAODO_WORKSPACE_IMAGE_SOURCE=ghcr.io/paodo-solution/paodo-workspaces-sandbox:${PAODO_VERSION:-latest}
+      - OPENAI_AVAILABLE=${OPENAI_AVAILABLE:-true}
+      - ANTHROPIC_AVAILABLE=${ANTHROPIC_AVAILABLE:-true}
+      - DEEPSEEK_AVAILABLE=${DEEPSEEK_AVAILABLE:-true}
+      - MOONSHOT_AVAILABLE=${MOONSHOT_AVAILABLE:-true}
+      - MISTRAL_AVAILABLE=${MISTRAL_AVAILABLE:-true}
+      - SCALEWAY_AVAILABLE=${SCALEWAY_AVAILABLE:-true}
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      - WORKSPACES_VOLUME_NAME=paodo_ws_workspaces
+      - WORKSPACES_ROOT=/var/lib/paodo/data
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
+      - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
+      - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
+      - PAODO_LLM_PROXY_URL=http://llm-proxy:9997
+    volumes:
+      - workspaces:/var/lib/paodo/data
+      - proxy-ca:/var/lib/paodo/proxy-ca
+      - provider-vault:/var/lib/paodo/provider-vault
+      - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
+    depends_on:
+      socket-proxy:
+        condition: service_started
+      vault-init:
+        condition: service_completed_successfully
+      llm-proxy:
+        condition: service_started
+    restart: unless-stopped
+    mem_limit: ${APP_MEMORY_LIMIT:-2g}
+    cpus: ${APP_CPUS:-2.0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    networks:
+      - socket_proxy_net
+      - app_net
+      - llm_net
+    logging: *default-logging
+
+  # The one container a sandbox can reach: workspace secrets only, no route to the app (see docker-compose.yml).
+  credproxy:
+    image: ghcr.io/paodo-solution/paodo-workspaces-credproxy:${PAODO_VERSION:-latest}
+    container_name: paodo_ws_credproxy
+    environment:
+      - PAODO_PROXY_CA_ROOT=/var/lib/paodo/proxy-ca
+      - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
+      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/private.pem
+      - CREDENTIAL_PROXY_PORT=9998
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - proxy-ca:/var/lib/paodo/proxy-ca:ro
+      - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault:ro
+      - workspace-secret-key:/var/lib/paodo/workspace-secret-key:ro
+    depends_on:
+      app:
+        condition: service_started
+      vault-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    networks:
+      - credproxy_net
+    logging: *default-logging
+
+  # The only container that can open provider keys; reachable from the app alone.
+  llm-proxy:
+    image: ghcr.io/paodo-solution/paodo-workspaces-credproxy:${PAODO_VERSION:-latest}
+    command: ["llmProxyEntry.cjs"]
+    environment:
+      - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
+      - PAODO_PROVIDER_PRIVATE_KEY_FILE=/var/lib/paodo/provider-key/private.pem
+      - LLM_PROXY_PORT=9997
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - provider-vault:/var/lib/paodo/provider-vault:ro
+      - provider-key:/var/lib/paodo/provider-key:ro
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev,mode=1777
+    mem_limit: 256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    networks:
+      - llm_net
+      - llm_egress_net
+    logging: *default-logging
+
+  # One-shot: creates both vaults and their key pairs on first start, then exits.
+  vault-init:
+    image: ghcr.io/paodo-solution/paodo-workspaces-credproxy:${PAODO_VERSION:-latest}
+    command: ["vaultInitEntry.cjs"]
+    environment:
+      - PAODO_WORKSPACE_SECRET_VAULT_ROOT=/var/lib/paodo/workspace-secret-vault
+      - PAODO_WORKSPACE_SECRET_KEY_FILE=/var/lib/paodo/workspace-secret-key/private.pem
+      - PAODO_PROVIDER_VAULT_ROOT=/var/lib/paodo/provider-vault
+      - PAODO_PROVIDER_PRIVATE_KEY_FILE=/var/lib/paodo/provider-key/private.pem
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - workspace-secret-vault:/var/lib/paodo/workspace-secret-vault
+      - workspace-secret-key:/var/lib/paodo/workspace-secret-key
+      - provider-vault:/var/lib/paodo/provider-vault
+      - provider-key:/var/lib/paodo/provider-key
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+volumes:
+  workspaces:
+  proxy-ca:
+  provider-vault:
+  provider-key:
+  workspace-secret-vault:
+  workspace-secret-key:
+
+networks:
+  socket_proxy_net:
+    internal: true
+  app_net: {}
+  credproxy_net: {}
+  llm_net:
+    internal: true
+  llm_egress_net: {}

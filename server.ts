@@ -45,6 +45,7 @@ import {
 } from "./lib/infra/security/httpAuth";
 import { verifySessionCookie } from "./lib/infra/security/wsSession";
 import { resolveUiAuth } from "./lib/infra/security/uiAuth";
+import { readDefaultGateway } from "./lib/infra/security/localPeer";
 import { createRequestGate } from "./lib/infra/server/requestGate";
 import { createUpgradeGate } from "./lib/infra/server/upgradeGate";
 import { createWorkspaceSocketHandler } from "./lib/infra/server/workspaceSocket";
@@ -81,6 +82,12 @@ try {
     "UI authentication is not configured — refusing to start. See .env.example.",
   );
   exitAfterLogs(1);
+}
+if (uiAuth.mode === "local") {
+  log.warn(
+    { event: "startup_auth_local", outcome: "no_ui_credential", admittedGateway: readDefaultGateway() },
+    "PAODO_AUTH_MODE=local: no password; only this machine (loopback and the Docker gateway) is admitted.",
+  );
 }
 
 // In `iap` mode there is no session cookie to fall back to: the proxy's assertion rides the upgrade

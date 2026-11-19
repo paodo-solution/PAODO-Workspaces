@@ -1,4 +1,4 @@
-// Every HTTP request passes here before Next.js: host, rate limit, credential, CSRF, in that order.
+// Every HTTP request passes here before Next.js: peer, host, rate limit, credential, CSRF, in that order.
 // Dependencies are injected (server.ts supplies them) so the order is testable without a listener.
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "http";
@@ -120,6 +120,12 @@ export function createRequestGate(deps: RequestGateDependencies): (req: Incoming
     };
 
     const ip = getClientIp(req);
+    // The socket's address, not getClientIp: that one trusts CF-Connecting-IP, which any client can set.
+    if (!uiAuth.admitsPeer(req.socket.remoteAddress)) {
+      auditRejection("request_peer_rejected", { peer: req.socket.remoteAddress }, "request peer rejected");
+      reject(403, "FORBIDDEN", "Forbidden");
+      return;
+    }
     const hostValidation = validateRequestHost(req.headers, allowedHosts);
     if (!hostValidation.ok) {
       auditRejection("request_host_rejected", { reason: hostValidation.reason }, "request host rejected");

@@ -18,6 +18,7 @@ API / MCP client ──► Caddy (API host, route allowlist) ──► app:PORT 
 
 **Request gate** (`lib/infra/server/requestGate.ts`). Every HTTP request goes through these steps in order:
 
+0. **Peer.** `uiAuth.admitsPeer(req.socket.remoteAddress)` must hold, otherwise `403`. Only `local` mode restricts it (below); it reads the socket address, never `CF-Connecting-IP`, which a client can forge.
 1. **Host.** `Host` must be in the allowlist (loopback, `app`, `PAODO_TRUSTED_HOSTS`, `WORKSPACE_API_DOMAIN`). If `X-Forwarded-Host` is sent, it must match `Host`. Otherwise the gate answers `421`.
 2. **Rate limit.** `/api/*` requests are limited per client IP, read from `CF-Connecting-IP`.
 3. **Credential** (`checkAuth` in `lib/infra/security/httpAuth.ts`):
@@ -31,13 +32,15 @@ API / MCP client ──► Caddy (API host, route allowlist) ──► app:PORT 
 
 - `basic`: a shared `USERNAME`/`PASSWORD`, compared in constant time, with a Basic challenge.
 - `iap`: the proxy authenticates the user at the edge. The app then verifies the proxy's signed JWS assertion from `PAODO_IAP_HEADER`. The check covers the JWKS signature (closed algorithm set), the issuer, the audience (one per instance) and `exp`/`nbf`. This mode sends no challenge.
+- `local`: no UI credential, for trying PAODO on one's own machine (`docker-compose.quickstart.yml` sets it and a `.env` cannot change it). With no credential, the TCP peer is the gate: only loopback and the Docker bridge gateway are admitted (`lib/infra/security/localPeer.ts`), the gateway being read once from `/proc/net/route` at startup. That gateway is the address the host's own browser arrives from; private ranges are never admitted wholesale, since they include the LAN. So a compose binding changed from `127.0.0.1:` to `0.0.0.0` does not open the UI. The process also refuses to start if `PAODO_TRUSTED_HOSTS` or `WORKSPACE_API_DOMAIN` is set, and logs a warning naming the admitted gateway. The Host allowlist, the CSRF check, the `/ws` `Origin` check and every Bearer check still apply. It issues no session cookie.
 
 The gates depend only on the `UiAuthenticator` interface and never branch on the mode. The code stays provider-agnostic: Cloudflare Access is a deployment choice, not a dependency.
 
-**Upgrade gate** (`lib/infra/server/upgradeGate.ts`). A `/ws` handshake is checked for host, then `Origin`, then credential. `Origin` must be a declared UI hostname; loopback is accepted only while none is declared. Because the handshake cannot carry a header, each mode allows one cookie, accepted only on the upgrade:
+**Upgrade gate** (`lib/infra/server/upgradeGate.ts`). A `/ws` handshake is checked for peer, then host, then `Origin`, then credential. `Origin` must be a declared UI hostname; loopback is accepted only while none is declared. Because the handshake cannot carry a header, each mode allows one cookie, accepted only on the upgrade:
 
 - `basic` uses `paodo_ws_session` (`wsSession.ts`). The cookie is signed with HMAC, lasts 12 h, and is `HttpOnly` and `SameSite=Strict`. Its key is random per boot. The request gate issues it only after a successful UI login, never for a platform or API key.
 - `iap` uses the proxy's own assertion cookie (`PAODO_IAP_COOKIE`), verified the same way as the header.
+- `local` needs no cookie: the handshake is accepted once its host and `Origin` pass.
 
 A rejected handshake gets no `WWW-Authenticate` header.
 
@@ -63,6 +66,8 @@ A rejected handshake gets no `WWW-Authenticate` header.
 - Lockout and audit are only correct if every ingress overwrites `CF-Connecting-IP`.
 - `iap` needs the JWKS endpoint to be reachable at boot. When the provider rotates its keys, one request fails before the keys refresh.
 - Switching modes takes one environment variable and a restart.
+- In `local` mode, anything on the machine itself is the admin: other processes and users, or a local proxy that forwards to the port. That is acceptable for a developer's own machine, and the reason the mode refuses public hostnames.
+- On Linux, Docker keeps a remote client's real source address, so a network peer gets `403` even with a `0.0.0.0` binding, unless the host itself rewrites that address. Tailscale in kernel mode does: its `ts-postrouting` rule masquerades tailnet traffic to the bridge gateway (observed on an Ubuntu 24.04 box with Docker 29), so tailnet peers are admitted. On Docker Desktop (macOS, Windows), every connection reaches the container from the gateway, so a LAN client cannot be told from the host. In those cases the `127.0.0.1` binding is the only barrier; both are accepted limitations.
 
 ## Alternatives considered
 
@@ -71,7 +76,8 @@ A rejected handshake gets no `WWW-Authenticate` header.
 - **Trusting the IAP header without verifying its signature**: any client that reaches the origin could forge it.
 - **App-managed users and login sessions**: more attack surface than a single-operator instance needs. An IAP already provides SSO and one-time PINs.
 - **Accepting the session cookie on HTTP**: it would become an ambient credential that only the CSRF check protects.
-- **A default mode, or tying auth to `NODE_ENV`**: tying auth to `NODE_ENV` once served every route unauthenticated.
+- **A default mode, or tying auth to `NODE_ENV`**: tying auth to `NODE_ENV` once served every route unauthenticated. `local` is therefore explicit, never inferred, and refuses a public configuration.
+- **A generated password printed in the logs, for the quickstart**: the developer has to dig it out of `docker compose logs`, while on a loopback-only instance it protects little beyond what the Host and CSRF checks already do.
 
 ## Notes
 
