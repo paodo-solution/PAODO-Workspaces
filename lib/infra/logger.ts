@@ -29,7 +29,8 @@ const credentialPatterns: Array<[RegExp, string]> = [
     "[Redacted Private Key]",
   ],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9+/=._:~-]+/gi, "$1 [Redacted]"],
-  [/([a-z][a-z0-9+.-]*:\/\/[^:/\s]+:)[^@\s/]+@/gi, "$1[Redacted]@"],
+  // Scheme capped at 32 chars: unbounded, a long alphanumeric run backtracks quadratically (200 KB took 27 s).
+  [/([a-z][a-z0-9+.-]{0,31}:\/\/[^:/\s]+:)[^@\s/]+@/gi, "$1[Redacted]@"],
   [/([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password)=)[^&#\s]+/gi, "$1[Redacted]"],
   [
     /\b(?:(?:sk-(?:proj-|ant-)?|sk_|github_pat_|gh[pousr]_|xox[baprs]-|AIza)[A-Za-z0-9._-]{8,}|(?:mcp|cli)_[A-Za-z0-9._-]{32,})\b/g,

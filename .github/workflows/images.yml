@@ -20,8 +20,12 @@ env:
   REGISTRY: ghcr.io/paodo-solution
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: build ${{ matrix.image }} (${{ matrix.arch }})
+    needs: test
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
