@@ -401,7 +401,12 @@ export function rotateDevice(refreshPlain: string, now = Date.now()): DeviceRota
     const rotatedAt = record.rotatedAt ? Date.parse(record.rotatedAt) : 0;
     if (now - rotatedAt <= DEVICE_REFRESH_GRACE_MS) return { ok: false, reason: "superseded" };
     if (record.pairUsed === false) {
-      const next: DeviceRecord = { ...record, rotatedAt: new Date(now).toISOString() };
+      // Once only: the unused pair becomes "previous", so the old token is spent and that pair is a reuse tripwire.
+      const next: DeviceRecord = {
+        ...record,
+        previousRefreshHash: record.refreshHash,
+        rotatedAt: new Date(now).toISOString(),
+      };
       const tokens = issuePair(id, next, now);
       commitDevice(deviceKey(id), next, "reissue_device");
       return { ok: true, tokens };

@@ -163,11 +163,26 @@ describe("a refresh whose response was lost on the network", () => {
     expect(validateDeviceAccess(retry.tokens.accessToken, later)).toBe(t.deviceId);
   });
 
-  it("recovers even if the answer is lost twice in a row", () => {
+  it("recovers only once: a copied old token cannot mint pairs forever", () => {
     const t = mintDevice(T0);
     expect(rotateDevice(t.refreshToken, T0).ok).toBe(true);
-    expect(rotateDevice(t.refreshToken, T0 + 2 * 60_000).ok).toBe(true);
-    expect(rotateDevice(t.refreshToken, T0 + 4 * 60_000).ok).toBe(true);
+    const recovered = rotateDevice(t.refreshToken, T0 + 2 * 60_000);
+    if (!recovered.ok) throw new Error(recovered.reason);
+
+    expect(rotateDevice(t.refreshToken, T0 + 4 * 60_000)).toEqual({ ok: false, reason: "invalid" });
+    expect(validateDeviceAccess(recovered.tokens.accessToken, T0 + 4 * 60_000)).toBe(t.deviceId);
+  });
+
+  it("revokes when the pair a reissue replaced shows up after the new one was used", () => {
+    const t = mintDevice(T0);
+    const replaced = rotateDevice(t.refreshToken, T0);
+    if (!replaced.ok) throw new Error(replaced.reason);
+    const reissued = rotateDevice(t.refreshToken, T0 + 2 * 60_000);
+    if (!reissued.ok) throw new Error(reissued.reason);
+    expect(validateDeviceAccess(reissued.tokens.accessToken, T0 + 3 * 60_000)).toBe(t.deviceId);
+
+    expect(rotateDevice(replaced.tokens.refreshToken, T0 + 4 * 60_000)).toEqual({ ok: false, reason: "invalid" });
+    expect(validateDeviceAccess(reissued.tokens.accessToken, T0 + 4 * 60_000)).toBeNull();
   });
 
   it("still revokes when the new pair was used: the old token can only be a copy", () => {
