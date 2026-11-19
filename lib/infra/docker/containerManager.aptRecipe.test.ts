@@ -261,9 +261,10 @@ describe("apt recipe — a stalled replay never costs the workspace its containe
   });
 
   // Create does real I/O (seed, image hash) before arming the deadline, so advancing at once fires nothing.
-  // setImmediate stays real so each turn lets that I/O land first.
+  // setImmediate stays real so each turn lets that I/O land first; bounded in time, as a slow runner burns turns fast.
   async function reachTheStall(execs: string[][], hangOn: string) {
-    for (let turn = 0; turn < 1_000; turn++) {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
       if (execs.some((c) => c[0] === "apt-get" && c[1] === hangOn)) return;
       await new Promise((resolve) => setImmediate(resolve));
     }
