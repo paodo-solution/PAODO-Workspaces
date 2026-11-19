@@ -57,18 +57,35 @@ _Demo video of PAODO in action_ :
 
 ## Quick start
 
-**Requirements:** [Docker](https://docs.docker.com/get-docker/) (running), Node.js 24 or newer (`nvm use` reads `.nvmrc`), and an API key for at least one supported AI model provider.
+Requires [Docker](https://docs.docker.com/get-docker/).
+
+```bash
+mkdir paodo && cd paodo   # PAODO's own folder: compose.yaml and an optional .env live here
+curl -fsSL https://raw.githubusercontent.com/paodo-solution/PAODO-Workspaces/main/docker-compose.quickstart.yml -o compose.yaml
+docker compose up -d
+```
+
+Open [http://localhost:7373](http://localhost:7373) and add your model provider's API key under the gear icon → **Settings → Provider API keys**.
+
+> No password, listens on `127.0.0.1` only. Don't expose it: to run PAODO on a server, follow the [deploy guide](deploy/README.md).
+
+To update: rerun the `curl` above, then `docker compose pull && docker compose up -d`
+
+## Development
+
+To work on PAODO itself, you need Docker and Node.js 24 or newer (`nvm use` reads `.nvmrc`):
 
 ```bash
 git clone https://github.com/paodo-solution/PAODO-Workspaces.git
 cd PAODO-Workspaces
 npm install                   # host tooling only: tests, lint, editor
-cp .env.example .env          # set USERNAME and PASSWORD
+cp .env.example .env          # set USERNAME and PASSWORD, or PAODO_AUTH_MODE=local
 npm run dev
 ```
 
-`npm run dev` runs the whole stack in Docker, with its own Node 24, so the app itself does not depend on your
-local Node. The first run takes about two minutes while it builds the images; later runs start in seconds.
+`npm run dev` builds the images from your working tree and runs the whole stack in Docker, with its own Node 24, so
+the app itself does not depend on your local Node. The first run takes a few minutes while it builds the images,
+including the workspace sandbox; later runs start in seconds.
 
 Open [http://localhost:3000](http://localhost:3000), sign in with the `USERNAME` and `PASSWORD` from `.env`, and add your provider API key under the gear icon → **Settings → Provider API keys**.
 
