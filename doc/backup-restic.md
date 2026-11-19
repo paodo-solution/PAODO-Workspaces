@@ -62,14 +62,15 @@ restic restore <snapshot-id> --target ~/restore     # restore a whole day
 ```
 
 Restore into a path with room and **not on tmpfs** (a set is a few GB; some hosts mount `/tmp` as a
-small RAM disk). The set lands at `~/restore/<instance>/<stamp>-<id>/` (the dir holding `backup.json`).
+small RAM disk). restic recreates the staging dir's absolute path, so the set lands at
+`~/restore/<repo-path>/.backup-staging/<instance>/<stamp>-<id>/` (the dir holding `backup.json`).
 
 **2. Take the app down, apply the set, bring it back.** The app must be stopped — `npm run restore`
 overwrites the live database, graph and registry in place, and those are read once at startup. Apply
 in a one-off container on the same volume:
 
 ```bash
-SET=~/restore/<instance>/<stamp>-<id>
+SET=~/restore/<repo-path>/.backup-staging/<instance>/<stamp>-<id>
 docker compose -f docker-compose.yml -f docker-compose.workspace-api.yml stop app
 docker compose -f docker-compose.yml -f docker-compose.workspace-api.yml \
   run --rm -v "$SET":/restore:ro app npm run restore -- /restore

@@ -12,7 +12,7 @@ The `paodo` CLI manages a whole instance from a terminal: workspaces, drives, fi
 
 **Deny by default.** [platformAccessPolicy.ts](../../../../lib/infra/security/platformAccessPolicy.ts) is the single list of `METHOD + path` rules the token may call. Any route not listed there stays UI-only. Rules are generated (`workspaceRule`, `driveRule`) rather than hand-written regexes, so an unescaped dot or a missing `$` cannot quietly widen access.
 
-**Enforced in the request gate, before Next.js.** `checkAuth` in [httpAuth.ts](../../../../lib/infra/security/httpAuth.ts) handles any `Bearer` request in this order:
+**Enforced in the request gate, before Next.js.** `checkAuth` in [httpAuth.ts](../../../../lib/infra/security/httpAuth.ts) handles any non-`dat_` `Bearer` request in this order:
 
 1. The token is validated (fail closed, constant-time). A bad secret returns `401` and counts toward the per-IP lockout.
 2. The route is checked against the policy. A valid token on an unlisted route returns `403`. This does not count toward the lockout, so a script polling the wrong route cannot lock out its operator.

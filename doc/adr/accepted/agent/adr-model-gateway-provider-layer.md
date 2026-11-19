@@ -11,7 +11,7 @@ Workspaces run on several LLM providers that differ in reasoning settings, strea
 Every model call goes through one `ModelGateway` (`lib/agent/modelGateway.ts`), built only by `buildModel` (`lib/agent/buildModel.ts`). Callers never hold a vendor client.
 
 ```
-runner / compaction → ModelGateway → [pacing → retry → outbound adapter] → LangChain client → provider
+runner / compaction → ModelGateway → [pacing → retry → outbound adapter] → LangChain client → llm-proxy → provider
 ```
 
 - **Provider registry**: `PROVIDERS` in `buildModel.ts` is the single list of supported providers. A provider is offered only when `<PROVIDER>_AVAILABLE=true`. Models and effort levels live in `lib/models/registry.ts`.

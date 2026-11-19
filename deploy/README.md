@@ -159,9 +159,9 @@ docker compose \
   up -d
 ```
 
-Everything outside the allowlist returns `404`. Two credentials reach what it
-does expose, each created in a workspace's own panel over the private path and
-shown exactly once:
+Everything outside the allowlist returns `404`. Besides the CLI token and VS Code
+device sign-in, two credentials reach what it does expose, each created in a
+workspace's own panel over the private path and shown exactly once:
 
 - **Workspace API access** — a per-workspace key for
   `POST /api/workspaces/<id>/agent`.
@@ -175,8 +175,8 @@ over HTTPS and serves nothing outside the allowlist:
 curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/   # expect 404
 ```
 
-A response at all proves the certificate was issued. Test the bearer routes with
-a real credential rather than a placeholder: a rejected bearer counts toward the
+A response at all proves the certificate was issued. Test the CLI routes with
+a real token rather than a placeholder: a rejected CLI token counts toward the
 same per-IP brute-force lockout as a failed UI login — five within a minute
 blocks the caller — and the gateway rewrites `CF-Connecting-IP` to the true
 remote address, so the block lands on you, not on the gateway.
