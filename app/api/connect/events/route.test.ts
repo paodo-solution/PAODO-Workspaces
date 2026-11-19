@@ -8,6 +8,7 @@ vi.mock("@/lib/agent/runBroker", () => ({
 }));
 
 import { SSE_KEEPALIVE_MS } from "@/lib/agent/sse";
+import { MAX_EVENT_STREAMS_PER_DEVICE } from "@/lib/infra/limits";
 import { listenerCount, publish } from "@/lib/infra/realtime/eventHub";
 import { GET } from "./route";
 
@@ -48,6 +49,24 @@ describe("GET /api/connect/events", () => {
     );
 
     await reader.cancel();
+    expect(listenerCount()).toBe(0);
+  });
+
+  it("caps one device's open streams, without blocking another device, and frees a slot on close", async () => {
+    const readers = Array.from({ length: MAX_EVENT_STREAMS_PER_DEVICE }, () => GET(request()).body!.getReader());
+    expect(GET(request()).status).toBe(429);
+
+    device.id = "d2";
+    const other = GET(request());
+    expect(other.status).toBe(200);
+    await other.body!.cancel();
+
+    device.id = "d1";
+    await readers[0].cancel();
+    const response = GET(request());
+    expect(response.status).toBe(200);
+    const again = response.body!.getReader();
+    for (const reader of [...readers.slice(1), again]) await reader.cancel();
     expect(listenerCount()).toBe(0);
   });
 
