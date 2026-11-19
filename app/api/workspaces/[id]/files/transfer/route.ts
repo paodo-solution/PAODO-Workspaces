@@ -23,16 +23,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return getFileTransfer(req, backend(id, ws.dir));
 }
 
-// Commits so the transfer can be undone, returning only success. No sha: it snapshots the whole
-// workspace and would be misread as naming the pushed paths.
-async function snapshot(id: string, ws: { id: string; dir: string }, receipt: PutTransferReceipt): Promise<boolean> {
+// Commits so the transfer can be undone. The sha goes to the audit line only, never to the response: it
+// snapshots the whole workspace and would be misread as naming the pushed paths.
+async function snapshot(
+  id: string,
+  ws: { id: string; dir: string },
+  receipt: PutTransferReceipt,
+): Promise<string | false> {
   try {
-    await snapshotWorkspaceStrict(
+    const { sha } = await snapshotWorkspaceStrict(
       getVersioning(),
       ws,
       changed(receipt) === 1 ? "put 1 workspace entry" : `put ${changed(receipt)} workspace entries`,
     );
-    return true;
+    return sha;
   } catch (err) {
     log.error(
       { event: "file_transfer_snapshot_failed", outcome: "transfer_applied_without_snapshot", workspaceId: id, err },

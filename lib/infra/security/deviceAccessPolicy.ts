@@ -17,6 +17,10 @@ const RULES: ReadonlyArray<{ method: string; pathname: RegExp }> = [
   { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/conversations\/[0-9a-f-]+$/ },
   { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/chat$/ },
   { method: "POST", pathname: /^\/api\/workspaces\/[^/]+\/conversations\/[0-9a-f-]+\/stop$/ },
+  // Pull and Push: the tar transfer both ways, and deleting what Push removed locally.
+  { method: "GET", pathname: /^\/api\/workspaces\/[^/]+\/files\/transfer$/ },
+  { method: "PUT", pathname: /^\/api\/workspaces\/[^/]+\/files\/transfer$/ },
+  { method: "DELETE", pathname: /^\/api\/workspaces\/[^/]+\/files\/content$/ },
 ];
 
 /** Every rule as `METHOD pattern`, for the test that pins this surface. */

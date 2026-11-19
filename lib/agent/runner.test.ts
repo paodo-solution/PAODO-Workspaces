@@ -479,6 +479,7 @@ function makeVersioning() {
       }) as never,
       deleteRepo: rec("deleteRepo") as never,
       isGitAvailable: (async () => true) as never,
+      head: rec("head") as never,
     },
   };
 }

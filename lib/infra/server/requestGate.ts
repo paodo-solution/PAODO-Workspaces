@@ -46,6 +46,10 @@ function authenticateHeader(scheme: string | null): Record<string, string> {
   return scheme ? { "WWW-Authenticate": scheme } : {};
 }
 
+// Who a verified request came from, on every log line it produces: the browser's session, the CLI's
+// platform key, or a VS Code device token. Exempt routes (sign-in, probes) name no caller.
+const CALLERS = { ok: "browser", platform: "cli", device: "vscode" } as const;
+
 export function createRequestGate(deps: RequestGateDependencies): (req: IncomingMessage, res: ServerResponse) => void {
   const { uiAuth, allowedHosts, apiHost, authFailures, log, audit } = deps;
   const securityHeaders = buildSecurityHeaders({ isProduction: deps.hardenedBrowser });
@@ -193,7 +197,8 @@ export function createRequestGate(deps: RequestGateDependencies): (req: Incoming
 
     // Every log produced while Next handles this request (including caught route errors) inherits
     // the access log's correlation fields without each route binding them manually.
-    runWithLogContext({ requestId, method, pathname }, () => {
+    const caller = CALLERS[authResult as keyof typeof CALLERS];
+    runWithLogContext({ requestId, method, pathname, ...(caller ? { caller } : {}) }, () => {
       void deps.handle(req, res);
     });
   };

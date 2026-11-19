@@ -137,6 +137,9 @@
 		#   POST   /api/workspaces/{id}/chat (send or re-attach: an SSE stream for the
 		#          whole run, so agentUpstream; same)
 		#   POST   /api/workspaces/{id}/conversations/{convId}/stop (same)
+		#   GET    /api/workspaces/{id}/files/transfer (Pull; forwarded by @cliFileRead)
+		#   PUT    /api/workspaces/{id}/files/transfer (Push; by @cliFilePut)
+		#   DELETE /api/workspaces/{id}/files/content (Push deletions; by @cliFileRemove)
 		@connectToken {
 			method POST
 			path_regexp connectToken ^/api/connect/token$

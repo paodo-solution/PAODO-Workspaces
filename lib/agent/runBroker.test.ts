@@ -5,6 +5,8 @@ import type { AgentEvent, RunAgentOptions } from "./runner";
 import * as broker from "./runBroker";
 import { ExecutionCapacity, ExecutionCapacityReachedError } from "./executionCapacity";
 import { subscribe as onAppEvent, type AppEvent } from "../infra/realtime/eventHub";
+import { addConnection, removeConnection } from "../infra/realtime/wsHub";
+import type { WebSocket } from "ws";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -195,16 +197,21 @@ describe("runBroker", () => {
     const p = params(run);
     const events: AppEvent[] = [];
     const off = onAppEvent((e) => events.push(e));
+    // An app tab open on the workspace: told which conversation started, so it can follow the run.
+    const tab = { readyState: 1, bufferedAmount: 0, send: vi.fn() } as unknown as WebSocket;
+    addConnection(p.workspaceId, tab);
 
     broker.startRun(p);
     expect(broker.runningConversations()).toContainEqual({
       workspaceId: p.workspaceId,
       conversationId: p.conversationId,
     });
+    expect(tab.send).toHaveBeenCalledWith(JSON.stringify({ type: "run_started", conversationId: p.conversationId }));
     gate.resolve();
     await tick();
     await tick();
     off();
+    removeConnection(p.workspaceId, tab);
 
     const ids = { workspaceId: p.workspaceId, conversationId: p.conversationId };
     expect(events.filter((e) => e.type.startsWith("run_"))).toEqual([

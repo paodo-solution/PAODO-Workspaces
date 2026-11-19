@@ -6,6 +6,7 @@ import { createLogger } from "@/lib/infra/logger";
 import { appErrorResponse, errorResponse, readJsonObject } from "@/lib/api/errorResponse";
 import { AppError } from "@/lib/errors/appError";
 import type { FileBackend } from "@/lib/files/backend";
+import { auditFiles } from "@/lib/files/audit";
 import {
   type ClassifiedFile,
   readFileEntry,
@@ -134,6 +135,7 @@ export async function deleteFileContent(request: Request, be: FileBackend): Prom
   try {
     relPath = requireEntryPath(searchParams.get("path"));
     const receipt = await removeEntry(be.dir, relPath, be);
+    auditFiles(be, "file_deleted", { path: relPath, removed: receipt.removedCount });
     // Delete can't be undone, so name the path and, for a directory, every entry it took.
     return NextResponse.json({ ok: true, path: relPath, ...receipt });
   } catch (err) {

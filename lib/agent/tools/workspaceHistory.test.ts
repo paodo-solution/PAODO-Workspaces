@@ -24,6 +24,7 @@ function fakeVersioning(over: Partial<IWorkspaceVersioning>): IWorkspaceVersioni
     isGitAvailable: notUsed as IWorkspaceVersioning["isGitAvailable"],
     versionStats: notUsed as IWorkspaceVersioning["versionStats"],
     versionDiff: notUsed as IWorkspaceVersioning["versionDiff"],
+    head: notUsed as IWorkspaceVersioning["head"],
     ...over,
   };
 }

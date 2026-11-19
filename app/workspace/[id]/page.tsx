@@ -13,7 +13,7 @@ import { type FileViewerHandle } from "@/components/workspace/FileViewer";
 // Lazy: FileViewer pulls in CodeMirror and react-markdown, and mounts only once a file is opened, so
 // keeping it out of the initial bundle cuts first-open latency.
 const FileViewer = lazy(() => import("@/components/workspace/FileViewer"));
-import ChatPanel from "@/components/workspace/ChatPanel";
+import ChatPanel, { type RunStarted } from "@/components/workspace/ChatPanel";
 import ConversationBar from "@/components/workspace/ConversationBar";
 import ConsolePanel from "@/components/workspace/ConsolePanel";
 import HistoryPanel from "@/components/workspace/HistoryPanel";
@@ -62,6 +62,7 @@ function WorkspacePageInner({ params }: { params: Promise<{ id: string }> }) {
   // Bumped on run start / turn end so the background-task badge refetches at once (that's exactly
   // when a task is started or stopped) instead of waiting up to a full poll interval.
   const [taskPoke, setTaskPoke] = useState(0);
+  const [runStarted, setRunStarted] = useState<RunStarted | null>(null);
   // Stable identities: ChatPanel keys effects on these, so a fresh inline arrow each render would
   // re-fire them in a loop. refresh and the setters are themselves stable.
   const handleRunStart = useCallback(() => {
@@ -88,6 +89,14 @@ function WorkspacePageInner({ params }: { params: Promise<{ id: string }> }) {
     };
   }, []);
 
+  const refreshConversationsSoon = () => {
+    if (conversationsRefreshTimer.current) return;
+    conversationsRefreshTimer.current = setTimeout(() => {
+      conversationsRefreshTimer.current = null;
+      void refresh();
+    }, 400);
+  };
+
   const { sendMessage } = useWorkspaceSocket(id, {
     files_changed: (msg) => {
       setTreeRefreshKey((k) => k + 1);
@@ -97,12 +106,13 @@ function WorkspacePageInner({ params }: { params: Promise<{ id: string }> }) {
       setTreeRefreshKey((k) => k + 1);
       viewerRef.current?.notifyFilesDeleted(msg.paths ?? []);
     },
-    conversations_changed: () => {
-      if (conversationsRefreshTimer.current) return;
-      conversationsRefreshTimer.current = setTimeout(() => {
-        conversationsRefreshTimer.current = null;
-        void refresh();
-      }, 400);
+    conversations_changed: refreshConversationsSoon,
+    // A run started anywhere (this tab, VS Code, the API): its dot lights up, and the chat follows it if shown.
+    run_started: (msg) => {
+      const conversationId = msg.conversationId;
+      if (typeof conversationId !== "string") return;
+      setRunStarted((prev) => ({ conversationId, seq: (prev?.seq ?? 0) + 1 }));
+      refreshConversationsSoon();
     },
     background_tasks_changed: () => setTaskPoke((k) => k + 1),
   });
@@ -269,6 +279,7 @@ function WorkspacePageInner({ params }: { params: Promise<{ id: string }> }) {
               initialConversation={initial}
               onRunStart={handleRunStart}
               onAgentTurnComplete={handleTurnComplete}
+              runStarted={runStarted}
             />
           </div>
           <div className="ws-right-handle" onMouseDown={startRowDrag} />

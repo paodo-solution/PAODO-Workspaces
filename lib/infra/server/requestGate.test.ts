@@ -8,6 +8,16 @@ import { AuthFailureTracker } from "../security/httpAuth";
 import { basicAuthenticator, type UiAuthenticator } from "../security/uiAuth";
 import { createRequestGate, type RequestGateDependencies } from "./requestGate";
 
+// The log context each handled request runs in, captured instead of bound.
+const contexts = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock("../logger", async (original) => ({
+  ...(await original<typeof import("../logger")>()),
+  runWithLogContext: <T>(bindings: Record<string, unknown>, fn: () => T) => {
+    contexts.push(bindings);
+    return fn();
+  },
+}));
+
 const UI = basicAuthenticator({ user: "admin", pass: "hunter2" });
 const GOOD = "Basic " + Buffer.from("admin:hunter2").toString("base64");
 const BAD = "Basic " + Buffer.from("admin:wrong").toString("base64");
@@ -319,5 +329,19 @@ describe("request gate — audit trail", () => {
     for (let i = 0; i < 20; i++) send({ headers: { host: "evil.test" } });
 
     expect(audit.warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("request gate — who the request came from, on every log line", () => {
+  it("names the browser, the CLI or VS Code as the caller, and nobody on an exempt route", () => {
+    const { send } = setup({ validateDeviceToken: (plain: string) => plain === "dat_device" } as never);
+    contexts.length = 0;
+    send({ headers: { authorization: GOOD } });
+    send({ url: "/api/workspace-graph", headers: { authorization: PLATFORM } });
+    send({ url: "/api/workspaces", headers: { authorization: "Bearer dat_device" } });
+    send({ method: "POST", url: "/api/connect/token" });
+    expect(contexts.map((c) => c.caller)).toEqual(["browser", "cli", "vscode", undefined]);
+    expect(contexts[0]).toMatchObject({ method: "GET", pathname: "/" });
+    expect(contexts[0].requestId).toEqual(expect.any(String));
   });
 });

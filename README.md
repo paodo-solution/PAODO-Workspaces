@@ -164,7 +164,7 @@ dashboard for auditing.
 
 - **No automatic compaction** — the agent compacts context on demand via `compact_context`, but never automatically by size.
 
-- **No file write queue** — concurrent writes to the same file can overwrite each other under load.
+- **Parallel conversations share files** — two conversations of one agent can run at the same time, which can lead to write-write conflicts.
 
 - **No image reading** — the agent handles images as raw files but can't see their content.
 

@@ -312,4 +312,28 @@ describe("WorkspaceVersioning", () => {
     // The second status must come after the first commit (no interleave).
     expect(order).toEqual(["status", "commit", "status", "commit"]);
   });
+
+  it("head is the snapshot the files are on, or null before the first one", async () => {
+    expect(await new WorkspaceVersioning(new FakeGit(), opts()).head(ID, DIR)).toBe("HEADSHA");
+    const empty = new FakeGit([{ match: (j) => j.includes("rev-parse --verify HEAD"), result: { code: 128 } }]);
+    expect(await new WorkspaceVersioning(empty, opts()).head(ID, DIR)).toBeNull();
+  });
+
+  it("head asked while a commit runs answers with that commit, not the one before", async () => {
+    let sha = "BEFORE";
+    const slowGit: IGitClient = {
+      async run(args: string[]): Promise<GitResult> {
+        const joined = args.join(" ");
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        if (joined.includes(" commit ")) sha = "AFTER";
+        if (joined.includes("status --porcelain")) return { stdout: " M f", stderr: "", code: 0 };
+        if (joined.includes("rev-parse --verify HEAD")) return { stdout: sha, stderr: "", code: 0 };
+        return { stdout: "", stderr: "", code: 0 };
+      },
+    };
+    const ver = new WorkspaceVersioning(slowGit, opts());
+    const commit = ver.commitResult(ID, DIR, "run");
+    expect(await ver.head(ID, DIR)).toBe("AFTER");
+    await commit;
+  });
 });

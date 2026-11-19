@@ -2,6 +2,7 @@
 // out, so a late subscriber replays then follows live. Only stop() ends a run; history is saved at run end.
 import type { BaseMessage } from "@langchain/core/messages";
 import { publish as publishAppEvent } from "../infra/realtime/eventHub";
+import { broadcastToWorkspace } from "../infra/realtime/wsHub";
 import { runAgent, type AgentEvent } from "./runner";
 import type { RunAgentOptions } from "./runner";
 import { noteRunError } from "./messageSerialization";
@@ -73,6 +74,12 @@ export interface StartRunParams {
   onPersist?: () => void;
   /** Test seam; production uses the process-wide execution ceiling. */
   capacity?: ExecutionCapacityGate;
+}
+
+// Ids only, to VS Code and to every app tab on the workspace: the tab showing it reloads and follows the run.
+function announceRunStart(workspaceId: string, conversationId: string): void {
+  publishAppEvent({ type: "run_started", workspaceId, conversationId });
+  broadcastToWorkspace(workspaceId, JSON.stringify({ type: "run_started", conversationId }));
 }
 
 // Start a run for a conversation, or report that one is already running. The actual run proceeds
@@ -151,7 +158,7 @@ export function startRun(params: StartRunParams): {
   }
   const capacityAtStart = capacity.snapshot();
   sessions.set(k, session);
-  publishAppEvent({ type: "run_started", workspaceId: params.workspaceId, conversationId: params.conversationId });
+  announceRunStart(params.workspaceId, params.conversationId);
   const startedAt = Date.now();
   log.info(
     {
@@ -428,7 +435,7 @@ export function startExternalRun(
   const capacityAtStart = capacity.snapshot();
 
   sessions.set(k, session);
-  publishAppEvent({ type: "run_started", workspaceId, conversationId });
+  announceRunStart(workspaceId, conversationId);
   const startedAt = Date.now();
   let terminalStatus: AgentRunStatus = "success";
   log.info(

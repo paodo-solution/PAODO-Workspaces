@@ -16,6 +16,9 @@ it("pins the device routes", () => {
       "GET ^\\/api\\/workspaces\\/[^/]+\\/conversations\\/[0-9a-f-]+$",
       "POST ^\\/api\\/workspaces\\/[^/]+\\/chat$",
       "POST ^\\/api\\/workspaces\\/[^/]+\\/conversations\\/[0-9a-f-]+\\/stop$",
+      "GET ^\\/api\\/workspaces\\/[^/]+\\/files\\/transfer$",
+      "PUT ^\\/api\\/workspaces\\/[^/]+\\/files\\/transfer$",
+      "DELETE ^\\/api\\/workspaces\\/[^/]+\\/files\\/content$",
     ]
   `);
 });
@@ -34,6 +37,13 @@ it("refuses admin, settings and token-minting routes", () => {
   expect(isDeviceRouteAllowed("GET", `/api/workspaces/x/conversations/${CONV}/sessions`)).toBe(false);
   expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/agent")).toBe(false);
   expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/agent/stop")).toBe(false);
+  // Files only through Pull and Push: no single-file reads or writes, no browser upload, no drives.
+  expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/files")).toBe(false);
+  expect(isDeviceRouteAllowed("GET", "/api/workspaces/x/files/content")).toBe(false);
+  expect(isDeviceRouteAllowed("PUT", "/api/workspaces/x/files/content")).toBe(false);
+  expect(isDeviceRouteAllowed("PATCH", "/api/workspaces/x/files/content")).toBe(false);
+  expect(isDeviceRouteAllowed("POST", "/api/workspaces/x/files/upload")).toBe(false);
+  expect(isDeviceRouteAllowed("GET", "/api/drives/x/files/transfer")).toBe(false);
 });
 
 it("takes only a lowercase hex id as the conversation id", () => {
@@ -61,6 +71,9 @@ it("allows each route exactly, and refuses every near-miss of it", () => {
     ["GET", `/api/workspaces/w1/conversations/${CONV}`],
     ["POST", "/api/workspaces/w1/chat"],
     ["POST", `/api/workspaces/w1/conversations/${CONV}/stop`],
+    ["GET", "/api/workspaces/w1/files/transfer"],
+    ["PUT", "/api/workspaces/w1/files/transfer"],
+    ["DELETE", "/api/workspaces/w1/files/content"],
   ] as const;
   const methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "get"];
   const nearPaths = (path: string) => [
