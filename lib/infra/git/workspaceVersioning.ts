@@ -180,6 +180,11 @@ export class WorkspaceVersioning implements IWorkspaceVersioning {
       });
   }
 
+  // Serialized: a run's result commit is queued as its stream ends, so a reload right after reads that commit.
+  head(workspaceId: string, workspaceDir: string): Promise<string | null> {
+    return this.serialize(workspaceId, () => this.headSha(workspaceId, workspaceDir));
+  }
+
   async diff(workspaceId: string, workspaceDir: string, from: string, to: string): Promise<string> {
     const r = await this.git.run([...this.base(workspaceId, workspaceDir), "diff", from, to], { trimStdout: false });
     return noteIfTruncated(r.stdout, r.truncated);

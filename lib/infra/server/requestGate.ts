@@ -12,6 +12,7 @@ import {
   isCsrf,
   validateRequestHost,
   type AuthFailureTracker,
+  type DeviceTokenValidator,
   type PlatformTokenValidator,
 } from "../security/httpAuth";
 import { PLATFORM_CONTRACT_VERSION } from "../security/platformAccessPolicy";
@@ -28,6 +29,8 @@ export interface RequestGateDependencies {
   authFailures: AuthFailureTracker;
   /** The platform credential is instance-wide; platformAccessPolicy.ts decides what it may reach. */
   validatePlatformToken: PlatformTokenValidator;
+  /** VS Code device access tokens; deviceAccessPolicy.ts decides what they may reach. */
+  validateDeviceToken: DeviceTokenValidator;
   checkRateLimit: typeof checkApiRateLimit;
   /** Gates HSTS and the cookie's `Secure` attribute; false over plain http in development. */
   hardenedBrowser: boolean;
@@ -42,6 +45,10 @@ export interface RequestGateDependencies {
 function authenticateHeader(scheme: string | null): Record<string, string> {
   return scheme ? { "WWW-Authenticate": scheme } : {};
 }
+
+// Who a verified request came from, on every log line it produces: the browser's session, the CLI's
+// platform key, or a VS Code device token. Exempt routes (sign-in, probes) name no caller.
+const CALLERS = { ok: "browser", platform: "cli", device: "vscode" } as const;
 
 export function createRequestGate(deps: RequestGateDependencies): (req: IncomingMessage, res: ServerResponse) => void {
   const { uiAuth, allowedHosts, apiHost, authFailures, log, audit } = deps;
@@ -139,6 +146,7 @@ export function createRequestGate(deps: RequestGateDependencies): (req: Incoming
       authFailures,
       deps.validatePlatformToken,
       apiHost,
+      deps.validateDeviceToken,
     );
     if (authResult === "blocked") {
       auditRejection("auth_blocked", {}, "auth blocked");
@@ -176,7 +184,7 @@ export function createRequestGate(deps: RequestGateDependencies): (req: Incoming
     }
 
     // The /ws session cookie is minted only in `basic` mode and only for a verified UI credential.
-    // Platform tokens and route-authenticated agent/MCP credentials never become sessions.
+    // Platform and device tokens and route-authenticated agent/MCP credentials never become sessions.
     if (uiAuth.mode === "basic" && authResult === "ok" && sessionCookieNeedsRefresh(req.headers["cookie"])) {
       res.setHeader("Set-Cookie", mintSessionCookie({ isProduction: deps.hardenedBrowser }));
     }
@@ -189,7 +197,8 @@ export function createRequestGate(deps: RequestGateDependencies): (req: Incoming
 
     // Every log produced while Next handles this request (including caught route errors) inherits
     // the access log's correlation fields without each route binding them manually.
-    runWithLogContext({ requestId, method, pathname }, () => {
+    const caller = CALLERS[authResult as keyof typeof CALLERS];
+    runWithLogContext({ requestId, method, pathname, ...(caller ? { caller } : {}) }, () => {
       void deps.handle(req, res);
     });
   };

@@ -5,6 +5,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceStore } from "./registry";
+import { subscribe, type AppEvent } from "../realtime/eventHub";
 
 let ROOT: string;
 let store: WorkspaceStore;
@@ -154,5 +155,19 @@ describe("renameWorkspace — name policy", () => {
 
   it("returns false for an unknown workspace id", async () => {
     await expect(store.renameWorkspace("does-not-exist", "whatever")).resolves.toBe(false);
+  });
+});
+
+describe("change events", () => {
+  it("publishes workspaces_changed after each change a picker shows, and not after a refused one", async () => {
+    const events: AppEvent[] = [];
+    const off = subscribe((e) => events.push(e));
+    const ws = await store.createWorkspace("events");
+    await store.renameWorkspace(ws.id, "events-renamed");
+    store.setWorkspaceDescription(ws.id, "Watches things.");
+    await expect(store.createWorkspace("EVENTS-renamed")).rejects.toMatchObject(conflict);
+    await store.deleteWorkspace(ws.id);
+    off();
+    expect(events).toEqual(Array(4).fill({ type: "workspaces_changed" }));
   });
 });

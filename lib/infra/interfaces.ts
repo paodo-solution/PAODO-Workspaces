@@ -73,6 +73,8 @@ export interface IWorkspaceSnapshotWriter {
 }
 
 export interface IWorkspaceVersionReader {
+  /** The snapshot the work-tree is at (HEAD); null before the first one. */
+  head(workspaceId: string, workspaceDir: string): Promise<string | null>;
   /** Snapshots, newest-first, each with its per-file diffstat vs its parent. Omit `n` to list all. */
   versionStats(workspaceId: string, workspaceDir: string, n?: number): Promise<VersionStat[]>;
   /** Raw diff for one snapshot (`git show sha`), optionally narrowed to one path. */

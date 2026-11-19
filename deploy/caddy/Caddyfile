@@ -121,6 +121,65 @@
 			path_regexp workspaceMcp ^/api/workspaces/[^/]+/mcp$
 		}
 
+		# VS Code sign-in. The token endpoint takes a one-time code or a refresh
+		# token in its body; the session route takes a device access token, which
+		# the app limits to its own route list. The connect page and its Allow
+		# endpoint stay on the UI host, behind its login, and are not forwarded.
+		#
+		#   POST   /api/connect/token
+		#   GET    /api/connect/session
+		#   DELETE /api/connect/session
+		#   GET    /api/connect/events (a long-lived SSE stream, so agentUpstream)
+		#   GET    /api/workspaces (the picker; forwarded by @cliRead below)
+		#   GET    /api/workspaces/{id}/conversations (the session picker; same)
+		#   POST   /api/workspaces/{id}/conversations (New Chat; device tokens only)
+		#   GET    /api/workspaces/{id}/conversations/{convId} (a transcript; same)
+		#   POST   /api/workspaces/{id}/chat (send or re-attach: an SSE stream for the
+		#          whole run, so agentUpstream; same)
+		#   POST   /api/workspaces/{id}/conversations/{convId}/stop (same)
+		#   GET    /api/workspaces/{id}/files/transfer (Pull; forwarded by @cliFileRead)
+		#   PUT    /api/workspaces/{id}/files/transfer (Push; by @cliFilePut)
+		#   DELETE /api/workspaces/{id}/files/content (Push deletions; by @cliFileRemove)
+		@connectToken {
+			method POST
+			path_regexp connectToken ^/api/connect/token$
+		}
+
+		@connectSessionRead {
+			method GET
+			path_regexp connectSessionRead ^/api/connect/session$
+		}
+
+		@connectSessionRemove {
+			method DELETE
+			path_regexp connectSessionRemove ^/api/connect/session$
+		}
+
+		@connectEvents {
+			method GET
+			path_regexp connectEvents ^/api/connect/events$
+		}
+
+		@deviceConversationCreate {
+			method POST
+			path_regexp deviceConversationCreate ^/api/workspaces/[^/]+/conversations$
+		}
+
+		@deviceConversationRead {
+			method GET
+			path_regexp deviceConversationRead ^/api/workspaces/[^/]+/conversations/[0-9a-f-]+$
+		}
+
+		@deviceChat {
+			method POST
+			path_regexp deviceChat ^/api/workspaces/[^/]+/chat$
+		}
+
+		@deviceConversationStop {
+			method POST
+			path_regexp deviceConversationStop ^/api/workspaces/[^/]+/conversations/[0-9a-f-]+/stop$
+		}
+
 		# One matcher per method, because Caddy ANDs method and path within a matcher
 		# and a directive takes only one matcher. Read each against the policy list.
 		#
@@ -246,6 +305,38 @@
 
 		handle @workspaceMcp {
 			import mcpUpstream
+		}
+
+		handle @connectToken {
+			import cliUpstream
+		}
+
+		handle @connectSessionRead {
+			import cliUpstream
+		}
+
+		handle @connectSessionRemove {
+			import cliUpstream
+		}
+
+		handle @connectEvents {
+			import agentUpstream
+		}
+
+		handle @deviceConversationCreate {
+			import cliUpstream
+		}
+
+		handle @deviceConversationRead {
+			import cliUpstream
+		}
+
+		handle @deviceChat {
+			import agentUpstream
+		}
+
+		handle @deviceConversationStop {
+			import cliUpstream
 		}
 
 		handle @cliRead {

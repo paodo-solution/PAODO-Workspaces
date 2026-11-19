@@ -4,6 +4,9 @@ import { messagesToTranscript } from "./messageSerialization";
 import type { AgentEvent, RunAgentOptions } from "./runner";
 import * as broker from "./runBroker";
 import { ExecutionCapacity, ExecutionCapacityReachedError } from "./executionCapacity";
+import { subscribe as onAppEvent, type AppEvent } from "../infra/realtime/eventHub";
+import { addConnection, removeConnection } from "../infra/realtime/wsHub";
+import type { WebSocket } from "ws";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -185,6 +188,62 @@ describe("runBroker", () => {
     await tick();
   });
 
+  it("publishes run_started and run_ended, and lists the run across workspaces while it runs", async () => {
+    const gate = deferred();
+    const run = async function* () {
+      await gate.promise;
+      yield { type: "done" } as AgentEvent;
+    } as unknown as typeof import("./runner").runAgent;
+    const p = params(run);
+    const events: AppEvent[] = [];
+    const off = onAppEvent((e) => events.push(e));
+    // An app tab open on the workspace: told which conversation started, so it can follow the run.
+    const tab = { readyState: 1, bufferedAmount: 0, send: vi.fn() } as unknown as WebSocket;
+    addConnection(p.workspaceId, tab);
+
+    broker.startRun(p);
+    expect(broker.runningConversations()).toContainEqual({
+      workspaceId: p.workspaceId,
+      conversationId: p.conversationId,
+    });
+    expect(tab.send).toHaveBeenCalledWith(JSON.stringify({ type: "run_started", conversationId: p.conversationId }));
+    gate.resolve();
+    await tick();
+    await tick();
+    off();
+    removeConnection(p.workspaceId, tab);
+
+    const ids = { workspaceId: p.workspaceId, conversationId: p.conversationId };
+    expect(events.filter((e) => e.type.startsWith("run_"))).toEqual([
+      { type: "run_started", ...ids },
+      { type: "run_ended", ...ids },
+    ]);
+    expect(broker.runningConversations()).not.toContainEqual(ids);
+  });
+
+  it("still runs and finishes when telling an app tab about the start throws", async () => {
+    const run = async function* () {
+      yield { type: "done" } as AgentEvent;
+    } as unknown as typeof import("./runner").runAgent;
+    const p = params(run);
+    const broken = {
+      readyState: 1,
+      bufferedAmount: 0,
+      send: vi.fn(() => {
+        throw new Error("socket closed");
+      }),
+    } as unknown as WebSocket;
+    addConnection(p.workspaceId, broken);
+
+    expect(() => broker.startRun(p)).not.toThrow();
+    await tick();
+    await tick();
+    removeConnection(p.workspaceId, broken);
+
+    expect(p.onPersist).toHaveBeenCalled();
+    expect(broker.isRunning(p.workspaceId, p.conversationId)).toBe(false);
+  });
+
   describe("startExternalRun", () => {
     it("buffers + fans out producer-published events, and marks the conversation running", () => {
       const ext = broker.startExternalRun("ws-ext", "conv-ext", "hello");
@@ -207,6 +266,37 @@ describe("runBroker", () => {
       ext!.publish({ type: "done" });
       ext!.finish();
       expect(broker.isRunning("ws-ext", "conv-ext")).toBe(false);
+    });
+
+    it("publishes run_started on start and run_ended once, however often finish() is called", () => {
+      const events: AppEvent[] = [];
+      const off = onAppEvent((e) => events.push(e));
+      const ext = broker.startExternalRun("ws-ext-ev", "conv-ext-ev", "x");
+      ext!.finish();
+      ext!.finish();
+      off();
+      const ids = { workspaceId: "ws-ext-ev", conversationId: "conv-ext-ev" };
+      expect(events).toEqual([
+        { type: "run_started", ...ids },
+        { type: "run_ended", ...ids },
+      ]);
+    });
+
+    it("starts and frees its session when telling an app tab about the start throws", () => {
+      const broken = {
+        readyState: 1,
+        bufferedAmount: 0,
+        send: vi.fn(() => {
+          throw new Error("socket closed");
+        }),
+      } as unknown as WebSocket;
+      addConnection("ws-ext-broken", broken);
+      const ext = broker.startExternalRun("ws-ext-broken", "conv-ext-broken", "x");
+      removeConnection("ws-ext-broken", broken);
+
+      expect(ext).not.toBeNull();
+      ext!.finish();
+      expect(broker.isRunning("ws-ext-broken", "conv-ext-broken")).toBe(false);
     });
 
     it("rejects a second external run for a conversation already running", () => {

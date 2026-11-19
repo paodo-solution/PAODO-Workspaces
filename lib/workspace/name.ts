@@ -3,6 +3,7 @@
 import path from "path";
 import { WORKSPACES_ROOT } from "../infra/paths";
 import { AppError } from "../errors/appError";
+import { portableNameProblem } from "../files/portableName";
 
 export const MAX_WORKSPACE_NAME_LENGTH = 100;
 
@@ -50,6 +51,9 @@ export function validateWorkspaceName(raw: string): string {
     // Blocks ".", "..", and dotfile-style names that would otherwise shadow store metadata files.
     throw new WorkspaceNameError("WORKSPACE_NAME_INVALID", "Workspace name cannot start with a dot.");
   }
+  // Clients use the name as the workspace's local folder (VS Code's paodo/<name>/), on any system.
+  const problem = portableNameProblem(name);
+  if (problem) throw new WorkspaceNameError("WORKSPACE_NAME_INVALID", `Workspace name ${problem}.`);
   // Defense in depth: even with the checks above, confirm the name can't escape the workspaces root.
   const dir = path.join(WORKSPACES_ROOT, name);
   if (!dir.startsWith(WORKSPACES_ROOT + path.sep)) {

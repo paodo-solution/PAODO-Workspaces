@@ -62,7 +62,7 @@ import {
   assertWorkspacesVolumeConfigured,
 } from "./lib/infra/startupChecks";
 import { appDataDb, PAODO_DB_FILE } from "./lib/data/database";
-import { validate as validateCredential } from "./lib/infra/security/credentialStore";
+import { validate as validateCredential, validateDeviceAccess } from "./lib/infra/security/credentialStore";
 import { capacityProfile } from "./lib/infra/capacityProfile";
 import { runtimeMode } from "./lib/infra/runtimeMode";
 import { executionCapacity } from "./lib/agent/executionCapacity";
@@ -172,6 +172,7 @@ httpServer.on(
     apiHost,
     authFailures,
     validatePlatformToken: (plain) => validateCredential("platform", null, plain),
+    validateDeviceToken: (plain) => validateDeviceAccess(plain) !== null,
     checkRateLimit: checkApiRateLimit,
     hardenedBrowser: runtimeMode.hardenedBrowser,
     handle,

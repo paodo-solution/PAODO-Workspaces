@@ -6,6 +6,7 @@ import { appErrorResponse, errorResponse, requestIdOf, statusForCode } from "@/l
 import { publicErrorBody } from "@/lib/errors/appError";
 import { createLogger } from "@/lib/infra/logger";
 import type { FileBackend } from "@/lib/files/backend";
+import { auditFiles } from "@/lib/files/audit";
 import {
   collectTransfer,
   packTransfer,
@@ -20,8 +21,8 @@ import {
 export interface TransferVersioning {
   // Runs after staging, before applying, so another client's pending burst becomes its own revision.
   beforeApply(): Promise<void>;
-  /** Record a revision covering what was applied. `false` means it could not be recorded. */
-  commit(receipt: PutTransferReceipt): Promise<boolean>;
+  /** Record a revision covering what was applied: its sha, or `false` when it could not be recorded. */
+  commit(receipt: PutTransferReceipt): Promise<string | false>;
 }
 
 export function changed(receipt: PutTransferReceipt): number {
@@ -35,6 +36,14 @@ export async function getFileTransfer(request: Request, be: FileBackend): Promis
   try {
     const items = await collectTransfer(be.dir, source);
     const stream = packTransfer(items);
+    // Logged once the stream closes, `aborted` when the client left or the archive failed part-way.
+    let ended = false;
+    stream.once("end", () => (ended = true));
+    stream.once("close", () => {
+      const files = items.filter((item) => item.type === "file");
+      const bytes = files.reduce((n, f) => n + f.size, 0);
+      auditFiles(be, "files_pulled", { source, files: files.length, bytes, ...(ended ? {} : { outcome: "aborted" }) });
+    });
     return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
       headers: {
         "Content-Type": TRANSFER_MEDIA_TYPE,
@@ -87,7 +96,8 @@ export async function putFileTransfer(
       const operationError = transferApplyAppError(err);
       // Whatever landed before the failure is real and has to be recoverable, so it is committed even
       // though the call is about to fail.
-      if (versioning && changed(err.receipt) > 0) await versioning.commit(err.receipt);
+      const partial = versioning && changed(err.receipt) > 0 ? await versioning.commit(err.receipt) : undefined;
+      if (changed(err.receipt) > 0) auditPush(be, dest, err.receipt, partial, "partially_applied");
       const code = operationError?.code ?? "INTERNAL_ERROR";
       if (!operationError) {
         log.error(
@@ -119,7 +129,9 @@ export async function putFileTransfer(
     return errorResponse("INTERNAL_ERROR", "The transfer could not be imported", { request });
   }
 
-  if (versioning && !(await versioning.commit(receipt))) {
+  const snapshot = versioning ? await versioning.commit(receipt) : undefined;
+  auditPush(be, dest, receipt, snapshot, snapshot === false ? "applied_without_snapshot" : "succeeded");
+  if (snapshot === false) {
     // The files landed, but there is no revision to undo them with. Worth failing the call over: a
     // push that overwrote a tree and left no way back is not the operation the caller asked for.
     return NextResponse.json(
@@ -133,4 +145,22 @@ export async function putFileTransfer(
     );
   }
   return NextResponse.json({ ok: true, ...receipt }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** Every push that changed files leaves an audit line, even one whose call then fails. */
+function auditPush(
+  be: FileBackend,
+  dest: string | null,
+  receipt: PutTransferReceipt,
+  snapshot: string | false | undefined,
+  outcome: "succeeded" | "partially_applied" | "applied_without_snapshot",
+): void {
+  auditFiles(be, "files_pushed", {
+    outcome,
+    dest,
+    created: receipt.created.length,
+    overwritten: receipt.overwritten.length,
+    ignored: receipt.ignored.length,
+    ...(snapshot ? { snapshot: snapshot.slice(0, 7) } : {}),
+  });
 }

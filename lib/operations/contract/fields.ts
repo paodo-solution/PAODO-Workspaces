@@ -36,7 +36,8 @@ type FieldsOf<Names extends readonly string[]> = Record<Names[number], ContractF
 const MODEL_CATALOG = "from the model catalog (GET /api/models)";
 
 /** Workspace and drive names share one policy (lib/workspace/name.ts, lib/drives/name.ts). */
-const NAME_RULE = (max: number) => `1-${max} characters, no path separators and no leading dot`;
+const NAME_RULE = (max: number) =>
+  `1-${max} characters, no path separators, none of < > : " | ? *, no leading or trailing dot, not a Windows device name (CON, NUL, COM1…)`;
 
 /** Uniqueness as normalizeForUniqueness enforces it: trimmed, NFC and case-folded, accents kept. */
 const uniqueName = (noun: string) =>
@@ -71,7 +72,8 @@ const workspace: FieldsOf<typeof WORKSPACE_UPDATABLE_FIELDS> = {
   },
   internetAccess: {
     type: "boolean",
-    effect: "While false, the container reaches no host. While true, it reaches every host unless domainRestriction is true.",
+    effect:
+      "While false, the container reaches no host. While true, it reaches every host unless domainRestriction is true.",
   },
   domainRestriction: {
     type: "boolean",
@@ -114,7 +116,8 @@ const drive: FieldsOf<typeof DRIVE_UPDATABLE_FIELDS> = {
   name: { type: "string", rule: NAME_RULE(MAX_DRIVE_NAME_LENGTH), effect: uniqueName("drive") },
   description: {
     type: "string",
-    effect: "Shown beside the drive's name to every agent connected to it, so say what belongs in it; empty means none.",
+    effect:
+      "Shown beside the drive's name to every agent connected to it, so say what belongs in it; empty means none.",
   },
 };
 

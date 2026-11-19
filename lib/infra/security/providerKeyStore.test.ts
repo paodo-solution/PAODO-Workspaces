@@ -181,7 +181,9 @@ describe("a store that cannot be read", () => {
 
     const store = await freshStore();
 
-    expect(store.listProviderKeyMeta()).toEqual([{ provider: "anthropic", createdAt: expect.any(String), hint: "tart" }]);
+    expect(store.listProviderKeyMeta()).toEqual([
+      { provider: "anthropic", createdAt: expect.any(String), hint: "tart" },
+    ]);
     expect(() => store.assertProviderKeyStoreAvailable()).not.toThrow();
   });
 });

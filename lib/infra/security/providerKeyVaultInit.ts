@@ -23,7 +23,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function readLegacyProviderKeys(parsed: unknown, keyFile: string): Record<string, { value: string; createdAt: string }> {
+function readLegacyProviderKeys(
+  parsed: unknown,
+  keyFile: string,
+): Record<string, { value: string; createdAt: string }> {
   if (!isEncEnvelope(parsed)) throw new Error("not a former-format provider vault");
   if (!existsSync(keyFile)) {
     throw new Error(

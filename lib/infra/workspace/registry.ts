@@ -14,6 +14,7 @@ import { setInternetAccessPolicy } from "../proxy/internetAccessPolicy";
 import { DEFAULT_MAX_ITERATIONS, DEFAULT_MAX_RUN_MINUTES, normalizeMaxRunMinutes } from "../../workspace/limits";
 import type { DomainAllowlist, Workspace } from "../../workspace/types";
 import { assertWorkspaceRegistryRecords } from "../startupChecks";
+import { publish } from "../realtime/eventHub";
 export type { Workspace } from "../../workspace/types";
 
 const log = createLogger("store");
@@ -205,6 +206,7 @@ export class WorkspaceStore implements IWorkspaceStore {
       }
       // The proxy's policy store defaults unknown ids to enabled, so record the off default right away.
       setInternetAccessPolicy(id, false);
+      publish({ type: "workspaces_changed" });
       return workspace;
     });
   }
@@ -236,6 +238,7 @@ export class WorkspaceStore implements IWorkspaceStore {
       // Metadata only: directories, conversations, versioning and secrets are all keyed by id.
       ws.name = name;
       this.saveUpdate(id, "rename_workspace");
+      publish({ type: "workspaces_changed" });
       return true;
     });
   }
@@ -262,6 +265,7 @@ export class WorkspaceStore implements IWorkspaceStore {
       );
       throw err;
     }
+    publish({ type: "workspaces_changed" });
     return true;
   }
 
@@ -286,6 +290,7 @@ export class WorkspaceStore implements IWorkspaceStore {
     if (!ws) return false;
     ws.description = description.trim();
     this.saveUpdate(id, "set_description");
+    publish({ type: "workspaces_changed" });
     return true;
   }
 

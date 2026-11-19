@@ -84,3 +84,10 @@ export const WS_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
 
 // A socket pinned at the ceiling this long is dead (no FIN), so it is terminated; a live viewer reconnects and resyncs.
 export const WS_STALL_MS = 30_000;
+
+// ---- Change events for device clients — app/api/connect/events/route.ts ----
+
+// Open event streams at once (about one per VS Code window); past it the route answers 503 and the client retries.
+export const MAX_EVENT_STREAMS = 200;
+// Per device (every window of one VS Code shares its token), so one device cannot take every slot above.
+export const MAX_EVENT_STREAMS_PER_DEVICE = 10;

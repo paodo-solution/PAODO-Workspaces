@@ -3,7 +3,8 @@
 import type { NextRequest } from "next/server";
 import type { AgentEvent } from "@/lib/agent/runner";
 import * as broker from "@/lib/agent/runBroker";
-import { SSE_HEADERS, startKeepalive } from "@/lib/agent/sse";
+import { SSE_HEADERS, SSE_KEEPALIVE_MS, startKeepalive } from "@/lib/agent/sse";
+import { deviceSignInLost } from "@/lib/api/deviceAuth";
 import { createLogger } from "@/lib/infra/logger";
 import { appErrorResponse } from "@/lib/api/errorResponse";
 import { ConversationNotFoundError } from "@/lib/operations/agent/errors";
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let closed = false;
       // Keepalive through long silent tool calls, or the proxy drops the connection (lib/agent/sse.ts).
       const stopKeepalive = startKeepalive(controller, encoder);
+      // A VS Code device that loses its sign-in mid-run is detached, like the events stream; the run goes on.
+      const deviceCheck = setInterval(() => deviceSignInLost(req) && close(), SSE_KEEPALIVE_MS);
+      deviceCheck.unref?.();
       const send = (event: AgentEvent) => {
         if (closed) return;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -42,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (closed) return;
         closed = true;
         stopKeepalive();
+        clearInterval(deviceCheck);
         sub?.unsubscribe();
         try {
           controller.close();

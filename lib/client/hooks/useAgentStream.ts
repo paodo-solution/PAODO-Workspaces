@@ -398,6 +398,17 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
     if (snapshot.running) await runWithRecovery({ conversationId }, snapshot.userInput ?? undefined);
   }, [fetchSnapshot, hydrate, runWithRecovery, conversationId]);
 
+  // A run started elsewhere (VS Code, another tab, the API): reload without the loading state, then follow it.
+  // Supersedes any load still in flight, so the run is never attached twice.
+  const followRun = useCallback(async () => {
+    const gen = ++genRef.current;
+    abortRef.current?.abort();
+    const snapshot = await fetchSnapshot();
+    if (genRef.current !== gen || !snapshot) return;
+    hydrate(snapshot.transcript);
+    if (snapshot.running) await runWithRecovery({ conversationId }, snapshot.userInput ?? undefined);
+  }, [fetchSnapshot, hydrate, runWithRecovery, conversationId]);
+
   // Detach this viewer (stop reading the stream); the server-side run is unaffected. Bumping the
   // generation also cancels any reconnect loop that is mid-backoff.
   const detach = useCallback(() => {
@@ -425,6 +436,7 @@ export function useAgentStream(workspaceId: string, conversationId: string | nul
     sendMessage,
     attachLive,
     loadConversation,
+    followRun,
     hydrate,
     reset,
     detach,

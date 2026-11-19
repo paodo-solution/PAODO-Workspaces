@@ -2,6 +2,7 @@
 // routes use. Deliberately the mirror of lib/workspace/name.ts — see validateDriveName.
 import path from "path";
 import { AppError } from "../errors/appError";
+import { portableNameProblem } from "../files/portableName";
 
 export const MAX_DRIVE_NAME_LENGTH = 100;
 
@@ -43,6 +44,9 @@ export function validateDriveName(raw: string): string {
   // Blocks ".", "..", and dotfile-style names that would shadow a workspace's own dot-directories
   // once drive_download materializes the drive at downloads/<drive-name>/.
   if (name.startsWith(".")) throw invalid("Drive name cannot start with a dot.");
+  // downloads/<drive-name>/ travels with the workspace's files, onto any system a pull lands on.
+  const problem = portableNameProblem(name);
+  if (problem) throw invalid(`Drive name ${problem}.`);
   // Defense in depth: even with the checks above, confirm the name stays inside downloads/.
   const dir = path.posix.join(DOWNLOADS_ROOT, name);
   if (!dir.startsWith(`${DOWNLOADS_ROOT}/`)) throw invalid(`Invalid drive name: "${raw}".`);

@@ -19,12 +19,28 @@ describe("validateWorkspaceName", () => {
     ["leading dot", ".workspaces.json"],
     ["single dot", "."],
     ["double dot", ".."],
+    ["colon", "team:invoices"],
+    ["question mark", "why?"],
+    ["quote", 'say "hi"'],
+    ["pipe", "a|b"],
+    ["asterisk", "a*"],
+    ["angle bracket", "<agent>"],
+    ["trailing dot", "invoices."],
+    ["Windows device name", "CON"],
+    ["Windows device name with extension", "nul.txt"],
+    ["Windows port name", "com1"],
   ])("rejects %s with WORKSPACE_NAME_INVALID", (_label, name) => {
     expect(() => validateWorkspaceName(name)).toThrowError(WorkspaceNameError);
     try {
       validateWorkspaceName(name);
     } catch (err) {
       expect((err as WorkspaceNameError).code).toBe("WORKSPACE_NAME_INVALID");
+    }
+  });
+
+  it("accepts accents, spaces, dots and dashes, which are valid folder names everywhere", () => {
+    for (const name of ["Équipe ventes", "café", "v1.2 release", "a_b-c", "console", "Compta 2026"]) {
+      expect(validateWorkspaceName(name)).toBe(name);
     }
   });
 

@@ -71,6 +71,8 @@ export const RATE_LIMIT_POLICIES = {
   workspaceAgent: { max: 20, bucket: "agent:workspace" },
   publicMcpIp: { max: 120, bucket: "mcp:public:ip" },
   workspaceMcp: { max: 60, bucket: "mcp:workspace" },
+  // VS Code's token endpoint takes no bearer, so it is limited per IP: a sign-in or a refresh is rare.
+  connectToken: { max: 20, bucket: "connect:token" },
 } as const;
 
 export type RateLimitPolicy = keyof typeof RATE_LIMIT_POLICIES;

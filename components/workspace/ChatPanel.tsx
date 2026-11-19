@@ -153,6 +153,9 @@ const SendIcon = () => (
   </svg>
 );
 
+/** The latest run the server announced on the workspace; `seq` grows by one per announcement. */
+export type RunStarted = { conversationId: string; seq: number };
+
 export default function ChatPanel({
   workspaceId,
   conversationId,
@@ -162,6 +165,7 @@ export default function ChatPanel({
   onRetryConversations,
   onAgentTurnComplete,
   onRunStart,
+  runStarted,
 }: {
   workspaceId: string;
   conversationId: string | null;
@@ -171,6 +175,7 @@ export default function ChatPanel({
   onRetryConversations?: () => void;
   onAgentTurnComplete?: () => void;
   onRunStart?: () => void;
+  runStarted?: RunStarted | null;
 }) {
   const [draft, setDraft] = useState("");
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
@@ -196,11 +201,21 @@ export default function ChatPanel({
     sendMessage,
     attachLive,
     loadConversation,
+    followRun,
     hydrate,
     reset,
     detach,
     stop,
   } = useAgentStream(workspaceId, conversationId, { onTurnComplete: onAgentTurnComplete });
+
+  // A run started elsewhere in this conversation is followed live; this tab's own run is already streaming.
+  // Seeded at mount, so an announcement made before this conversation was opened is not followed twice.
+  const seenRunRef = useRef(runStarted?.seq);
+  useEffect(() => {
+    if (!runStarted || runStarted.seq === seenRunRef.current) return;
+    seenRunRef.current = runStarted.seq;
+    if (runStarted.conversationId === conversationId && !streaming) void followRun();
+  }, [runStarted, conversationId, streaming, followRun]);
 
   useEffect(() => {
     if (!pinnedRef.current) return;
