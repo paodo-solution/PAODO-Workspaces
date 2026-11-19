@@ -44,6 +44,11 @@ export function createUpgradeGate(
       socket.destroy();
     };
 
+    // The socket's address, not getClientIp: that one trusts CF-Connecting-IP, which any client can set.
+    if (!uiAuth.admitsPeer(req.socket.remoteAddress)) {
+      refuse("403 Forbidden", "request_peer_rejected", "request peer rejected");
+      return;
+    }
     const hostValidation = validateRequestHost(req.headers, allowedHosts);
     if (!hostValidation.ok) {
       refuse("421 Misdirected Request", "request_host_rejected", "request host rejected");

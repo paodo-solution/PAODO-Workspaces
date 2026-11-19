@@ -3,8 +3,9 @@
 import { timingSafeEqual } from "crypto";
 import { readCookie } from "./cookies";
 import { JwksCache, verifyAssertion, type AssertionPolicy } from "./iapAssertion";
+import { isLocalPeer, readDefaultGateway } from "./localPeer";
 
-export type UiAuthMode = "basic" | "iap";
+export type UiAuthMode = "basic" | "iap" | "local";
 
 /** "absent" means no credential was offered (challenge); "invalid" means one was, and it failed. */
 export type UiAuthOutcome = "ok" | "absent" | "invalid";
@@ -21,6 +22,8 @@ export type UiAuthenticator = {
   readonly challenge: string | null;
   /** Warms anything the mode needs before the first request. Rejects to fail startup closed. */
   prime(): Promise<void>;
+  /** Whether a TCP peer (the socket's own address, never a header) may reach the instance at all. */
+  admitsPeer(remoteAddress: string | undefined): boolean;
   verify(req: UiAuthInput): UiAuthOutcome;
 };
 
@@ -43,6 +46,7 @@ export function basicAuthenticator(credentials: BasicCredentials): UiAuthenticat
     assertionHeader: null,
     challenge: 'Basic realm="App"',
     prime: () => Promise.resolve(),
+    admitsPeer: () => true,
     verify({ authorization }) {
       // safeEqual("", "") is true, so unset credentials must fail before the comparison. resolveUiAuth
       // already refuses to build this, which makes the guard defence in depth rather than the gate.
@@ -60,6 +64,19 @@ export function basicAuthenticator(credentials: BasicCredentials): UiAuthenticat
   };
 }
 
+// No credential, so the peer is the gate: loopback and the Docker bridge gateway (the host itself), whatever port
+// binding compose uses. CSRF, Host and the /ws Origin check still apply on top.
+export function localAuthenticator(gateway: string | null): UiAuthenticator {
+  return {
+    mode: "local",
+    assertionHeader: null,
+    challenge: null,
+    prime: () => Promise.resolve(),
+    admitsPeer: (remoteAddress) => isLocalPeer(remoteAddress, gateway),
+    verify: () => "ok",
+  };
+}
+
 export type IapSettings = {
   header: string;
   cookie: string | null;
@@ -74,6 +91,7 @@ export function iapAuthenticator(settings: IapSettings): UiAuthenticator {
     // offering Basic would advertise a scheme this mode refuses.
     challenge: null,
     prime: () => settings.policy.jwks.refresh(),
+    admitsPeer: () => true,
     verify({ cookie, assertion, isUpgrade }) {
       // Cookie only as the /ws fallback; on HTTP it would be an ambient credential guarded only by CSRF checks.
       const fallback = isUpgrade && settings.cookie ? (readCookie(cookie, settings.cookie) ?? "") : "";
@@ -93,6 +111,8 @@ export type UiAuthEnvironment = {
   PAODO_IAP_JWKS_URL?: string;
   PAODO_IAP_ISSUER?: string;
   PAODO_IAP_AUDIENCE?: string;
+  PAODO_TRUSTED_HOSTS?: string;
+  WORKSPACE_API_DOMAIN?: string;
 };
 
 function required(env: UiAuthEnvironment, name: keyof UiAuthEnvironment): string {
@@ -130,12 +150,24 @@ export function resolveUiAuth(
     PAODO_IAP_JWKS_URL: process.env.PAODO_IAP_JWKS_URL,
     PAODO_IAP_ISSUER: process.env.PAODO_IAP_ISSUER,
     PAODO_IAP_AUDIENCE: process.env.PAODO_IAP_AUDIENCE,
+    PAODO_TRUSTED_HOSTS: process.env.PAODO_TRUSTED_HOSTS,
+    WORKSPACE_API_DOMAIN: process.env.WORKSPACE_API_DOMAIN,
   },
   jwksFactory = (url: string) => new JwksCache(url),
+  readGateway = readDefaultGateway,
 ): UiAuthenticator {
   const mode = env.PAODO_AUTH_MODE?.trim().toLowerCase() ?? "";
-  if (mode !== "basic" && mode !== "iap") {
-    throw new Error(`PAODO_AUTH_MODE must be "basic" or "iap"; received ${JSON.stringify(mode)}`);
+  if (mode !== "basic" && mode !== "iap" && mode !== "local") {
+    throw new Error(`PAODO_AUTH_MODE must be "basic", "iap" or "local"; received ${JSON.stringify(mode)}`);
+  }
+
+  if (mode === "local") {
+    // A public hostname means the instance is meant to be reached from elsewhere, where no credential is no door.
+    for (const name of ["PAODO_TRUSTED_HOSTS", "WORKSPACE_API_DOMAIN"] as const) {
+      if (env[name]?.trim())
+        throw new Error(`PAODO_AUTH_MODE=local refuses ${name}: an exposed instance needs iap or basic`);
+    }
+    return localAuthenticator(readGateway());
   }
 
   if (mode === "basic") {

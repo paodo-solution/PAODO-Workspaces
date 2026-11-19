@@ -45,6 +45,7 @@ function assertionAuthenticator(valid: string): UiAuthenticator {
     assertionHeader: "x-assertion",
     challenge: null,
     prime: () => Promise.resolve(),
+    admitsPeer: () => true,
     verify: ({ assertion }) => (!assertion ? "absent" : assertion === valid ? "ok" : "invalid"),
   };
 }

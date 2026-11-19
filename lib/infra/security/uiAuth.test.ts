@@ -2,7 +2,7 @@
 // assertions) and a misconfiguration that resolves instead of throwing.
 import { describe, it, expect } from "vitest";
 
-import { basicAuthenticator, resolveUiAuth, safeEqual, type UiAuthEnvironment } from "./uiAuth";
+import { basicAuthenticator, localAuthenticator, resolveUiAuth, safeEqual, type UiAuthEnvironment } from "./uiAuth";
 import { JwksCache } from "./iapAssertion";
 
 function basic(user: string, pass: string): string {
@@ -71,7 +71,7 @@ describe("resolveUiAuth", () => {
   it("never falls back to a mode nobody asked for", () => {
     for (const mode of [undefined, "", "   "]) {
       expect(() => resolveUiAuth({ PAODO_AUTH_MODE: mode, USERNAME: "admin", PASSWORD: "hunter2" })).toThrow(
-        'PAODO_AUTH_MODE must be "basic" or "iap"',
+        'PAODO_AUTH_MODE must be "basic", "iap" or "local"',
       );
     }
   });
@@ -81,7 +81,7 @@ describe("resolveUiAuth", () => {
     expect(() => resolveUiAuth({ ...basic, USERNAME: "admin" })).toThrow("USERNAME and PASSWORD are required");
     expect(() => resolveUiAuth({ ...basic, PASSWORD: "hunter2" })).toThrow("USERNAME and PASSWORD are required");
     expect(() => resolveUiAuth({ PAODO_AUTH_MODE: "sso", USERNAME: "a", PASSWORD: "b" })).toThrow(
-      'PAODO_AUTH_MODE must be "basic" or "iap"',
+      'PAODO_AUTH_MODE must be "basic", "iap" or "local"',
     );
     for (const missing of ["PAODO_IAP_HEADER", "PAODO_IAP_JWKS_URL", "PAODO_IAP_ISSUER", "PAODO_IAP_AUDIENCE"]) {
       expect(() => resolveUiAuth({ ...IAP_ENV, [missing]: "" }, stubJwks)).toThrow(missing);
@@ -136,5 +136,46 @@ describe("resolveUiAuth", () => {
     expect(withCookie.verify(input({ cookie: "CF_Authorization=not.a.jwt" }))).toBe("absent");
     // The header still authenticates on both, since only the proxy can set it.
     expect(withCookie.verify(input({ assertion: "not.a.jwt" }))).toBe("invalid");
+  });
+});
+
+describe("local mode", () => {
+  it("is built only when asked for, and asks no credential", () => {
+    const auth = resolveUiAuth({ PAODO_AUTH_MODE: "local" }, undefined, () => "172.20.0.1");
+    expect(auth.mode).toBe("local");
+    expect(auth.challenge).toBeNull();
+    expect(auth.assertionHeader).toBeNull();
+    expect(auth.verify(input())).toBe("ok");
+  });
+
+  // A public hostname means people elsewhere reach this instance, and local mode would let all of them in.
+  it("refuses to start once a public hostname is configured", () => {
+    expect(() => resolveUiAuth({ PAODO_AUTH_MODE: "local", PAODO_TRUSTED_HOSTS: "ws.example.com" })).toThrow(
+      "PAODO_AUTH_MODE=local refuses PAODO_TRUSTED_HOSTS",
+    );
+    expect(() => resolveUiAuth({ PAODO_AUTH_MODE: "local", WORKSPACE_API_DOMAIN: "api.example.com" })).toThrow(
+      "PAODO_AUTH_MODE=local refuses WORKSPACE_API_DOMAIN",
+    );
+    expect(resolveUiAuth({ PAODO_AUTH_MODE: "local", PAODO_TRUSTED_HOSTS: "  " }, undefined, () => null).mode).toBe(
+      "local",
+    );
+  });
+
+  it("ignores a password left in the environment", () => {
+    expect(localAuthenticator(null).verify(input({ authorization: basic("admin", "wrong") }))).toBe("ok");
+  });
+
+  // Without a credential the peer is the gate: a 0.0.0.0 port binding must not open the UI to the network.
+  it("admits only this machine: loopback and the bridge gateway read at startup", () => {
+    const auth = resolveUiAuth({ PAODO_AUTH_MODE: "local" }, undefined, () => "172.20.0.1");
+    expect(auth.admitsPeer("::ffff:172.20.0.1")).toBe(true);
+    expect(auth.admitsPeer("127.0.0.1")).toBe(true);
+    expect(auth.admitsPeer("192.168.1.20")).toBe(false);
+    expect(auth.admitsPeer("172.20.0.5")).toBe(false);
+  });
+
+  it("leaves peers to the credential in the other modes", () => {
+    expect(basicAuthenticator({ user: "a", pass: "b" }).admitsPeer("203.0.113.7")).toBe(true);
+    expect(resolveUiAuth(IAP_ENV, stubJwks).admitsPeer("203.0.113.7")).toBe(true);
   });
 });

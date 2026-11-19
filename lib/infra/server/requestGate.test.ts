@@ -5,7 +5,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetLogThrottle } from "../logThrottle";
 import { AuthFailureTracker } from "../security/httpAuth";
-import { basicAuthenticator, type UiAuthenticator } from "../security/uiAuth";
+import { basicAuthenticator, localAuthenticator, type UiAuthenticator } from "../security/uiAuth";
 import { createRequestGate, type RequestGateDependencies } from "./requestGate";
 
 // The log context each handled request runs in, captured instead of bound.
@@ -64,12 +64,12 @@ function setup(overrides: Partial<RequestGateDependencies> = {}) {
   } as unknown as RequestGateDependencies;
   const gate = createRequestGate(deps);
 
-  const send = (request: { method?: string; url?: string; headers?: Record<string, string> }) => {
+  const send = (request: { method?: string; url?: string; headers?: Record<string, string>; peer?: string }) => {
     const req = {
       method: request.method ?? "GET",
       url: request.url ?? "/",
       headers: { host: "app.test", ...request.headers } as Record<string, string>,
-      socket: { remoteAddress: "203.0.113.7" },
+      socket: { remoteAddress: request.peer ?? "203.0.113.7" },
     };
     const res = new FakeResponse();
     gate(req as unknown as IncomingMessage, res as unknown as ServerResponse);
@@ -343,5 +343,80 @@ describe("request gate — who the request came from, on every log line", () => 
     expect(contexts.map((c) => c.caller)).toEqual(["browser", "cli", "vscode", undefined]);
     expect(contexts[0]).toMatchObject({ method: "GET", pathname: "/" });
     expect(contexts[0].requestId).toEqual(expect.any(String));
+  });
+});
+
+describe("request gate — local mode", () => {
+  const local = { uiAuth: localAuthenticator("172.20.0.1"), apiHost: null, allowedHosts: new Set(["localhost"]) };
+  // What Docker Desktop shows the app for a request from the host's own browser.
+  const HOST_BROWSER = { peer: "::ffff:172.20.0.1" };
+  const LOCALHOST = { host: "localhost:7373" };
+
+  it("lets the host's browser through with no credential and mints no session cookie", () => {
+    const { send, handle } = setup(local);
+    const { res } = send({ ...HOST_BROWSER, url: "/api/workspaces", headers: LOCALHOST });
+
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(res.headers["set-cookie"]).toBeUndefined();
+  });
+
+  // The port binding is one compose edit away from 0.0.0.0; a forged Host must not make a LAN peer local.
+  it("refuses a peer from the network even with a loopback Host", () => {
+    const { send, handle, audit } = setup(local);
+    const { res } = send({ peer: "192.168.1.20", url: "/api/workspaces", headers: LOCALHOST });
+
+    expect(handle).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+    expect(audit.warn.mock.calls.concat(audit.info.mock.calls).flat()).toContainEqual(
+      expect.objectContaining({ event: "request_peer_rejected", peer: "192.168.1.20" }),
+    );
+  });
+
+  it("never trusts a forwarded address to make a peer local", () => {
+    const { send, handle } = setup(local);
+    const { res } = send({ peer: "192.168.1.20", headers: { ...LOCALHOST, "cf-connecting-ip": "127.0.0.1" } });
+
+    expect(handle).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("refuses another container on the bridge, which is not the host", () => {
+    const { send, handle } = setup(local);
+    send({ peer: "172.20.0.5", headers: LOCALHOST });
+
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it("still refuses a cross-site mutation", () => {
+    const { send, handle } = setup(local);
+    const { res } = send({
+      ...HOST_BROWSER,
+      method: "POST",
+      url: "/api/workspaces",
+      headers: { ...LOCALHOST, "sec-fetch-site": "cross-site" },
+    });
+
+    expect(handle).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("still refuses a foreign Host, so DNS rebinding finds no door", () => {
+    const { send, handle } = setup(local);
+    const { res } = send({ ...HOST_BROWSER, headers: { host: "attacker.example" } });
+
+    expect(handle).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(421);
+  });
+
+  it("still verifies a Bearer token instead of waving it through", () => {
+    const { send, handle } = setup(local);
+    const { res } = send({
+      ...HOST_BROWSER,
+      url: "/api/workspace-graph",
+      headers: { ...LOCALHOST, authorization: "Bearer wrong" },
+    });
+
+    expect(handle).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(401);
   });
 });

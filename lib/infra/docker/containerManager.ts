@@ -65,6 +65,8 @@ function dockerCleanupFailure(stage: string, result: { code: number; stderr: str
 }
 
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE ?? "paodo-workspace";
+/** Registry reference of a prebuilt workspace image, pulled before falling back to a local build. */
+const WORKSPACE_IMAGE_SOURCE = process.env.PAODO_WORKSPACE_IMAGE_SOURCE?.trim() || undefined;
 const CONTAINER_MEMORY = capacityProfile.workspaceMemoryLimit;
 const CONTAINER_CPUS = capacityProfile.workspaceCpus;
 // Docker's unlimited default lets one fork bomb exhaust the host's pid_max. Threads count too, so
@@ -1205,7 +1207,7 @@ export class ContainerManager implements IContainerManager {
       exitAfterLogs(1);
     }
     try {
-      await this.imageManager.ensureImage(CONTAINER_IMAGE, "Dockerfile.workspace");
+      await this.imageManager.ensureImage(CONTAINER_IMAGE, "Dockerfile.workspace", WORKSPACE_IMAGE_SOURCE);
     } catch (err) {
       log.fatal(
         {

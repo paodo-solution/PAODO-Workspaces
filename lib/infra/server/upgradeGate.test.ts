@@ -5,7 +5,7 @@ import type { Duplex } from "stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetLogThrottle } from "../logThrottle";
 import { AuthFailureTracker } from "../security/httpAuth";
-import { basicAuthenticator } from "../security/uiAuth";
+import { basicAuthenticator, localAuthenticator } from "../security/uiAuth";
 import { createUpgradeGate, type UpgradeGateDependencies } from "./upgradeGate";
 
 const UI = basicAuthenticator({ user: "admin", pass: "hunter2" });
@@ -28,12 +28,12 @@ function setup(overrides: Partial<UpgradeGateDependencies> = {}) {
     ...overrides,
   } as unknown as UpgradeGateDependencies);
 
-  const send = (request: { url?: string; headers?: Record<string, string> }) => {
+  const send = (request: { url?: string; headers?: Record<string, string>; peer?: string }) => {
     const req = {
       method: "GET",
       url: request.url ?? "/ws?workspaceId=w1",
       headers: { host: "app.test", origin: "https://app.test", ...request.headers },
-      socket: { remoteAddress: "203.0.113.7" },
+      socket: { remoteAddress: request.peer ?? "203.0.113.7" },
     };
     const socket = { write: vi.fn(), destroy: vi.fn() };
     gate(req as unknown as IncomingMessage, socket as unknown as Duplex, HEAD);
@@ -148,5 +148,33 @@ describe("upgrade gate — refusals", () => {
 
     expect(written).toBe("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\n\r\n");
     expect(accept).not.toHaveBeenCalled();
+  });
+});
+
+describe("upgrade gate — local mode", () => {
+  const local = { uiAuth: localAuthenticator("172.20.0.1"), apiHost: null, verifySessionCookie: () => false };
+  const HOST_BROWSER = "::ffff:172.20.0.1";
+
+  it("accepts a handshake from the app's own page with no credential", () => {
+    const { send, accept } = setup(local);
+    send({ peer: HOST_BROWSER });
+
+    expect(accept).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a handshake from a network peer, whatever its Host and Origin", () => {
+    const { send, accept } = setup(local);
+    const { written } = send({ peer: "192.168.1.20", headers: { "cf-connecting-ip": "127.0.0.1" } });
+
+    expect(accept).not.toHaveBeenCalled();
+    expect(written).toMatch(/^HTTP\/1.1 403/);
+  });
+
+  it("still refuses a handshake opened by another page", () => {
+    const { send, accept } = setup(local);
+    const { written } = send({ peer: HOST_BROWSER, headers: { origin: "https://attacker.example" } });
+
+    expect(accept).not.toHaveBeenCalled();
+    expect(written).toMatch(/^HTTP\/1.1 403/);
   });
 });
