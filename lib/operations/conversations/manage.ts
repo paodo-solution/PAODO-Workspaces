@@ -5,7 +5,7 @@ import { getStore } from "@/lib/infra/services";
 import * as conversations from "@/lib/conversations/store";
 import type { ConversationMeta } from "@/lib/conversations/store";
 import * as broker from "@/lib/agent/runBroker";
-import { messagesToTranscript } from "@/lib/agent/messageSerialization";
+import { messagesToTranscript, type TranscriptOptions } from "@/lib/agent/messageSerialization";
 import { getConversationOutputTokens } from "@/lib/usage/queries";
 import { startWorkspaceRun } from "@/lib/operations/agent/run";
 import { ConversationNotFoundError } from "@/lib/operations/agent/errors";
@@ -66,6 +66,7 @@ function detail(
   conversationId: string,
   meta: ConversationMeta,
   deps: ReturnType<typeof dependencies>,
+  options: TranscriptOptions = {},
 ): ConversationDetail {
   const running = deps.broker.isRunning(workspaceId, conversationId);
   // During a run, the live array already includes the user turn. The client renders that turn from
@@ -78,7 +79,7 @@ function detail(
     meta,
     running,
     userInput: running ? deps.broker.peekUserInput(workspaceId, conversationId) : null,
-    transcript: deps.transcript(messages, deps.outputTokens(workspaceId, conversationId)),
+    transcript: deps.transcript(messages, deps.outputTokens(workspaceId, conversationId), options),
   };
 }
 
@@ -120,12 +121,13 @@ export function getWorkspaceConversation(
   workspaceId: string,
   conversationId: string,
   suppliedDeps: ConversationOperationDeps = {},
+  options: TranscriptOptions = {},
 ): ConversationDetail | null {
   const deps = dependencies(suppliedDeps);
   if (!deps.workspaces.getWorkspace(workspaceId)) return null;
   const meta = deps.conversations.getMeta(workspaceId, conversationId);
   if (!meta) throw new ConversationNotFoundError(conversationId);
-  return detail(workspaceId, conversationId, meta, deps);
+  return detail(workspaceId, conversationId, meta, deps, options);
 }
 
 export function createWorkspaceConversation(

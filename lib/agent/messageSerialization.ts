@@ -53,12 +53,18 @@ function readRunError(message: BaseMessage): string | null {
 
 // Usage totals come from the execution ledger, keyed by the final AIMessage's id; the conversation never
 // stores its own copy.
+export interface TranscriptOptions {
+  /** Keep each tool call's full arguments and output (VS Code's tool log); off for the web chat. */
+  toolDetail?: boolean;
+}
+
 export function messagesToTranscript(
   messages: BaseMessage[],
   outputUsage: ReadonlyMap<
     string,
     { inputTokensTotal: number; inputTokensCacheRead: number; outputTokensTotal: number }
   > = new Map(),
+  options: TranscriptOptions = {},
 ): Message[] {
   const out: Message[] = [];
   const bubbleByCallId = new Map<string, number>();
@@ -101,6 +107,7 @@ export function messagesToTranscript(
                 toolName: tc.name,
                 toolSummary: toolArgSummary(tc.name, (tc.args ?? {}) as Record<string, unknown>),
                 toolDone: true,
+                ...(options.toolDetail ? { toolInput: (tc.args ?? {}) as Record<string, unknown> } : {}),
               }) - 1;
             if (tc.id) bubbleByCallId.set(tc.id, idx);
           }
@@ -124,6 +131,7 @@ export function messagesToTranscript(
             };
           }
         }
+        if (idx !== undefined && options.toolDetail) out[idx] = { ...out[idx], toolOutput: contentToText(tm.content) };
         break;
       }
       // system messages are not rendered

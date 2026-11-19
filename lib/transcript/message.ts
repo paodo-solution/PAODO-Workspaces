@@ -10,6 +10,9 @@ export interface Message {
   toolCallId?: string;
   toolSummary?: string;
   toolDone?: boolean;
+  // A call's full arguments and output, only when asked for (`toolDetail`): the web chat shows neither.
+  toolInput?: Record<string, unknown>;
+  toolOutput?: string;
   // Set only on a completed call_agent tool bubble: deep-link to the callee's persisted session.
   calleeWorkspaceId?: string;
   calleeWorkspaceName?: string;

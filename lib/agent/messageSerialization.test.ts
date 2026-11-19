@@ -70,6 +70,23 @@ describe("messagesToTranscript", () => {
     expect(t[3]).toEqual({ role: "assistant", content: "here is the answer" });
   });
 
+  it("keeps each tool call's arguments and output only when asked for", () => {
+    const messages = [
+      new HumanMessage("read a file"),
+      new AIMessage({ content: "", tool_calls: [{ id: "t1", name: "file_read", args: { file_path: "a.txt" } }] }),
+      new ToolMessage({ tool_call_id: "t1", content: "file body" }),
+      new AIMessage("done"),
+    ];
+    expect(messagesToTranscript(messages, new Map(), { toolDetail: true })[1]).toMatchObject({
+      role: "tool_start",
+      toolInput: { file_path: "a.txt" },
+      toolOutput: "file body",
+    });
+    const plain = messagesToTranscript(messages)[1];
+    expect(plain.toolInput).toBeUndefined();
+    expect(plain.toolOutput).toBeUndefined();
+  });
+
   // What a reopened conversation used to lose for every provider that is never sent its reasoning.
   it("shows a turn's stored reasoning ahead of the text and tool call it led to", () => {
     const messages = [
