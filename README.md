@@ -57,6 +57,8 @@ _Demo video of PAODO in action_ :
 
 ## Quick start
 
+To try PAODO: prebuilt images, nothing to build. To change its code, see [Development](#development).
+
 Requires [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
@@ -72,6 +74,8 @@ Open [http://localhost:7373](http://localhost:7373) and add your model provider'
 To update: rerun the `curl` above, then `docker compose pull && docker compose up -d`
 
 ## Development
+
+Only want to try PAODO? Use the [Quick start](#quick-start) instead: this section builds everything from source.
 
 To work on PAODO itself, you need Docker and Node.js 24 or newer (`nvm use` reads `.nvmrc`):
 
