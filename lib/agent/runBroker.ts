@@ -79,7 +79,12 @@ export interface StartRunParams {
 // Ids only, to VS Code and to every app tab on the workspace: the tab showing it reloads and follows the run.
 function announceRunStart(workspaceId: string, conversationId: string): void {
   publishAppEvent({ type: "run_started", workspaceId, conversationId });
-  broadcastToWorkspace(workspaceId, JSON.stringify({ type: "run_started", conversationId }));
+  try {
+    broadcastToWorkspace(workspaceId, JSON.stringify({ type: "run_started", conversationId }));
+  } catch (err) {
+    // Best-effort hint, called after the session is registered: a closed tab must never strand the run.
+    log.debug({ err, workspaceId, conversationId }, "run_started broadcast failed");
+  }
 }
 
 // Start a run for a conversation, or report that one is already running. The actual run proceeds

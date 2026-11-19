@@ -221,6 +221,29 @@ describe("runBroker", () => {
     expect(broker.runningConversations()).not.toContainEqual(ids);
   });
 
+  it("still runs and finishes when telling an app tab about the start throws", async () => {
+    const run = async function* () {
+      yield { type: "done" } as AgentEvent;
+    } as unknown as typeof import("./runner").runAgent;
+    const p = params(run);
+    const broken = {
+      readyState: 1,
+      bufferedAmount: 0,
+      send: vi.fn(() => {
+        throw new Error("socket closed");
+      }),
+    } as unknown as WebSocket;
+    addConnection(p.workspaceId, broken);
+
+    expect(() => broker.startRun(p)).not.toThrow();
+    await tick();
+    await tick();
+    removeConnection(p.workspaceId, broken);
+
+    expect(p.onPersist).toHaveBeenCalled();
+    expect(broker.isRunning(p.workspaceId, p.conversationId)).toBe(false);
+  });
+
   describe("startExternalRun", () => {
     it("buffers + fans out producer-published events, and marks the conversation running", () => {
       const ext = broker.startExternalRun("ws-ext", "conv-ext", "hello");
@@ -257,6 +280,23 @@ describe("runBroker", () => {
         { type: "run_started", ...ids },
         { type: "run_ended", ...ids },
       ]);
+    });
+
+    it("starts and frees its session when telling an app tab about the start throws", () => {
+      const broken = {
+        readyState: 1,
+        bufferedAmount: 0,
+        send: vi.fn(() => {
+          throw new Error("socket closed");
+        }),
+      } as unknown as WebSocket;
+      addConnection("ws-ext-broken", broken);
+      const ext = broker.startExternalRun("ws-ext-broken", "conv-ext-broken", "x");
+      removeConnection("ws-ext-broken", broken);
+
+      expect(ext).not.toBeNull();
+      ext!.finish();
+      expect(broker.isRunning("ws-ext-broken", "conv-ext-broken")).toBe(false);
     });
 
     it("rejects a second external run for a conversation already running", () => {
