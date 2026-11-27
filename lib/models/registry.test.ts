@@ -45,7 +45,7 @@ describe("models catalog", () => {
     expect(listModels("mistral")).toEqual(["mistral-large-4"]);
     expect(listModels("scaleway")).toEqual([
       "deepseek-v4-flash-0731",
-      "deepseek-v4.1-flash",
+      "deepseek-v4.1-flash-1017",
       "qwen3.6-35b-a3b",
       "glm-5.3",
     ]);
@@ -142,7 +142,7 @@ describe("models catalog", () => {
   // default; only the record stops the picker offering them.
   it.each([
     ["deepseek-v4-flash-0731", ["none", "low", "high", "max"]],
-    ["deepseek-v4.1-flash", ["none", "low", "high", "max"]],
+    ["deepseek-v4.1-flash-1017", ["none", "low", "high", "max"]],
     ["qwen3.6-35b-a3b", ["none", "medium"]],
     ["glm-5.3", ["none", "low", "high", "max"]],
   ])("keeps %s on the levels its vendor documents", (model, levels) => {

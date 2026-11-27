@@ -85,9 +85,9 @@ async function tick(): Promise<void> {
   try {
     const { catalog, filled, unpriced, sourceFailures } = await buildCatalog();
 
+    const carried = sourceFailures.length ? carryForward(catalog, sourceFailures) : [];
     if (sourceFailures.length) {
       retry = true;
-      const carried = carryForward(catalog, sourceFailures);
       log.warn(
         { event: "price_source_incomplete", sources: sourceFailures, carried, retryMs: RETRY_MS },
         "a price source was incomplete or unreachable — carrying its previous rates forward",
@@ -103,10 +103,11 @@ async function tick(): Promise<void> {
       log.warn({ event: "price_cache_write_failed", err, filePath: CACHE_FILE }, "could not cache model prices");
     }
     // Unpriced offered models cost "unknown" rather than a wrong number, so this is a warning and
-    // not a reason to reject the refresh — but it does mean usage for those models records no cost.
-    if (unpriced.length) {
+    // not a reason to reject the refresh. `unpriced` predates the carry, so carried models are dropped.
+    const stillUnpriced = unpriced.filter((model) => !carried.includes(model));
+    if (stillUnpriced.length) {
       log.warn(
-        { event: "price_refresh_unpriced_models", models: unpriced },
+        { event: "price_refresh_unpriced_models", models: stillUnpriced },
         "no upstream rate for offered model(s) — their usage will record no cost",
       );
     }

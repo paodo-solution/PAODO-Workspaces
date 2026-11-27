@@ -20,7 +20,7 @@ describe("scalewayEffort", () => {
     expect(scalewayEffort("qwen3.6-35b-a3b", "low")).toBe("medium");
     expect(scalewayEffort("qwen3.6-35b-a3b", "high")).toBe("medium");
     expect(scalewayEffort("deepseek-v4-flash-0731", "medium")).toBe("high");
-    expect(scalewayEffort("deepseek-v4.1-flash", "medium")).toBe("high");
+    expect(scalewayEffort("deepseek-v4.1-flash-1017", "medium")).toBe("high");
     expect(scalewayEffort("glm-5.3", "medium")).toBe("max");
   });
 
