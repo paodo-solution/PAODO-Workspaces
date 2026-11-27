@@ -321,7 +321,7 @@
     "cache_read_input_token_cost": 4.4e-8,
     "cache_creation_input_token_cost": 0
   },
-  "deepseek-v4.1-flash": {
+  "deepseek-v4.1-flash-1017": {
     "provider": "scaleway",
     "source": "scaleway",
     "currency": "EUR",

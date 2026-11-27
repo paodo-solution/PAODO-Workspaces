@@ -11,8 +11,14 @@ const { ROOT } = vi.hoisted(() => {
   return { ROOT: mkdtempSync(join(tmpdir(), "price-refresher-")) };
 });
 
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
+
 vi.mock("../infra/paths", () => ({ WORKSPACES_ROOT: ROOT }));
 vi.mock("./refresh", () => ({ buildCatalog: vi.fn() }));
+vi.mock("../infra/logger", async (original) => ({
+  ...(await original<typeof import("../infra/logger")>()),
+  createLogger: () => ({ info: () => {}, warn }),
+}));
 
 import { buildCatalog } from "./refresh";
 import { getRate, getCatalog, setCatalog } from "./pricing";
@@ -44,6 +50,7 @@ let seeded: ReturnType<typeof getCatalog>;
 beforeEach(() => {
   seeded = getCatalog();
   build.mockReset();
+  warn.mockReset();
   if (existsSync(_CACHE_FILE)) rmSync(_CACHE_FILE);
 });
 
@@ -139,6 +146,17 @@ describe("priceRefresher", () => {
       await _tick();
 
       expect(Object.keys(JSON.parse(readFileSync(_CACHE_FILE, "utf8")))).toContain("qwen3.6-35b-a3b");
+    });
+
+    // buildCatalog's `unpriced` predates the carry, so a carried model was wrongly reported as costing nothing.
+    it("reports only the models still unpriced after the carry", async () => {
+      setCatalog({ "qwen3.6-35b-a3b": scaleway(2.5e-7) });
+      build.mockResolvedValue(built({ unpriced: ["qwen3.6-35b-a3b", "glm-5.3"], sourceFailures: ["scaleway"] }));
+
+      await _tick();
+
+      const unpricedLog = warn.mock.calls.find(([fields]) => fields.event === "price_refresh_unpriced_models");
+      expect(unpricedLog?.[0].models).toEqual(["glm-5.3"]);
     });
 
     // The narrowing that keeps this from becoming the merge setCatalog exists to prevent: a model the
